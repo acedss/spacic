@@ -1,7 +1,8 @@
-const express = require('express');
-const { MongoClient, ServerApiVersion } = require('mongodb')
+import express from 'express';
+import { MongoClient, ServerApiVersion } from 'mongodb'
+import { clerkMiddleware } from "@clerk/express";
+import dotenv from 'dotenv';
 
-const dotenv = require('dotenv');
 dotenv.config();
 
 const app = express();
@@ -17,18 +18,13 @@ const client = new MongoClient(uri, {
         deprecationErrors: true,
     }
 });
-async function run() {
-    try {
-        // Connect the client to the server	(optional starting in v4.7)
-        await client.connect();
-        // Send a ping to confirm a successful connection
-        await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
-    } finally {
-        await client.close();
-    }
-}
-run().catch(console.dir);
+
+client.connect().then(() => {
+    console.log("Connected to MongoDB");
+}).catch(err => {
+    console.error("Failed to connect to MongoDB", err);
+});
+
 
 
 
