@@ -1,7 +1,9 @@
-import React from 'react'
 
-export const AlbumPage = () => {
+
+const AlbumPage = () => {
     return (
         <div>AlbumPage</div>
     )
 }
+
+export default AlbumPage

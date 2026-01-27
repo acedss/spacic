@@ -1,23 +1,18 @@
-import { useSignIn } from "@clerk/clerk-react"
-import { Button } from "./button"
-import { LogIn } from "lucide-react"
+import { useClerk } from "@clerk/clerk-react";
+import { Button } from "./button";
+import { LogIn } from "lucide-react";
 
 const SignInOAuthButtons = () => {
-    const { signIn, isLoaded } = useSignIn()
+    const { openSignIn } = useClerk();
 
-    if (!isLoaded) {
-        return null
-    }
+    const handleSignIn = () => {
+        openSignIn({
+            afterSignInUrl: "/auth-callback",
+            afterSignUpUrl: "/auth-callback",
+        });
+    };
 
-    const signInWithGoogle = () => {
-        signIn.authenticateWithRedirect({
-            strategy: "oauth_google",
-            redirectUrl: "/sso-callback",
-            redirectUrlComplete: "/auth-callback",
-        })
-    }
+    return <Button onClick={handleSignIn} variant={'default'} className=" w-fit text-purple-400 bg-indigo-950  shadow-black border-zinc-200 h-11">Sign in<LogIn className="w-5 h-5" /></Button>
 
-    return <Button onClick={signInWithGoogle} variant={"secondary"} className="w-full text-purple-400 border-zinc-200 h-11">Log-in<LogIn className="w-5 h-5" /></Button>
 }
-
 export default SignInOAuthButtons
