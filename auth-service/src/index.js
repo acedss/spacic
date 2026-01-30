@@ -3,6 +3,7 @@ import { MongoClient, ServerApiVersion } from 'mongodb'
 import { clerkMiddleware } from "@clerk/express";
 import dotenv from 'dotenv';
 import { createServer } from "http";
+import cors from 'cors';
 
 import { connectDB } from "./lib/db.js";
 import authRoutes from "./routes/auth.route.js"
@@ -14,6 +15,13 @@ const PORT = process.env.PORT || 4000;
 
 
 const httpServer = createServer(app);
+
+// allow all cors origins
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 app.use(express.json());
 app.use(clerkMiddleware());
@@ -33,5 +41,6 @@ app.use((error, req, res, next) => {
 httpServer.listen(PORT, () => {
     console.log("Server running on  http://localhost:" + PORT);
     connectDB()
+
 });
 

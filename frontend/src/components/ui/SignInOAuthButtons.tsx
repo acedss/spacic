@@ -7,8 +7,7 @@ const SignInOAuthButtons = () => {
 
     const handleSignIn = () => {
         openSignIn({
-            afterSignInUrl: "/auth-callback",
-            afterSignUpUrl: "/auth-callback",
+            fallbackRedirectUrl: '/auth-callback'
         });
     };
 

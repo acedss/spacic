@@ -6,7 +6,6 @@ import SignInOAuthButtons from "./ui/SignInOAuthButtons";
 
 const TopBar = () => {
     const isAdmin = true;
-    console.log({ isAdmin })
     return (
         <div className='sticky top-0 flex items-center justify-between p-4 bg-zinc-900/40 '>
             <div className='flex items-center gap-2 text-purple-300 text-center'>
