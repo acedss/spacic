@@ -2,30 +2,45 @@ import express from 'express';
 import { MongoClient, ServerApiVersion } from 'mongodb'
 import { clerkMiddleware } from "@clerk/express";
 import dotenv from 'dotenv';
+import { createServer } from "http";
+import cors from 'cors';
+
+import { connectDB } from "./lib/db.js";
+import authRoutes from "./routes/auth.route.js"
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
-const uri = process.env.MONGODB_URI;
+const PORT = process.env.PORT || 4000;
+
+
+const httpServer = createServer(app);
+
+// allow all cors origins
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 app.use(express.json());
+app.use(clerkMiddleware());
 
-const client = new MongoClient(uri, {
-    serverApi: {
-        strict: true,
-        version: ServerApiVersion.v1,
-        deprecationErrors: true,
-    }
-});
-
-client.connect().then(() => {
-    console.log("Connected to MongoDB");
-}).catch(err => {
-    console.error("Failed to connect to MongoDB", err);
+app.use("/api/auth", authRoutes);
+app.get("/", (req, res) => {
+    res.send("Auth Service is running...");
 });
 
 
+//  Error handler
+app.use((error, req, res, next) => {
+    res.status(500).json({ message: process.env.NODE_ENV === "production" ? "Internal server error" : error.message })
+    console.log(error)
+})
 
+httpServer.listen(PORT, () => {
+    console.log("Server running on  http://localhost:" + PORT);
+    connectDB()
 
+});
 
