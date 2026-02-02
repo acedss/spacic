@@ -25,9 +25,6 @@ export const authCallback = async (req, res, next) => {
 
     } catch (error) {
         console.error("Error in auth callback:", error);
-        res.status(500).json({
-            error: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
+        next(error);
     }
 };

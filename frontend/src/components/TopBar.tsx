@@ -2,10 +2,13 @@ import { UserButton, useAuth } from "@clerk/clerk-react";
 import { ChevronLeft, ChevronRight, LayoutDashboardIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import SignInOAuthButtons from "./ui/SignInOAuthButtons";
+
 // todo: fetch isAdmin from user storing (zustand)
+import { useAuthStore } from "@/stores/useAuthStore";
 
 const TopBar = () => {
-    const isAdmin = true;
+    const { isAdmin } = useAuthStore();
+
     return (
         <div className='sticky top-0 flex items-center justify-between p-4 bg-zinc-900/40 '>
             <div className='flex items-center gap-2 text-purple-300 text-center'>
