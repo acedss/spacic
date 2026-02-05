@@ -1,12 +1,14 @@
 import mongoose from "mongoose";
 
+// Algorithm to extract duration from audio file can be implemented during upload process
+
 const songSchema = new mongoose.Schema({
     title: { type: String, required: true },
     artist: { type: String, required: true },
+    imageUrl: { type: String, required: true },
     s3Key: { type: String, required: true },
-    duration: { type: Number, required: true }, // For controlling playback length, in seconds
-    albumId: { type: mongoose.Schema.Types.ObjectId, ref: 'Album' },
-    thumbnailUrl: { type: String }
+    duration: { type: Number, required: true },
+    albumId: { type: mongoose.Schema.ObjectId, ref: 'Album' }
 }, { timestamps: true });
 
 export const Song = mongoose.model("Song", songSchema);

@@ -5,7 +5,6 @@ import { useUser } from '@clerk/clerk-react'
 import { Loader } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 
-
 const AuthCallbackPage = () => {
 
     const { isLoaded, user } = useUser()
@@ -25,12 +24,14 @@ const AuthCallbackPage = () => {
             } catch (error) {
                 console.error('Sync Error:', error);
             } finally {
-                navigate("/");
+                // navigate("/");
+                setTimeout(() => {
+                    navigate("/");
+                }, 10000); // Fallback navigation after 10 seconds
             }
         };
         syncUser();
     }, [isLoaded, user, navigate]);
-
     return (
         <div className="flex items-center justify-center w-full h-screen bg-black">
             <Card className="w-[90%] max-w-md bg-zinc-900 border-zinc-800">
