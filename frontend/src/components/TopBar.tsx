@@ -10,7 +10,7 @@ const TopBar = () => {
     const { isAdmin } = useAuthStore();
 
     return (
-        <div className='sticky top-0 flex items-center justify-between p-4 bg-zinc-900/40 '>
+        <div className='sticky top-0 flex items-center justify-between p-3 bg-zinc-900/40 '>
             <div className='flex items-center gap-2 text-purple-300 text-center'>
                 <ChevronLeft className=" rounded-4xl hover:bg-purple-500/50" />
                 <ChevronRight className=" rounded-4xl hover:bg-purple-500/50" />

@@ -11,7 +11,7 @@ const SignInOAuthButtons = () => {
         });
     };
 
-    return <Button onClick={handleSignIn} variant={'default'} className=" w-fit text-purple-400 bg-indigo-950  shadow-black border-zinc-200 h-11">Sign in<LogIn className="w-5 h-5" /></Button>
+    return <Button onClick={handleSignIn} variant={'default'} className=" w-fit text-purple-400 bg-indigo-950  shadow-black border-zinc-200 h-8">Sign in<LogIn className="w-5 h-5" /></Button>
 
 }
 export default SignInOAuthButtons

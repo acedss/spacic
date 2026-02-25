@@ -5,10 +5,11 @@ import { createServer } from "http";
 import cors from 'cors';
 
 import { connectDB } from "./lib/db.js";
+import { initializeSocket } from "./lib/socket.js";
 import authRoutes from "./routes/auth.route.js"
 import adminRoutes from "./routes/admin.route.js"
-
 import songRoutes from './routes/song.route.js';
+import playbackRoutes from './routes/playback.route.js';
 
 dotenv.config();
 
@@ -17,6 +18,9 @@ const PORT = process.env.PORT || 4000;
 
 
 const httpServer = createServer(app);
+
+// Initialize Socket.io
+initializeSocket(httpServer);
 
 app.use(cors({
     origin: 'http://localhost:5173',
@@ -31,7 +35,8 @@ app.get("/health", (req, res) => res.json({ status: "ok" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
-app.use('/api/songs', songRoutes)
+app.use('/api/songs', songRoutes);
+app.use('/api/playback', playbackRoutes);
 
 //  Error handler
 app.use((error, req, res, next) => {

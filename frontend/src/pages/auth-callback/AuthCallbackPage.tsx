@@ -27,16 +27,16 @@ const AuthCallbackPage = () => {
                 // navigate("/");
                 setTimeout(() => {
                     navigate("/");
-                }, 10000); // Fallback navigation after 10 seconds
+                }, 10000);
             }
         };
         syncUser();
     }, [isLoaded, user, navigate]);
     return (
-        <div className="flex items-center justify-center w-full h-screen bg-black">
+        <div className="flex items-center justify-center w-full h-screen bg-black cursor-wait">
             <Card className="w-[90%] max-w-md bg-zinc-900 border-zinc-800">
                 <CardContent className="flex flex-col items-center gap-4 pt-6">
-                    <Loader className="size-6 text-emerald-500 animate-spin"></Loader>
+                    <Loader className="size-6 text-purple-500 animate-spin"></Loader>
                     <h3 className="text-xl font-bold text-zinc-400">Logging you in</h3>
                     <p className="text-sm text-zinc-400">Redirecting...</p>
                 </CardContent>

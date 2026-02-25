@@ -19,6 +19,11 @@ const userSchema = new mongoose.Schema({
         enum: ["USER", "ADMIN", "CREATOR"],
         default: "USER",
     },
+    userTier: {
+        type: String,
+        enum: ["FREE", "PREMIUM", "CREATOR"],
+        default: "FREE",
+    },
     balance: {
         type: Number,
         default: 0,
