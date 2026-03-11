@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import AuthCallbackPage from "./pages/auth-callback/AuthCallbackPage";
 import HomePage from "./pages/home/HomePage";
+import { RoomPage } from "./pages/room/RoomPage";
 import MainLayout from "./layout/MainLayout";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { Toaster } from "./components/ui/sonner";
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/admin" element={<AdminPage />} />
         <Route element={<MainLayout />}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/rooms/:roomId" element={<RoomPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
