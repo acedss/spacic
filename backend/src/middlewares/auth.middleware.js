@@ -2,6 +2,16 @@ import { clerkClient } from "@clerk/express";
 import { User } from "../models/user.model.js";
 
 export const protectRoute = async (req, res, next) => {
+    // Dev bypass: allows Postman/automated testing without a live Clerk JWT
+    if (process.env.NODE_ENV !== "production") {
+        const devToken = req.headers["x-dev-token"];
+        if (devToken && devToken === process.env.DEV_BYPASS_TOKEN) {
+            req.devBypass = true;
+            req.devClerkId = process.env.DEV_CLERK_ID;
+            return next();
+        }
+    }
+
     if (!req.auth().userId) {
         return res.status(401).json({ message: "Unauthorized - you must be logged in" });
     }

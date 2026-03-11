@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
+    "seed": "node src/seed.js",
     "test": "vitest"
   },
   "keywords": [],
@@ -23,6 +24,8 @@
     "mongodb": "^7.0.0",
     "mongoose": "^9.1.5",
     "socket.io": "^4.8.3",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "ioredis": "^5.4.2",
     "svix": "^1.82.0"
   },
   "overrides": {

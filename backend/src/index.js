@@ -10,6 +10,7 @@ import authRoutes from "./routes/auth.route.js"
 import adminRoutes from "./routes/admin.route.js"
 import songRoutes from './routes/song.route.js';
 import playbackRoutes from './routes/playback.route.js';
+import roomRoutes from './routes/room.route.js';
 
 dotenv.config();
 
@@ -25,7 +26,7 @@ initializeSocket(httpServer);
 app.use(cors({
     origin: 'http://localhost:5173',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Clerk-Auth-Token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Clerk-Auth-Token', 'x-dev-token'],
     credentials: true,
 }));
 app.use(express.json());
@@ -37,6 +38,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use('/api/songs', songRoutes);
 app.use('/api/playback', playbackRoutes);
+app.use('/api/rooms', roomRoutes);
 
 //  Error handler
 app.use((error, req, res, next) => {

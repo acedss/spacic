@@ -16,10 +16,8 @@ export const authCallback = async (req, res, next) => {
                 role: role,
                 balance: 0
             });
+            console.log("User created successfully");
         }
-
-        console.log("User created successfully");
-
 
         res.status(200).json({ success: true });
 

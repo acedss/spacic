@@ -27,7 +27,7 @@ const AuthCallbackPage = () => {
                 // navigate("/");
                 setTimeout(() => {
                     navigate("/");
-                }, 10000);
+                }, 10);
             }
         };
         syncUser();

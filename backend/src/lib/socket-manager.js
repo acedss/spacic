@@ -1,178 +1,180 @@
-// In-memory state manager for Socket.io
-// Tracks ephemeral data: user sessions, room sessions, online users
+// Redis-backed state manager for Socket.IO
+// Replaces in-memory Maps with Redis so state survives server restarts
+// and is shared across multiple Node.js instances.
+//
+// Key schema:
+//   room:{roomId}            → HASH  (metadata + playback anchor)
+//   room:{roomId}:listeners  → SET   (active listener userIds)
+//   user:socket:{socketId}   → HASH  (session per socket connection)
+//   active:rooms             → SET   (index of all live roomIds)
+
+import { redis } from './redis.js';
+
+// Centralise key construction to avoid typos across the file
+const K = {
+    room: (id) => `room:${id}`,
+    listeners: (id) => `room:${id}:listeners`,
+    socket: (id) => `user:socket:${id}`,
+    activeRooms: () => 'active:rooms',
+};
+
+// User sessions auto-expire if the server never receives a disconnect event
+// (e.g. container killed mid-session).
+const USER_TTL_S = 86_400; // 24 hours
 
 class SocketManager {
-    constructor() {
-        // Map<socketId, { userId, clerkId, userName, userImage, userTier, currentRoomId, joinedAt }>
-        this.userSessions = new Map();
 
-        // Map<roomId, { creatorId, title, capacity, isLive, currentSongId, currentSongPresignedUrl, listeners: Set<userId>, listenerCount, createdAt, currentPlaybackTime }>
-        this.roomSessions = new Map();
+    // ── User Sessions ────────────────────────────────────────────────────────
 
-        // Map<userId, { socketId, currentRoomId, userTier, joinedAt }>
-        this.onlineUsers = new Map();
-    }
-
-    // ===== User Session Management =====
-    addUserSession(socketId, userData) {
-        const userSession = {
+    async addUserSession(socketId, userData) {
+        await redis.hset(K.socket(socketId), {
             userId: userData.userId,
             clerkId: userData.clerkId,
-            userName: userData.userName,
-            userImage: userData.userImage,
-            userTier: userData.userTier,
-            currentRoomId: null,
-            joinedAt: new Date(),
-        };
-        this.userSessions.set(socketId, userSession);
-        this.onlineUsers.set(userData.userId, {
-            socketId,
-            currentRoomId: null,
-            userTier: userData.userTier,
-            joinedAt: new Date(),
+            userName: userData.userName || '',
+            userImage: userData.userImage || '',
+            userTier: userData.userTier || 'FREE',
+            role: userData.role || 'USER',
+            currentRoomId: '',
         });
+        await redis.expire(K.socket(socketId), USER_TTL_S);
     }
 
-    removeUserSession(socketId) {
-        const userSession = this.userSessions.get(socketId);
-        if (userSession) {
-            this.onlineUsers.delete(userSession.userId);
-            this.userSessions.delete(socketId);
-        }
+    async removeUserSession(socketId) {
+        await redis.del(K.socket(socketId));
     }
 
-    getUserBySocketId(socketId) {
-        return this.userSessions.get(socketId);
+    async getUserBySocketId(socketId) {
+        const data = await redis.hgetall(K.socket(socketId));
+        if (!data || !data.userId) return null;
+        return { ...data, currentRoomId: data.currentRoomId || null };
     }
 
-    getUserById(userId) {
-        return this.onlineUsers.get(userId);
+    async updateUserCurrentRoom(socketId, roomId) {
+        await redis.hset(K.socket(socketId), 'currentRoomId', roomId ?? '');
     }
 
-    getAllOnlineUsers() {
-        return Array.from(this.userSessions.values());
-    }
+    // ── Room Sessions ────────────────────────────────────────────────────────
 
-    getOnlineUsersByTier(tier) {
-        return Array.from(this.userSessions.values()).filter(u => u.userTier === tier);
-    }
-
-    // ===== Room Session Management =====
-    addRoomSession(roomId, roomData) {
-        const roomSession = {
+    async addRoomSession(roomId, roomData) {
+        await redis.hset(K.room(roomId), {
             creatorId: roomData.creatorId,
-            title: roomData.title,
-            capacity: roomData.capacity,
-            currentSongId: null,
-            currentSongPresignedUrl: null,
-            currentPlaybackTime: 0,
-            isPlaying: false,
-            listeners: new Set(),
-            listenerCount: 0,
-            createdAt: new Date(),
-            ...roomData,
+            title: roomData.title || '',
+            // Redis stores strings — always cast numbers explicitly
+            capacity: String(roomData.capacity ?? 10),
+            currentSongId: roomData.currentSongId || '',
+            currentSongPresignedUrl: roomData.currentSongPresignedUrl || '',
+            startTimeUnix: String(roomData.startTimeUnix ?? ''),
+            pausedAtMs: String(roomData.pausedAtMs ?? 0),
+            isPlaying: roomData.isPlaying ? '1' : '0',
+        });
+        await redis.sadd(K.activeRooms(), roomId);
+        return this.getRoomById(roomId);
+    }
+
+    async getRoomById(roomId) {
+        const data = await redis.hgetall(K.room(roomId));
+        if (!data || !data.creatorId) return null;
+        const listenerCount = await this.getListenerCount(roomId);
+        return {
+            creatorId: data.creatorId,
+            title: data.title,
+            capacity: Number(data.capacity),
+            currentSongId: data.currentSongId || null,
+            currentSongPresignedUrl: data.currentSongPresignedUrl || null,
+            startTimeUnix: data.startTimeUnix ? Number(data.startTimeUnix) : null,
+            pausedAtMs: Number(data.pausedAtMs ?? 0),
+            isPlaying: data.isPlaying === '1',
+            listenerCount,
         };
-        this.roomSessions.set(roomId, roomSession);
-        return roomSession;
     }
 
-    removeRoomSession(roomId) {
-        this.roomSessions.delete(roomId);
+    async removeRoomSession(roomId) {
+        await redis.del(K.room(roomId), K.listeners(roomId));
+        await redis.srem(K.activeRooms(), roomId);
     }
 
-    getRoomById(roomId) {
-        return this.roomSessions.get(roomId);
+    // ── Listener Management ──────────────────────────────────────────────────
+    // Redis Sets are perfect here: O(1) add/remove, O(1) count, no duplicates.
+
+    // TODO(human): Implement the three listener management methods below.
+    // Each maps to a single Redis Set command on K.listeners(roomId):
+    //   SADD  key member   → adds userId, returns 1 if added, 0 if already existed
+    //   SREM  key member   → removes userId
+    //   SCARD key          → returns the number of members (the listener count)
+    //
+    // Redis docs: https://redis.io/docs/latest/commands/?group=set
+
+    async addRoomListener(roomId, userId) {
+        await redis.sadd(K.listeners(roomId), userId);
     }
 
-    getAllActiveRooms() {
-        return Array.from(this.roomSessions.values());
+    async removeRoomListener(roomId, userId) {
+        await redis.srem(K.listeners(roomId), userId);
     }
 
-    // ===== User-Room Relationship =====
-    updateUserCurrentRoom(socketId, roomId) {
-        const userSession = this.userSessions.get(socketId);
-        if (userSession) {
-            userSession.currentRoomId = roomId;
-            const onlineUser = this.onlineUsers.get(userSession.userId);
-            if (onlineUser) {
-                onlineUser.currentRoomId = roomId;
-            }
-        }
+    async getListenerCount(roomId) {
+        return redis.scard(K.listeners(roomId));
     }
 
-    // ===== Room Listeners Management =====
-    addRoomListener(roomId, userId) {
-        const room = this.roomSessions.get(roomId);
-        if (room && !room.listeners.has(userId)) {
-            room.listeners.add(userId);
-            room.listenerCount = room.listeners.size;
-            return true;
-        }
-        return false;
+    async getUsersInRoom(roomId) {
+        return redis.smembers(K.listeners(roomId));
     }
 
-    removeRoomListener(roomId, userId) {
-        const room = this.roomSessions.get(roomId);
-        if (room && room.listeners.has(userId)) {
-            room.listeners.delete(userId);
-            room.listenerCount = room.listeners.size;
-            return true;
-        }
-        return false;
+    async isRoomAtCapacity(roomId) {
+        const room = await this.getRoomById(roomId);
+        if (!room) return false;
+        const count = await this.getListenerCount(roomId);
+        return count >= room.capacity;
     }
 
-    getUsersInRoom(roomId) {
-        const room = this.roomSessions.get(roomId);
-        if (room) {
-            return Array.from(room.listeners);
-        }
-        return [];
+    // ── Playback State ───────────────────────────────────────────────────────
+
+    async updateRoomPlaybackState(roomId, updates) {
+        const fields = {};
+        if (updates.currentSongId !== undefined)
+            fields.currentSongId = updates.currentSongId ?? '';
+        if (updates.currentSongPresignedUrl !== undefined)
+            fields.currentSongPresignedUrl = updates.currentSongPresignedUrl ?? '';
+        if (updates.isPlaying !== undefined)
+            fields.isPlaying = updates.isPlaying ? '1' : '0';
+        if (updates.startTimeUnix !== undefined)
+            fields.startTimeUnix = String(updates.startTimeUnix ?? '');
+        if (updates.pausedAtMs !== undefined)
+            fields.pausedAtMs = String(updates.pausedAtMs ?? 0);
+        if (Object.keys(fields).length > 0)
+            await redis.hset(K.room(roomId), fields);
     }
 
-    // ===== Playback State =====
-    updateRoomPlaybackState(roomId, { currentSongId, currentSongPresignedUrl, isPlaying, currentPlaybackTime }) {
-        const room = this.roomSessions.get(roomId);
-        if (room) {
-            if (currentSongId !== undefined) room.currentSongId = currentSongId;
-            if (currentSongPresignedUrl !== undefined) room.currentSongPresignedUrl = currentSongPresignedUrl;
-            if (isPlaying !== undefined) room.isPlaying = isPlaying;
-            if (currentPlaybackTime !== undefined) room.currentPlaybackTime = currentPlaybackTime;
-        }
+    async getRoomPlaybackState(roomId) {
+        // hmget fetches only the fields we need — faster than hgetall
+        const [currentSongId, currentSongPresignedUrl, isPlaying, startTimeUnix, pausedAtMs] =
+            await redis.hmget(K.room(roomId),
+                'currentSongId', 'currentSongPresignedUrl', 'isPlaying', 'startTimeUnix', 'pausedAtMs');
+        if (!currentSongId && !currentSongPresignedUrl) return null;
+        return {
+            currentSongId: currentSongId || null,
+            currentSongPresignedUrl: currentSongPresignedUrl || null,
+            isPlaying: isPlaying === '1',
+            startTimeUnix: startTimeUnix ? Number(startTimeUnix) : null,
+            pausedAtMs: Number(pausedAtMs ?? 0),
+        };
     }
 
-    getRoomPlaybackState(roomId) {
-        const room = this.roomSessions.get(roomId);
-        if (room) {
-            return {
-                currentSongId: room.currentSongId,
-                currentSongPresignedUrl: room.currentSongPresignedUrl,
-                isPlaying: room.isPlaying,
-                currentPlaybackTime: room.currentPlaybackTime,
-            };
-        }
-        return null;
+    // While playing: elapsed = now - startTimeUnix.
+    // While paused:  position is frozen at pausedAtMs.
+    async computeCurrentPositionMs(roomId) {
+        const state = await this.getRoomPlaybackState(roomId);
+        if (!state) return 0;
+        if (!state.isPlaying) return state.pausedAtMs ?? 0;
+        return Date.now() - (state.startTimeUnix ?? Date.now());
     }
 
-    // ===== Utility =====
+    // ── Utility ──────────────────────────────────────────────────────────────
+
+    // Pure function — no Redis needed, capacity is tier-derived
     getRoomCapacityByTier(tier) {
-        switch (tier) {
-            case "FREE":
-                return 10;
-            case "PREMIUM":
-                return 50;
-            case "CREATOR":
-                return Infinity;
-            default:
-                return 10;
-        }
-    }
-
-    isRoomAtCapacity(roomId) {
-        const room = this.roomSessions.get(roomId);
-        if (room) {
-            return room.listenerCount >= room.capacity;
-        }
-        return false;
+        const caps = { FREE: 10, PREMIUM: 50, CREATOR: Infinity };
+        return caps[tier] ?? 10;
     }
 }
 

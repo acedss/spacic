@@ -7,7 +7,7 @@ export const getAllSongs = async (req, res, next) => {
 
         const songsWithUrls = await Promise.all(songs.map(async (song) => ({
             ...song,
-            audioUrl: await getPresignedUrl(song.s3Key) // BE tự tạo URL tạm thời ở đây
+            audioUrl: await getPresignedUrl(song.s3Key) 
         })));
         console.log("Fetched songs with URLs:", songsWithUrls);
         res.status(200).json(songsWithUrls);

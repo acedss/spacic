@@ -3,7 +3,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 
 
-export const getPresignedUrl = async (key, expiresIn = 600) => {
+export const getPresignedUrl = async (key, expiresIn = 10000) => {
     try {
         const command = new GetObjectCommand({
             Bucket: s3Config.bucket,
