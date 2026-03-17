@@ -96,14 +96,6 @@ class SocketManager {
     // ── Listener Management ──────────────────────────────────────────────────
     // Redis Sets are perfect here: O(1) add/remove, O(1) count, no duplicates.
 
-    // TODO(human): Implement the three listener management methods below.
-    // Each maps to a single Redis Set command on K.listeners(roomId):
-    //   SADD  key member   → adds userId, returns 1 if added, 0 if already existed
-    //   SREM  key member   → removes userId
-    //   SCARD key          → returns the number of members (the listener count)
-    //
-    // Redis docs: https://redis.io/docs/latest/commands/?group=set
-
     async addRoomListener(roomId, userId) {
         await redis.sadd(K.listeners(roomId), userId);
     }

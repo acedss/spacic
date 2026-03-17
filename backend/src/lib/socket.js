@@ -19,6 +19,9 @@ import { getPresignedUrl } from '../services/s3.services.js';
 // disconnectTimers: 15s countdown, must fire on the process that started it.
 const syncIntervals = new Map();
 const disconnectTimers = new Map();
+// Debounce map for room:song_ended — tracks last advance timestamp per room.
+// Multiple clients fire song_ended simultaneously; only the first within 3s wins.
+const songEndedDebounce = new Map();
 
 // ── Heartbeat ────────────────────────────────────────────────────────────────
 
@@ -65,6 +68,7 @@ const emitSystemMessage = (io, roomId, text) => {
 const closeRoomAndNotify = async (io, roomId, reason) => {
   stopSyncCheckpoint(roomId);
   disconnectTimers.delete(roomId);
+  songEndedDebounce.delete(roomId);
   await socketManager.removeRoomSession(roomId);
 
   await Room.findByIdAndUpdate(roomId, { status: 'closed', 'lifecycle.closedAt': new Date() });
@@ -196,7 +200,7 @@ export const initializeSocket = (httpServer) => {
           if (!roomSession) return socket.emit('room:error', { message: 'Room not found or not active' });
         }
 
-        if (await socketManager.sRoomAtCapacity(roomIdi)) {
+        if (await socketManager.isRoomAtCapacity(roomId)) {
           return socket.emit('room:error', { message: 'Room is at capacity' });
         }
 
@@ -416,6 +420,13 @@ export const initializeSocket = (httpServer) => {
     // ── Room: Song Ended (auto-advance) ─────────────────────────────────────
     socket.on('room:song_ended', async ({ roomId, currentSongIndex }) => {
       try {
+        // Debounce: ignore duplicate song_ended events from multiple clients within 3s
+        const lastAdvance = songEndedDebounce.get(roomId);
+        if (lastAdvance && Date.now() - lastAdvance < 3000) {
+          console.log(`[Server] room:song_ended — debounced (${Date.now() - lastAdvance}ms since last advance), ignoring`);
+          return;
+        }
+
         const room = await Room.findById(roomId).select('playback.currentSongIndex');
         if (!room) {
           console.error(`[Server] room:song_ended — room not found: ${roomId}`);
@@ -428,6 +439,7 @@ export const initializeSocket = (httpServer) => {
           return;
         }
 
+        songEndedDebounce.set(roomId, Date.now());
         console.log(`[Server] room:song_ended — advancing from index ${currentSongIndex} in room=${roomId}`);
         const { nextSong, nextIndex, presignedUrl, startTimeUnix } = await getNextSong(roomId, currentSongIndex);
         io.to(roomId).emit('room:song_changed', {

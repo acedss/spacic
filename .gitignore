@@ -1,3 +1,10 @@
+# IDE & tools
+.vscode/
+.playwright-mcp/
+
+# Project-specific generated files
+FINAL_STATUS.md
+
 # Logs
 logs
 *.log
