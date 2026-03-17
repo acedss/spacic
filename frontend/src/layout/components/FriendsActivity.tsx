@@ -9,10 +9,10 @@ const OnlineDot = ({ online }: { online: boolean }) => (
 
 export const FriendsActivity = () => {
     return (
-        <div className='flex flex-col h-full border-l border-white/10 bg-zinc-950'>
+        <div className='flex flex-col h-full'>
 
             {/* Header */}
-            <div className='px-6 py-5 border-b border-white/5 flex items-center justify-between shrink-0'>
+            <div className='px-6 py-5 border-b border-white/5 flex items-center justify-between shrink-0 rounded-t-2xl'>
                 <h3 className='font-semibold text-base tracking-tight'>Social Feed</h3>
                 <Bell className='size-4 text-zinc-400' />
             </div>

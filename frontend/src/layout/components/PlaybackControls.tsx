@@ -1,9 +1,8 @@
-import { Play, Pause, Music2, Wifi, WifiOff } from 'lucide-react';
+import { Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, Heart, ListMusic, Monitor, Volume2, Wifi, WifiOff } from 'lucide-react';
 import { useAudioRef } from '@/providers/AudioProvider';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 
 const formatTime = (seconds: number): string => {
@@ -21,38 +20,31 @@ export const PlaybackControls = () => {
 
     if (!room) {
         return (
-            <div className="flex items-center justify-center h-full text-zinc-700 text-xs">
+            <div className="flex items-center justify-center h-full text-slate-500 text-xs">
                 Join a room to start listening
             </div>
         );
     }
 
     const currentSong = room.playlist[currentSongIndex];
-    // Prefer the real duration from the audio element (accurate); fall back to DB value
     const audioDuration = audioRef.current?.duration;
     const duration = (audioDuration && isFinite(audioDuration)) ? audioDuration : (currentSong?.duration ?? 0);
     const progress = duration > 0 ? (currentTimeMs / 1000 / duration) * 100 : 0;
 
     const togglePlay = () => {
         if (!audioRef.current) return;
-
         if (isPlaying) {
             audioRef.current.pause();
         } else {
             audioRef.current.play().catch(() => {});
         }
-
         // Only creator/admin updates the store immediately (optimistic).
         // The onPlay/onPause callback then emits room:resume/room:pause,
         // and the server broadcasts room:sync to all clients.
-        // For listeners, audio toggles locally — next room:sync re-syncs.
-        if (canSeek) {
-            setPlaying(!isPlaying);
-        }
+        if (canSeek) setPlaying(!isPlaying);
     };
 
-    const handleSeek = (e: React.MouseEvent<HTMLElement>) => {
-        console.log('[handleSeek] canSeek:', canSeek, '| isCreator:', isCreator, '| isAdmin:', isAdmin, '| duration:', duration);
+    const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
         if (!canSeek || !audioRef.current || duration === 0) return;
         const rect = e.currentTarget.getBoundingClientRect();
         const ratio = (e.clientX - rect.left) / rect.width;
@@ -60,64 +52,106 @@ export const PlaybackControls = () => {
     };
 
     return (
-        <div className="flex items-center h-full gap-6 px-2">
-            {/* Song info */}
-            <div className="flex items-center gap-3 w-52 min-w-0 flex-shrink-0">
+        <div className="flex items-center h-full gap-4 px-8">
+
+            {/* Left: Song info */}
+            <div className="flex items-center gap-4 w-1/4">
                 {currentSong?.imageUrl ? (
                     <img
                         src={currentSong.imageUrl}
                         alt={currentSong.title}
-                        className="w-10 h-10 rounded object-cover flex-shrink-0"
+                        className="size-14 rounded-xl object-cover flex-shrink-0 shadow-lg"
                     />
                 ) : (
-                    <div className="w-10 h-10 rounded bg-zinc-800 flex items-center justify-center flex-shrink-0">
-                        <Music2 className="size-4 text-zinc-600" />
+                    <div className="size-14 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
+                        <span className="text-slate-500 text-xl">♪</span>
                     </div>
                 )}
                 <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{currentSong?.title ?? '—'}</p>
-                    <p className="text-xs text-zinc-400 truncate">{currentSong?.artist ?? room.title}</p>
+                    <h5 className="text-slate-100 font-bold text-sm truncate">{currentSong?.title ?? '—'}</h5>
+                    <p className="text-slate-400 text-xs truncate">{currentSong?.artist ?? room.title}</p>
                 </div>
+                <button className="text-slate-400 hover:text-red-400 transition-colors ml-2 flex-shrink-0">
+                    <Heart className="size-5" />
+                </button>
             </div>
 
-            {/* Center: play button + progress */}
-            <div className="flex flex-col items-center flex-1 gap-1 min-w-0">
-                <button
-                    onClick={togglePlay}
-                    className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center hover:bg-zinc-200 transition-colors flex-shrink-0"
-                >
-                    {isPlaying
-                        ? <Pause className="size-3.5 fill-black" />
-                        : <Play className="size-3.5 fill-black ml-0.5" />
-                    }
-                </button>
-                <div className="flex items-center gap-2 w-full max-w-sm">
-                    <span className="text-xs text-zinc-500 w-8 text-right tabular-nums flex-shrink-0">
+            {/* Center: Controls + Progress */}
+            <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto gap-2">
+                <div className="flex items-center gap-8">
+                    <button className="text-slate-400 hover:text-slate-200 transition-colors">
+                        <Shuffle className="size-4" />
+                    </button>
+                    <button className="text-slate-300 hover:text-slate-100 transition-colors">
+                        <SkipBack className="size-5" />
+                    </button>
+                    <button
+                        onClick={togglePlay}
+                        className="size-12 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 transition-transform flex-shrink-0"
+                    >
+                        {isPlaying
+                            ? <Pause className="size-5 fill-black stroke-none" />
+                            : <Play className="size-5 fill-black stroke-none ml-0.5" />
+                        }
+                    </button>
+                    <button className="text-slate-300 hover:text-slate-100 transition-colors">
+                        <SkipForward className="size-5" />
+                    </button>
+                    <button className="text-slate-400 hover:text-slate-200 transition-colors">
+                        <Repeat className="size-4" />
+                    </button>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full flex items-center gap-3">
+                    <span className="text-[10px] font-medium text-slate-500 w-8 text-right tabular-nums flex-shrink-0">
                         {formatTime(currentTimeMs / 1000)}
                     </span>
-                    <Progress
-                        value={Math.min(progress, 100)}
-                        onClick={handleSeek}
+                    <div
                         className={cn(
-                            'h-1 bg-white/10 [&>[data-slot=progress-indicator]]:bg-white',
-                            canSeek && 'cursor-pointer hover:h-1.5 transition-all'
+                            'flex-1 h-1 bg-white/10 rounded-full relative overflow-hidden group',
+                            canSeek && 'cursor-pointer'
                         )}
-                    />
-                    <span className="text-xs text-zinc-500 w-8 tabular-nums flex-shrink-0">
+                        onClick={handleSeek}
+                    >
+                        <div
+                            className="absolute left-0 top-0 h-full bg-blue-500 rounded-full transition-all"
+                            style={{ width: `${Math.min(progress, 100)}%` }}
+                        />
+                        {canSeek && (
+                            <div
+                                className="absolute top-1/2 -translate-y-1/2 size-2 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity -translate-x-1/2"
+                                style={{ left: `${Math.min(progress, 100)}%` }}
+                            />
+                        )}
+                    </div>
+                    <span className="text-[10px] font-medium text-slate-500 w-8 tabular-nums flex-shrink-0">
                         {formatTime(duration)}
                     </span>
                 </div>
             </div>
 
-            {/* Right: sync status */}
-            <div className="w-24 flex justify-end flex-shrink-0">
+            {/* Right: Volume + extras */}
+            <div className="w-1/4 flex items-center justify-end gap-4">
+                <button className="text-slate-400 hover:text-slate-200 transition-colors">
+                    <ListMusic className="size-5" />
+                </button>
+                <button className="text-slate-400 hover:text-slate-200 transition-colors">
+                    <Monitor className="size-5" />
+                </button>
+                <div className="flex items-center gap-2 w-24">
+                    <Volume2 className="text-slate-400 size-4 flex-shrink-0" />
+                    <div className="flex-1 h-1 bg-white/10 rounded-full">
+                        <div className="h-full w-4/5 bg-slate-300 rounded-full" />
+                    </div>
+                </div>
                 {isSynced ? (
-                    <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+                    <span className="flex items-center gap-1 text-[10px] text-emerald-400 flex-shrink-0">
                         <Wifi className="size-3" />Synced
                     </span>
                 ) : (
-                    <span className="flex items-center gap-1.5 text-xs text-yellow-400">
-                        <WifiOff className="size-3" />Syncing...
+                    <span className="flex items-center gap-1 text-[10px] text-yellow-400 flex-shrink-0">
+                        <WifiOff className="size-3" />Syncing
                     </span>
                 )}
             </div>

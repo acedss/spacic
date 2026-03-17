@@ -4,60 +4,63 @@ import { FriendsActivity } from "./components/FriendsActivity";
 import { PlaybackControls } from "./components/PlaybackControls";
 import AudioPlayer from "./components/AudioPlayer";
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 const MainLayout = () => {
     const [isMobile, setIsMobile] = useState(false);
-    const [isCollapsed, setIsCollapsed] = useState(false);
     const [isSidebarHovered, setIsSidebarHovered] = useState(false);
 
-    const showExpanded = !isCollapsed || isSidebarHovered;
-
     useEffect(() => {
-        const checkMobile = () => {
-            setIsMobile(window.innerWidth < 768);
-        };
+        const checkMobile = () => setIsMobile(window.innerWidth < 768);
         checkMobile();
         window.addEventListener("resize", checkMobile);
         return () => window.removeEventListener("resize", checkMobile);
     }, []);
 
     return (
-        <div className='h-screen flex flex-col bg-black text-white overflow-hidden'>
-            {/* Audio logic only, no UI */}
+        <div className='h-screen flex flex-col bg-[#080c10] text-white overflow-hidden relative'>
             <AudioPlayer />
 
-            {/* MAIN CONTENT AREA */}
-            <div className='flex-1 flex overflow-hidden gap-2'>
+            {/* Ambient glow blobs */}
+            <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+                <div className="absolute -top-1/4 -right-1/4 size-[800px] bg-blue-500/5 rounded-full blur-[120px]" />
+                <div className="absolute -bottom-1/4 -left-1/4 size-[700px] bg-blue-500/5 rounded-full blur-[120px]" />
+            </div>
 
-                {/* LEFT SIDEBAR: Fixed width on desktop, hidden on mobile */}
+            <div className='flex-1 flex overflow-hidden gap-0 p-4 pb-0'>
+
+                {/* LEFT SIDEBAR
+                    Always w-16 in layout flow.
+                    Hover → absolute overlay expands to w-60, no layout shift. */}
                 {!isMobile && (
-                    <aside
-                        className={`${showExpanded ? 'w-60' : 'w-16'} shrink-0 transition-all duration-300 overflow-hidden`}
+                    <div
+                        className='w-16 shrink-0 relative mr-4 z-100'
                         onMouseEnter={() => setIsSidebarHovered(true)}
                         onMouseLeave={() => setIsSidebarHovered(false)}
                     >
-                        <LeftSidebar
-                            isCollapsed={!showExpanded}
-                            onToggle={() => setIsCollapsed(prev => !prev)}
-                        />
-                    </aside>
+                        <aside className={cn(
+                            'h-full liquid-glass rounded-2xl overflow-hidden transition-all duration-300',
+                            isSidebarHovered
+                                ? 'absolute inset-y-0 left-0 w-60  shadow-2xl'
+                                : 'w-full'
+                        )}>
+                            <LeftSidebar isCollapsed={!isSidebarHovered} />
+                        </aside>
+                    </div>
                 )}
 
-                {/* MAIN SECTION: Flexible width (Home, Album, etc.) */}
-                <main className='flex-1  bg-linear-to-b from-purple-900/20 to-zinc-900/90 overflow-y-auto custom-scrollbar'>
+                <main className='flex-1 overflow-y-auto hide-scrollbar pb-32'>
                     <Outlet />
                 </main>
 
-                {/* RIGHT SIDEBAR: Friends Activity (Sprint 3 Focus) */}
                 {!isMobile && (
-                    <aside className='w-70 shrink-0'>
+                    <aside className='w-72 shrink-0 liquid-glass rounded-2xl ml-4 overflow-hidden'>
                         <FriendsActivity />
                     </aside>
                 )}
             </div>
 
-            {/* FIXED FOOTER PLAYER */}
-            <footer className='h-20 px-4 bg-black border-t border-zinc-900 shrink-0'>
+            <footer className='fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-4rem)] max-w-7xl h-24 liquid-glass rounded-2xl z-50 shadow-2xl'>
                 <PlaybackControls />
             </footer>
         </div>
