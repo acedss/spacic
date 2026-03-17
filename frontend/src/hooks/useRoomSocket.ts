@@ -8,20 +8,6 @@ import { useAuthStore } from '@/stores/useAuthStore';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
 
-// TODO(human): Implement this function.
-// It receives the sync payload from the server (room:sync or room:joined) and
-// must return the correct currentPositionMs for the audio element to seek to.
-//
-// Parameters:
-//   isPlaying    — whether the room is currently playing
-//   startTimeUnix — the server's wall-clock anchor (ms). When isPlaying=true:
-//                   currentPosition = (Date.now() - startTimeUnix) - networkLatencyMs
-//   pausedAtMs   — frozen position when paused. When isPlaying=false, return this directly.
-//   serverTimestamp — when the server sent this packet (ms). Use to estimate latency:
-//                   networkLatencyMs ≈ Date.now() - serverTimestamp
-//
-// Hint from the user's formula: ActualPosition = (Now - StartTime) - Latency
-// Clamp the result to >= 0 to handle clock skew.
 export const computePositionFromSync = (
     isPlaying: boolean,
     startTimeUnix: number | null,
