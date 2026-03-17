@@ -1,3 +1,14 @@
+# IDE & tools
+.vscode/
+.playwright-mcp/
+.github/
+
+# Markdown files
+*.md
+
+# macOS
+.DS_Store
+
 # Logs
 logs
 *.log

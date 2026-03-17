@@ -4,7 +4,7 @@ import { useAuth } from '@clerk/clerk-react';
 import { Loader, LogOut } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { useRoomSocket } from '@/hooks/useRoomSocket';
+import { useRoomSession } from '@/providers/RoomSessionProvider';
 import * as roomService from '@/lib/roomService';
 import { RoomPlayer } from './components/RoomPlayer';
 import { ChatPanel } from './components/ChatPanel';
@@ -19,32 +19,31 @@ export const RoomPage = () => {
 
     const roomStore = useRoomStore();
     const playerStore = usePlayerStore();
-    const { sendChat, skipSong, leaveRoom, donate } = useRoomSocket(roomId!);
+    const { joinRoom, leaveRoom, sendChat, skipSong, donate } = useRoomSession();
 
     useEffect(() => {
         if (!roomId) return;
-        roomStore.setLoading(true);
 
+        // Skip re-fetch if already loaded for this room (user navigated back)
+        if (roomStore.room?._id === roomId) {
+            joinRoom(roomId);
+            return;
+        }
+
+        roomStore.setLoading(true);
         roomService.getRoomById(roomId)
             .then((room) => {
-                console.log('[RoomPage] room data:', room);
                 roomStore.setRoom(room);
-                // creatorId is populated by backend: { _id, fullName, imageUrl, clerkId }
                 const creatorClerkId = (room.creatorId as unknown as { clerkId: string })?.clerkId ?? room.creatorId;
                 roomStore.setIsCreator(creatorClerkId === userId);
                 playerStore.setCurrentSongIndex(room.playback?.currentSongIndex ?? 0);
-                // Do NOT set isPlaying or currentTimeMs here — let socket room:joined
-                // be the single authoritative source for playback position.
-                // Starting audio from REST would desync browsers since each hits
-                // the endpoint at a different wall-clock moment.
+                joinRoom(roomId); // signal provider to connect socket
             })
             .catch((err) => roomStore.setError(err.message))
             .finally(() => roomStore.setLoading(false));
 
-        return () => {
-            roomStore.reset();
-            playerStore.reset();
-        };
+        // No reset on unmount — socket and state persist for background listening.
+        // Stores are only reset via explicit leaveRoom().
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId]);
 
@@ -52,11 +51,12 @@ export const RoomPage = () => {
         if (!roomId) return;
         try {
             await roomService.closeRoom(roomId);
+            leaveRoom();
             navigate('/');
         } catch {
             roomStore.setError('Failed to close room');
         }
-    }, [roomId, navigate, roomStore]);
+    }, [roomId, navigate, roomStore, leaveRoom]);
 
     const handleLeave = useCallback(() => {
         leaveRoom();
@@ -125,7 +125,6 @@ export const RoomPage = () => {
                 </div>
             </div>
 
-            {/* Creator disconnect overlay */}
             {roomStore.creatorDisconnectCountdown !== null && (
                 <DisconnectCountdown countdown={roomStore.creatorDisconnectCountdown} />
             )}

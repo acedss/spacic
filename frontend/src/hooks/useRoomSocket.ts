@@ -9,20 +9,6 @@ import { useAuthStore } from '@/stores/useAuthStore';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
 
-// TODO(human): Implement this function.
-// It receives the sync payload from the server (room:sync or room:joined) and
-// must return the correct currentPositionMs for the audio element to seek to.
-//
-// Parameters:
-//   isPlaying    — whether the room is currently playing
-//   startTimeUnix — the server's wall-clock anchor (ms). When isPlaying=true:
-//                   currentPosition = (Date.now() - startTimeUnix) - networkLatencyMs
-//   pausedAtMs   — frozen position when paused. When isPlaying=false, return this directly.
-//   serverTimestamp — when the server sent this packet (ms). Use to estimate latency:
-//                   networkLatencyMs ≈ Date.now() - serverTimestamp
-//
-// Hint from the user's formula: ActualPosition = (Now - StartTime) - Latency
-// Clamp the result to >= 0 to handle clock skew.
 export const computePositionFromSync = (
     isPlaying: boolean,
     startTimeUnix: number | null,
@@ -46,9 +32,7 @@ export const useRoomSocket = (roomId: string) => {
 
     const roomStore = useRoomStore();
     const playerStore = usePlayerStore();
-    // isAdmin accessed via .getState() in callbacks to avoid stale closure
-    const _isAdminRef = useAuthStore();
-    void _isAdminRef;
+    useAuthStore(); // subscribes to auth state; isAdmin accessed via .getState() in callbacks
     const walletStore = useWalletStore();
     const audioRef = useAudioRef();
     const songEndedCallbackRef = useSongEndedCallbackRef();
@@ -78,7 +62,7 @@ export const useRoomSocket = (roomId: string) => {
     }, [roomId, emit]);
 
     useEffect(() => {
-        if (!userId) return;
+        if (!userId || !roomId) return;
 
         socketRef.current = io(SOCKET_URL, {
             auth: { clerkId: userId },
@@ -296,7 +280,7 @@ export const useRoomSocket = (roomId: string) => {
             startTimeUnix,
         }: {
             songIndex: number;
-            song?: { _id: string; title: string; artist: string; duration: number; imageUrl?: string; s3Key: string };
+            song?: { _id: string; title: string; artist: string; duration: number; imageUrl?: string; s3Key: string; albumId?: string | null };
             songPresignedUrl?: string;
             startTimeUnix: number;
             serverTimestamp?: number;
@@ -308,7 +292,7 @@ export const useRoomSocket = (roomId: string) => {
             // If the new song index is beyond the current playlist, append it
             const currentPlaylist = useRoomStore.getState().room?.playlist;
             if (song && currentPlaylist && songIndex >= currentPlaylist.length) {
-                const newSong = { ...song, imageUrl: song.imageUrl ?? '', audioUrl: songPresignedUrl || '', albumId: null };
+                const newSong = { ...song, audioUrl: songPresignedUrl || '', albumId: song.albumId ?? null, imageUrl: song.imageUrl ?? '' };
                 roomStore.setRoom({
                     ...useRoomStore.getState().room!,
                     playlist: [...currentPlaylist, newSong],
@@ -387,7 +371,13 @@ export const useRoomSocket = (roomId: string) => {
         });
 
         socket.on('reconnect', () => {
-            socket.emit('room:creator_reconnect', { roomId, clerkId: userId });
+            // Only creators need to announce reconnect — listeners just re-join normally
+            const { isCreator } = useRoomStore.getState();
+            if (isCreator) {
+                socket.emit('room:creator_reconnect', { roomId, clerkId: userId });
+            } else {
+                socket.emit('room:join', { roomId, clerkId: userId });
+            }
         });
 
         return () => {
