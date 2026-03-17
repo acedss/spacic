@@ -39,6 +39,26 @@ export interface RoomInfo {
     playlist: Song[];
     playback: RoomPlayback;
     lifecycle: RoomLifecycle;
+    streamGoal: number;
+    streamGoalCurrent: number;
+}
+
+export interface Transaction {
+    _id: string;
+    type: 'topup' | 'donation';
+    amount: number; // credits
+    status: 'pending' | 'completed' | 'failed';
+    roomId?: { _id: string; title: string } | null;
+    donorName?: string | null;
+    createdAt: string;
+}
+
+export interface TopupPackage {
+    id: string;
+    label: string;
+    priceInCents: number;
+    credits: number;
+    bonus: string | null;
 }
 
 export interface ChatMessage {

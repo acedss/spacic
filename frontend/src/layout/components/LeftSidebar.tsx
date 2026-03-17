@@ -1,5 +1,6 @@
 import { Home, Search, Users, Target, Wallet, User, PanelRightOpen } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useWalletStore } from '@/stores/useWalletStore'
 
 interface LeftSidebarProps {
     isCollapsed: boolean
@@ -11,11 +12,14 @@ const navItems = [
     { to: '/search', icon: Search, label: 'Search' },
     { to: '/rooms', icon: Users, label: 'Co-listening Rooms' },
     { to: '/goal', icon: Target, label: 'Album Goals' },
-    { to: '/wallet', icon: Wallet, label: 'Wallet', badge: '1,250' },
+    { to: '/wallet', icon: Wallet, label: 'Wallet', isWallet: true },
     { to: '/profile', icon: User, label: 'Profile' },
 ]
 
 export const LeftSidebar = ({ isCollapsed, onToggle }: LeftSidebarProps) => {
+    const { balance } = useWalletStore()
+    const balanceBadge = `$${(balance / 100).toFixed(2)}`
+
     return (
         <div className='flex flex-col h-full relative pt-4'>
 
@@ -42,7 +46,7 @@ export const LeftSidebar = ({ isCollapsed, onToggle }: LeftSidebarProps) => {
 
             {/* Nav: icon always centered in fixed w-16 slot — zero movement */}
             <nav className='flex-1 space-y-1'>
-                {navItems.map(({ to, icon: Icon, label, badge }) => (
+                {navItems.map(({ to, icon: Icon, label, isWallet }) => (
                     <Link
                         key={to}
                         to={to}
@@ -55,9 +59,9 @@ export const LeftSidebar = ({ isCollapsed, onToggle }: LeftSidebarProps) => {
                         {!isCollapsed && (
                             <div className='flex items-center flex-1 pr-4 whitespace-nowrap'>
                                 <span>{label}</span>
-                                {badge && (
+                                {isWallet && balance > 0 && (
                                     <span className='ml-auto bg-purple-600 text-white text-xs px-2 py-1 rounded-full'>
-                                        {badge}
+                                        {balanceBadge}
                                     </span>
                                 )}
                             </div>

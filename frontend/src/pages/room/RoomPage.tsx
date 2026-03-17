@@ -10,6 +10,7 @@ import { RoomPlayer } from './components/RoomPlayer';
 import { ChatPanel } from './components/ChatPanel';
 import { PlaylistPanel } from './components/PlaylistPanel';
 import { DisconnectCountdown } from './components/DisconnectCountdown';
+import { DonationPanel } from './components/DonationPanel';
 
 export const RoomPage = () => {
     const { roomId } = useParams<{ roomId: string }>();
@@ -18,7 +19,7 @@ export const RoomPage = () => {
 
     const roomStore = useRoomStore();
     const playerStore = usePlayerStore();
-    const { sendChat, skipSong, leaveRoom } = useRoomSocket(roomId!);
+    const { sendChat, skipSong, leaveRoom, donate } = useRoomSocket(roomId!);
 
     useEffect(() => {
         if (!roomId) return;
@@ -115,9 +116,10 @@ export const RoomPage = () => {
                 <RoomPlayer onSkip={skipSong} onClose={handleClose} />
             </div>
 
-            {/* Right: Queue + Chat */}
+            {/* Right: Queue + Chat + Donation */}
             <div className="flex flex-col flex-1 gap-4 min-h-0 overflow-hidden">
                 <PlaylistPanel />
+                <DonationPanel onDonate={donate} />
                 <div className="flex-1 min-h-0">
                     <ChatPanel onSendMessage={sendChat} />
                 </div>

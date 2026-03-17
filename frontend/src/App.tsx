@@ -6,6 +6,7 @@ import MainLayout from "./layout/MainLayout";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { Toaster } from "./components/ui/sonner";
 import NotFoundPage from "./pages/404/NotFoundPage";
+import WalletPage from "./pages/wallet/WalletPage";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route element={<MainLayout />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/rooms/:roomId" element={<RoomPage />} />
+          <Route path="/wallet" element={<WalletPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

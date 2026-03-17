@@ -11,6 +11,7 @@ import adminRoutes from "./routes/admin.route.js"
 import songRoutes from './routes/song.route.js';
 import playbackRoutes from './routes/playback.route.js';
 import roomRoutes from './routes/room.route.js';
+import walletRoutes from './routes/wallet.route.js';
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Clerk-Auth-Token', 'x-dev-token'],
     credentials: true,
 }));
+
 app.use(express.json());
 app.use(clerkMiddleware());
 
@@ -39,6 +41,8 @@ app.use("/api/admin", adminRoutes);
 app.use('/api/songs', songRoutes);
 app.use('/api/playback', playbackRoutes);
 app.use('/api/rooms', roomRoutes);
+// Wallet: webhook handler inside uses express.raw() inline — safe to mount after express.json()
+app.use('/api/wallet', walletRoutes);
 
 //  Error handler
 app.use((error, req, res, next) => {

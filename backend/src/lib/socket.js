@@ -13,6 +13,7 @@ import { Listener } from '../models/listener.model.js';
 import { Room } from '../models/room.model.js';
 import { Song } from '../models/song.model.js';
 import { getPresignedUrl } from '../services/s3.services.js';
+import { donateToRoom } from '../services/wallet.service.js';
 
 // Per-process timers — intentionally not in Redis.
 // syncIntervals: lightweight heartbeat, one per room per process.
@@ -274,6 +275,32 @@ export const initializeSocket = (httpServer) => {
         });
       } catch (error) {
         console.error('room:chat error', error);
+      }
+    });
+
+    // ── Room: Donate ────────────────────────────────────────────────────────
+    // Deducts credits from user balance, updates room stream goal, broadcasts to room.
+    socket.on('room:donate', async ({ roomId, amount }) => {
+      try {
+        const userSession = await socketManager.getUserBySocketId(socket.id);
+        if (!userSession) return socket.emit('room:error', { message: 'Session expired. Please refresh.' });
+
+        const result = await donateToRoom(userSession.clerkId, roomId, amount);
+
+        // Tell the donor their new balance
+        socket.emit('wallet:balance_updated', { balance: result.newBalance });
+
+        // Tell everyone in the room about the goal progress + donor
+        io.to(roomId).emit('room:goal_updated', {
+          roomId,
+          streamGoal: result.streamGoal,
+          streamGoalCurrent: result.streamGoalCurrent,
+          donor: result.donor,
+        });
+
+        emitSystemMessage(io, roomId, `${result.donor.name} donated ${result.donor.amount} credits!`);
+      } catch (error) {
+        socket.emit('room:error', { message: error.message });
       }
     });
 

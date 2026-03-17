@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/clerk-react';
 import { io, Socket } from 'socket.io-client';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useWalletStore } from '@/stores/useWalletStore';
 import { useAudioRef, useSongEndedCallbackRef, useTimeUpdateCallbackRef, usePlayStateCallbackRef } from '@/providers/AudioProvider';
 import { useAuthStore } from '@/stores/useAuthStore';
 
@@ -45,8 +46,10 @@ export const useRoomSocket = (roomId: string) => {
 
     const roomStore = useRoomStore();
     const playerStore = usePlayerStore();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { isAdmin } = useAuthStore();
+    // isAdmin accessed via .getState() in callbacks to avoid stale closure
+    const _isAdminRef = useAuthStore();
+    void _isAdminRef;
+    const walletStore = useWalletStore();
     const audioRef = useAudioRef();
     const songEndedCallbackRef = useSongEndedCallbackRef();
     const timeUpdateCallbackRef = useTimeUpdateCallbackRef();
@@ -69,6 +72,10 @@ export const useRoomSocket = (roomId: string) => {
         emit('room:leave', { roomId, clerkId: userId });
         socketRef.current?.disconnect();
     }, [roomId, userId, emit]);
+
+    const donate = useCallback((amount: number) => {
+        emit('room:donate', { roomId, amount });
+    }, [roomId, emit]);
 
     useEffect(() => {
         if (!userId) return;
@@ -287,13 +294,12 @@ export const useRoomSocket = (roomId: string) => {
             song,
             songPresignedUrl,
             startTimeUnix,
-            serverTimestamp,
         }: {
             songIndex: number;
             song?: { _id: string; title: string; artist: string; duration: number; imageUrl?: string; s3Key: string };
             songPresignedUrl?: string;
             startTimeUnix: number;
-            serverTimestamp: number;
+            serverTimestamp?: number;
         }) => {
             syncInProgressRef.current = true;
             // Block onTimeUpdate from overwriting position with stale audio data
@@ -302,7 +308,7 @@ export const useRoomSocket = (roomId: string) => {
             // If the new song index is beyond the current playlist, append it
             const currentPlaylist = useRoomStore.getState().room?.playlist;
             if (song && currentPlaylist && songIndex >= currentPlaylist.length) {
-                const newSong = { ...song, audioUrl: songPresignedUrl || '' };
+                const newSong = { ...song, imageUrl: song.imageUrl ?? '', audioUrl: songPresignedUrl || '', albumId: null };
                 roomStore.setRoom({
                     ...useRoomStore.getState().room!,
                     playlist: [...currentPlaylist, newSong],
@@ -361,6 +367,20 @@ export const useRoomSocket = (roomId: string) => {
             }
         });
 
+        socket.on('wallet:balance_updated', ({ balance }: { balance: number }) => {
+            walletStore.setBalance(balance);
+        });
+
+        socket.on('room:goal_updated', ({ streamGoal, streamGoalCurrent }: {
+            roomId: string;
+            streamGoal: number;
+            streamGoalCurrent: number;
+            donor: { name: string; amount: number };
+        }) => {
+            const current = roomStore.room;
+            if (current) roomStore.setRoom({ ...current, streamGoal, streamGoalCurrent });
+        });
+
         socket.on('room:error', ({ message }: { message: string }) => {
             console.error('[Socket] << RECV room:error |', message);
             roomStore.setError(message);
@@ -381,5 +401,5 @@ export const useRoomSocket = (roomId: string) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, userId]);
 
-    return { sendChat, skipSong, leaveRoom };
+    return { sendChat, skipSong, leaveRoom, donate };
 };
