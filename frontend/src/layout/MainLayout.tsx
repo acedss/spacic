@@ -3,6 +3,7 @@ import { LeftSidebar } from "./components/LeftSidebar";
 import { FriendsActivity } from "./components/FriendsActivity";
 import { PlaybackControls } from "./components/PlaybackControls";
 import AudioPlayer from "./components/AudioPlayer";
+import { RoomSessionProvider } from "@/providers/RoomSessionProvider";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +19,7 @@ const MainLayout = () => {
     }, []);
 
     return (
-        <div className='h-screen flex flex-col bg-[#080c10] text-white overflow-hidden relative'>
+        <RoomSessionProvider><div className='h-screen flex flex-col bg-[#080c10] text-white overflow-hidden relative'>
             <AudioPlayer />
 
             {/* Ambient glow blobs */}
@@ -63,7 +64,7 @@ const MainLayout = () => {
             <footer className='fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-4rem)] max-w-7xl h-24 liquid-glass rounded-2xl z-50 shadow-2xl'>
                 <PlaybackControls />
             </footer>
-        </div>
+        </div></RoomSessionProvider>
     );
 };
 

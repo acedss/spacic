@@ -1,8 +1,10 @@
 import { Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, Heart, ListMusic, Monitor, Volume2, Wifi, WifiOff } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import { useAudioRef } from '@/providers/AudioProvider';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useAuthStore } from '@/stores/useAuthStore';
+import { useActiveRoomStore } from '@/stores/useActiveRoomStore';
 import { cn } from '@/lib/utils';
 
 const formatTime = (seconds: number): string => {
@@ -13,10 +15,15 @@ const formatTime = (seconds: number): string => {
 
 export const PlaybackControls = () => {
     const audioRef = useAudioRef();
-    const { room, isCreator } = useRoomStore();
+    const { room, isCreator, listenerCount } = useRoomStore();
     const { isAdmin } = useAuthStore();
     const { currentSongIndex, currentTimeMs, isPlaying, isSynced, setPlaying } = usePlayerStore();
+    const { activeRoomId } = useActiveRoomStore();
+    const location = useLocation();
     const canSeek = isCreator || isAdmin;
+
+    // True when the user is in a room but browsing a different page
+    const isBackgrounded = !!activeRoomId && location.pathname !== `/rooms/${activeRoomId}`;
 
     if (!room) {
         return (
@@ -131,7 +138,7 @@ export const PlaybackControls = () => {
                 </div>
             </div>
 
-            {/* Right: Volume + extras */}
+            {/* Right: Volume + extras + Return to Room pill */}
             <div className="w-1/4 flex items-center justify-end gap-4">
                 <button className="text-slate-400 hover:text-slate-200 transition-colors">
                     <ListMusic className="size-5" />
@@ -153,6 +160,19 @@ export const PlaybackControls = () => {
                     <span className="flex items-center gap-1 text-[10px] text-yellow-400 flex-shrink-0">
                         <WifiOff className="size-3" />Syncing
                     </span>
+                )}
+
+                {isBackgrounded && (
+                    <Link
+                        to={`/rooms/${activeRoomId}`}
+                        className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex-shrink-0"
+                    >
+                        <span className="size-1.5 bg-red-400 rounded-full animate-pulse" />
+                        {room?.title ?? 'Live Room'}
+                        {listenerCount > 0 && (
+                            <span className="text-red-400/60">• {listenerCount}</span>
+                        )}
+                    </Link>
                 )}
             </div>
         </div>

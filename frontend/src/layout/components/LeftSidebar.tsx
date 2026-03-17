@@ -28,7 +28,7 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
 
     return (
         <TooltipProvider delayDuration={200}>
-            <div className='flex flex-col h-full pt-4'>
+            <div className='flex flex-col h-full pt-4 '>
 
                 {/* Logo */}
                 <div className='flex items-center mb-8'>

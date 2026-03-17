@@ -45,8 +45,7 @@ export const useRoomSocket = (roomId: string) => {
 
     const roomStore = useRoomStore();
     const playerStore = usePlayerStore();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { isAdmin } = useAuthStore();
+    useAuthStore(); // subscribes to auth state; isAdmin accessed via .getState() in callbacks
     const audioRef = useAudioRef();
     const songEndedCallbackRef = useSongEndedCallbackRef();
     const timeUpdateCallbackRef = useTimeUpdateCallbackRef();
@@ -71,7 +70,7 @@ export const useRoomSocket = (roomId: string) => {
     }, [roomId, userId, emit]);
 
     useEffect(() => {
-        if (!userId) return;
+        if (!userId || !roomId) return;
 
         socketRef.current = io(SOCKET_URL, {
             auth: { clerkId: userId },
@@ -287,10 +286,9 @@ export const useRoomSocket = (roomId: string) => {
             song,
             songPresignedUrl,
             startTimeUnix,
-            serverTimestamp,
         }: {
             songIndex: number;
-            song?: { _id: string; title: string; artist: string; duration: number; imageUrl?: string; s3Key: string };
+            song?: { _id: string; title: string; artist: string; duration: number; imageUrl?: string; s3Key: string; albumId?: string | null };
             songPresignedUrl?: string;
             startTimeUnix: number;
             serverTimestamp: number;
@@ -302,7 +300,7 @@ export const useRoomSocket = (roomId: string) => {
             // If the new song index is beyond the current playlist, append it
             const currentPlaylist = useRoomStore.getState().room?.playlist;
             if (song && currentPlaylist && songIndex >= currentPlaylist.length) {
-                const newSong = { ...song, audioUrl: songPresignedUrl || '' };
+                const newSong = { ...song, audioUrl: songPresignedUrl || '', albumId: song.albumId ?? null, imageUrl: song.imageUrl ?? '' };
                 roomStore.setRoom({
                     ...useRoomStore.getState().room!,
                     playlist: [...currentPlaylist, newSong],
@@ -367,7 +365,13 @@ export const useRoomSocket = (roomId: string) => {
         });
 
         socket.on('reconnect', () => {
-            socket.emit('room:creator_reconnect', { roomId, clerkId: userId });
+            // Only creators need to announce reconnect — listeners just re-join normally
+            const { isCreator } = useRoomStore.getState();
+            if (isCreator) {
+                socket.emit('room:creator_reconnect', { roomId, clerkId: userId });
+            } else {
+                socket.emit('room:join', { roomId, clerkId: userId });
+            }
         });
 
         return () => {
