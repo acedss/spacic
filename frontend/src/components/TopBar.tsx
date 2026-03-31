@@ -42,7 +42,7 @@ const TopBar = () => {
                         </button>
                     )}
                     {!isSignedIn && <SignInOAuthButtons />}
-                    <UserButton />
+                    <UserButton userProfileUrl="/profile" />
                 </div>
             </div>
 

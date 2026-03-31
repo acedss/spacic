@@ -9,6 +9,7 @@ import NotFoundPage from "./pages/404/NotFoundPage";
 import WalletPage from "./pages/wallet/WalletPage";
 import SubscriptionPage from "./pages/subscription/SubscriptionPage";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ProfilePage from "./pages/profile/ProfilePage";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/rooms/:roomId" element={<ProtectedRoute><RoomPage /></ProtectedRoute>} />
           <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
           <Route path="/subscription" element={<ProtectedRoute><SubscriptionPage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
