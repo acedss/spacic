@@ -3,8 +3,13 @@ import * as walletService from "../services/wallet.service.js";
 
 const getClerkId = (req) => req.devBypass ? req.devClerkId : req.auth().userId;
 
-export const getPackages = (req, res) => {
-    res.json({ success: true, data: walletService.TOPUP_PACKAGES });
+export const getPackages = async (req, res, next) => {
+    try {
+        const data = await walletService.getActivePackages();
+        res.json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
 };
 
 export const getWallet = async (req, res, next) => {

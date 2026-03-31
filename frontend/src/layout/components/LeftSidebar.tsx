@@ -1,4 +1,4 @@
-import { Home, Search, Users, Target, Wallet, User } from 'lucide-react'
+import { Home, Search, Users, Target, Wallet, User, Crown } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -20,6 +20,7 @@ const navItems = [
     { to: '/rooms', icon: Users, label: 'Co-listening Rooms' },
     { to: '/goal', icon: Target, label: 'Album Goals' },
     { to: '/wallet', icon: Wallet, label: 'Wallet', isWallet: true },
+    { to: '/subscription', icon: Crown, label: 'Subscription' },
     { to: '/profile', icon: User, label: 'Profile' },
 ]
 
@@ -87,10 +88,10 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
                                                     <img
                                                         src={user.imageUrl}
                                                         alt={user.fullName ?? 'User'}
-                                                        className="size-10 rounded-full object-cover flex-shrink-0"
+                                                        className="size-10 rounded-full object-cover shrink-0"
                                                     />
                                                 ) : (
-                                                    <div className="size-10 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0">
+                                                    <div className="size-10 rounded-full bg-zinc-800 flex items-center justify-center shrink-0">
                                                         <User className="size-4 text-zinc-400" />
                                                     </div>
                                                 )}

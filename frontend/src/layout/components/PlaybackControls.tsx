@@ -1,4 +1,4 @@
-import { Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, Heart, ListMusic, Monitor, Volume2, Wifi, WifiOff } from 'lucide-react';
+import { Play, Pause, Heart, Volume2, Wifi, WifiOff } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAudioRef } from '@/providers/AudioProvider';
 import { useRoomStore } from '@/stores/useRoomStore';
@@ -86,12 +86,6 @@ export const PlaybackControls = () => {
             {/* Center: Controls + Progress */}
             <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto gap-2">
                 <div className="flex items-center gap-8">
-                    <button className="text-slate-400 hover:text-slate-200 transition-colors">
-                        <Shuffle className="size-4" />
-                    </button>
-                    <button className="text-slate-300 hover:text-slate-100 transition-colors">
-                        <SkipBack className="size-5" />
-                    </button>
                     <button
                         onClick={togglePlay}
                         className="size-12 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 transition-transform flex-shrink-0"
@@ -100,12 +94,6 @@ export const PlaybackControls = () => {
                             ? <Pause className="size-5 fill-black stroke-none" />
                             : <Play className="size-5 fill-black stroke-none ml-0.5" />
                         }
-                    </button>
-                    <button className="text-slate-300 hover:text-slate-100 transition-colors">
-                        <SkipForward className="size-5" />
-                    </button>
-                    <button className="text-slate-400 hover:text-slate-200 transition-colors">
-                        <Repeat className="size-4" />
                     </button>
                 </div>
 
@@ -140,12 +128,6 @@ export const PlaybackControls = () => {
 
             {/* Right: Volume + extras + Return to Room pill */}
             <div className="w-1/4 flex items-center justify-end gap-4">
-                <button className="text-slate-400 hover:text-slate-200 transition-colors">
-                    <ListMusic className="size-5" />
-                </button>
-                <button className="text-slate-400 hover:text-slate-200 transition-colors">
-                    <Monitor className="size-5" />
-                </button>
                 <div className="flex items-center gap-2 w-24">
                     <Volume2 className="text-slate-400 size-4 flex-shrink-0" />
                     <div className="flex-1 h-1 bg-white/10 rounded-full">

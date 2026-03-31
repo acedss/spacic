@@ -228,7 +228,7 @@ export const addToQueue = async (roomId, clerkId, songId) => {
     if (!song) throw new Error("Song not found");
 
     await Room.findByIdAndUpdate(roomId, { $push: { playlist: song._id } });
-    return song;
+    return song;        
 };
 
 // ───── Chat ──────────────────────────────────────────────────────────────────

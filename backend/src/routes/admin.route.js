@@ -4,8 +4,6 @@ import { checkAdmin } from "../controllers/admin.controller.js";
 
 const router = Router();
 
-console.log("Admin route initialized");
-
 router.use(protectRoute, requireAdmin);
 
 router.get("/check", checkAdmin);

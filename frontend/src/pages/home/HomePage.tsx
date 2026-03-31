@@ -1,9 +1,12 @@
+import { useUser } from '@clerk/clerk-react'
 import TopBar from '@/components/TopBar'
 import { FeaturedLiveRoom } from './compoments/FeaturedLiveRoom'
 import { AlbumGoals } from './compoments/AlbumGoals'
 import { ActivityStats } from './compoments/ActivityStats'
 
 const HomePage = () => {
+    const { user } = useUser()
+    const name = user?.firstName ?? user?.fullName ?? ''
     return (
         <div className='flex flex-col min-h-full bg-zinc-950 text-white'>
             <TopBar />
@@ -11,7 +14,7 @@ const HomePage = () => {
             <div className='px-8 py-10 space-y-16'>
                 {/* Greeting */}
                 <section>
-                    <h1 className='text-4xl font-semibold tracking-tight'>Good evening, Hau</h1>
+                    <h1 className='text-4xl font-semibold tracking-tight'>Good evening {name ? `,  ${name}` : ''}</h1>
                     <p className='text-zinc-500 mt-2 font-light'>
                         Explore live listening rooms or support your favorite artists.
                     </p>

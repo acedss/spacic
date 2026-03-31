@@ -5,31 +5,57 @@ import { stripe } from "../lib/stripe.js";
 import { User } from "../models/user.model.js";
 import { Room } from "../models/room.model.js";
 import { Transaction } from "../models/transaction.model.js";
+import { TopupPackage } from "../models/topupPackage.model.js";
+import { redis } from "../lib/redis.js";
 
-// ── Top-up packages ───────────────────────────────────────────────────────────
-// priceInCents = what Stripe charges; credits = what user receives
-export const TOPUP_PACKAGES = [
-    { id: "starter", label: "Starter",  priceInCents: 500,  credits: 500,  bonus: null },
-    { id: "popular", label: "Popular",  priceInCents: 1000, credits: 1100, bonus: "+10%" },
-    { id: "value",   label: "Value",    priceInCents: 2500, credits: 2750, bonus: "+10%" },
-    { id: "power",   label: "Power",    priceInCents: 5000, credits: 6000, bonus: "+20%" },
-];
+// ── Top-up packages (DB-driven, Redis-cached) ─────────────────────────────────
+// DB fields:  packageId, name, priceUsd (cents), credits, bonusPercent
+// API shape:  id, label, priceInCents, credits, bonus (e.g. "+10%" or null)
 
-const getPackage = (packageId) => {
-    const pkg = TOPUP_PACKAGES.find((p) => p.id === packageId);
-    if (!pkg) throw new Error("Invalid package");
-    return pkg;
+const PACKAGES_CACHE_KEY = "packages:active";
+const PACKAGES_TTL_S = 300; // 5 minutes
+
+const toClientShape = (doc) => ({
+    id:           doc.packageId,
+    label:        doc.name,
+    priceInCents: doc.priceUsd,
+    credits:      doc.credits,
+    bonus:        doc.bonusPercent > 0 ? `+${doc.bonusPercent}%` : null,
+    isFeatured:   doc.isFeatured,
+});
+
+export const getActivePackages = async () => {
+    const cached = await redis.get(PACKAGES_CACHE_KEY);
+    if (cached) return JSON.parse(cached);
+
+    const docs = await TopupPackage.find({ isActive: true }).sort({ sortOrder: 1 }).lean();
+    const packages = docs.map(toClientShape);
+    await redis.set(PACKAGES_CACHE_KEY, JSON.stringify(packages), "EX", PACKAGES_TTL_S);
+    return packages;
 };
 
+const getPackage = async (packageId) => {
+    const doc = await TopupPackage.findOne({ packageId, isActive: true }).lean();
+    if (!doc) throw new Error("Invalid package");
+    return doc;
+};
+  
 // ── Create Stripe Checkout Session ───────────────────────────────────────────
 
-export const createTopupSession = async (clerkId, packageId, origin) => {
+// Allowed redirect origins — prevents attacker from injecting Origin: https://evil.com
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',');
+const sanitizeOrigin = (origin) =>
+    ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+
+export const createTopupSession = async (clerkId, packageId, rawOrigin) => {
+    const origin = sanitizeOrigin(rawOrigin);
     if (!stripe) throw new Error("Stripe is not configured");
 
     const user = await User.findOne({ clerkId });
     if (!user) throw new Error("User not found");
 
-    const pkg = getPackage(packageId);
+    const pkg = await getPackage(packageId);
+    const bonusLabel = pkg.bonusPercent > 0 ? ` (+${pkg.bonusPercent}% bonus)` : "";
 
     // Create a pending transaction first — links Stripe session to our DB record
     const transaction = await Transaction.create({
@@ -45,10 +71,10 @@ export const createTopupSession = async (clerkId, packageId, origin) => {
         line_items: [{
             price_data: {
                 currency: "usd",
-                unit_amount: pkg.priceInCents,
+                unit_amount: pkg.priceUsd,
                 product_data: {
-                    name: `Spacic ${pkg.label} Pack`,
-                    description: `${pkg.credits.toLocaleString()} credits${pkg.bonus ? ` (${pkg.bonus} bonus)` : ""}`,
+                    name: `Spacic ${pkg.name} Pack`,
+                    description: `${pkg.credits.toLocaleString()} credits${bonusLabel}`,
                 },
             },
             quantity: 1,
@@ -86,21 +112,19 @@ export const handleWebhook = async (rawBody, signature) => {
     if (event.type !== "checkout.session.completed") return { received: true };
 
     const session = event.data.object;
-
-    // Idempotency: skip if already processed
-    const existing = await Transaction.findOne({
-        stripeSessionId: session.id,
-        status: "completed",
-    });
-    if (existing) return { received: true };
-
     const { transactionId, userId, credits } = session.metadata;
     const creditsToAdd = parseInt(credits, 10);
 
-    // Mark transaction completed + credit balance atomically-ish
-    // (MongoDB doesn't support multi-doc transactions without a replica set,
-    //  but idempotency check above prevents double crediting on retries)
-    await Transaction.findByIdAndUpdate(transactionId, { status: "completed" });
+    // Atomic idempotency: transition pending → completed in a single write.
+    // If status is already 'completed' (Stripe retry), findOneAndUpdate returns null → skip.
+    // Eliminates TOCTOU window that existed with separate findOne + findByIdAndUpdate.
+    const updated = await Transaction.findOneAndUpdate(
+        { _id: transactionId, status: "pending" },
+        { $set: { status: "completed" } },
+        { new: true },
+    );
+    if (!updated) return { received: true }; // already processed or not found
+
     await User.findByIdAndUpdate(userId, { $inc: { balance: creditsToAdd } });
 
     console.log(`[Wallet] Credited ${creditsToAdd} credits to user ${userId}`);
@@ -110,7 +134,7 @@ export const handleWebhook = async (rawBody, signature) => {
 // ── Get Balance + Recent Transactions ────────────────────────────────────────
 
 export const getWallet = async (clerkId) => {
-    const user = await User.findOne({ clerkId }).select("balance fullName");
+    const user = await User.findOne({ clerkId }).select("balance fullName userTier");
     if (!user) throw new Error("User not found");
 
     const transactions = await Transaction.find({ userId: user._id, status: "completed" })
@@ -118,7 +142,7 @@ export const getWallet = async (clerkId) => {
         .limit(20)
         .populate("roomId", "title");
 
-    return { balance: user.balance, transactions };
+    return { balance: user.balance, userTier: user.userTier, transactions };
 };
 
 // ── Donate to Room ────────────────────────────────────────────────────────────

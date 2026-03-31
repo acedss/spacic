@@ -44,7 +44,6 @@ export const useRoomSocket = (roomId: string) => {
     }, []);
 
     const sendChat = useCallback((message: string) => {
-        console.log('[Chat] >> SEND room:chat');
         emit('room:chat', { roomId, message });
     }, [roomId, emit]);
 
@@ -89,7 +88,6 @@ export const useRoomSocket = (roomId: string) => {
             const { isCreator } = useRoomStore.getState();
             const { isAdmin: adminNow } = useAuthStore.getState();
             if (!isSeeked || (!isCreator && !adminNow)) return;
-            console.log(`[Socket] >> SEND room:seek | positionMs=${Math.round(currentTimeMs)} isCreator=${isCreator} isAdmin=${adminNow}`);
             socket.emit('room:seek', { roomId, seekPositionMs: currentTimeMs });
         };
 
@@ -106,7 +104,6 @@ export const useRoomSocket = (roomId: string) => {
         };
 
         socket.on('connect', () => {
-            console.log(`[Socket] >> SEND room:join | room=${roomId} clerkId=${userId}`);
             socket.emit('room:join', { roomId, clerkId: userId });
         });
 
@@ -121,7 +118,6 @@ export const useRoomSocket = (roomId: string) => {
             listenerCount: number;
             serverTimestamp: number;
         }) => {
-            console.log('[Socket] << RECV room:joined', { isCreator, listenerCount });
             roomStore.setIsCreator(isCreator);
             roomStore.setListenerCount(listenerCount);
             if (playback) {
@@ -137,22 +133,12 @@ export const useRoomSocket = (roomId: string) => {
                     serverTimestamp,
                 );
 
-                console.table({
-                    event: 'room:joined',
-                    isPlaying: playback.isPlaying,
-                    startTimeUnix: playback.startTimeUnix,
-                    serverTimestamp,
-                    latencyMs: Date.now() - serverTimestamp,
-                    computedPositionMs: Math.round(positionMs),
-                });
-
                 playerStore.setCurrentTimeMs(positionMs);
                 playerStore.setSynced(false);
 
                 // Force-seek audio element directly — bypasses store→effect race
                 if (audioRef.current) {
                     audioRef.current.currentTime = positionMs / 1000;
-                    console.log('[Socket] Force-seek audio to', Math.round(positionMs), 'ms');
                 }
                 setTimeout(() => {
                     playerStore.setSynced(true);
@@ -199,19 +185,6 @@ export const useRoomSocket = (roomId: string) => {
                 serverTimestamp,
             );
 
-            console.log('[Socket] << RECV room:sync');
-            console.table({
-                event: 'room:sync',
-                isPlaying,
-                startTimeUnix,
-                pausedAtMs,
-                serverTimestamp,
-                clientNow: Date.now(),
-                latencyMs: Date.now() - serverTimestamp,
-                computedPositionMs: Math.round(positionMs),
-                audioCurrentMs: audioRef.current ? Math.round(audioRef.current.currentTime * 1000) : null,
-            });
-
             playerStore.setPlaying(isPlaying);
             if (startTimeUnix !== undefined) playerStore.setStartTimeUnix(startTimeUnix ?? null);
             if (pausedAtMs !== undefined) playerStore.setPausedAtMs(pausedAtMs ?? null);
@@ -225,7 +198,6 @@ export const useRoomSocket = (roomId: string) => {
             // before the useEffect sync correction can fire.
             if (audioRef.current) {
                 audioRef.current.currentTime = positionMs / 1000;
-                console.log('[Socket] Force-seek audio to', Math.round(positionMs), 'ms');
             }
             setTimeout(() => {
                 playerStore.setSynced(true);
@@ -253,17 +225,7 @@ export const useRoomSocket = (roomId: string) => {
             const liveTimeMs = audioRef.current ? audioRef.current.currentTime * 1000 : usePlayerStore.getState().currentTimeMs;
             const drift = Math.abs(liveTimeMs - expectedMs);
 
-            console.table({
-                event: 'sync_checkpoint',
-                expectedMs: Math.round(expectedMs),
-                audioMs: Math.round(liveTimeMs),
-                drift: Math.round(drift),
-                correcting: drift > 500,
-                latencyMs: Date.now() - serverTimestamp,
-            });
-
             if (drift > 500) {
-                console.log(`[Sync] Drift detected: ${Math.round(drift)}ms. Correcting...`);
                 playerStore.setCurrentTimeMs(expectedMs);
                 playerStore.setSynced(false);
                 if (audioRef.current) {

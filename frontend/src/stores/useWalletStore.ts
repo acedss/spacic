@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 interface WalletStore {
     balance: number;
+    userTier: string;
     transactions: Transaction[];
     packages: TopupPackage[];
     loading: boolean;
@@ -18,6 +19,7 @@ interface WalletStore {
 
 export const useWalletStore = create<WalletStore>((set) => ({
     balance: 0,
+    userTier: 'FREE',
     transactions: [],
     packages: [],
     loading: false,
@@ -27,7 +29,7 @@ export const useWalletStore = create<WalletStore>((set) => ({
         set({ loading: true });
         try {
             const { data } = await axiosInstance.get('/wallet');
-            set({ balance: data.data.balance, transactions: data.data.transactions });
+            set({ balance: data.data.balance, userTier: data.data.userTier, transactions: data.data.transactions });
         } catch {
             toast.error('Failed to load wallet');
         } finally {

@@ -21,10 +21,12 @@ const transactionSchema = new mongoose.Schema({
         default: "pending",
     },
     // Top-up only: Stripe checkout session ID for idempotency + audit
+    // sparse: true → allows multiple null values (donations have no stripeSessionId)
+    // unique: true → DB-level guarantee against double-processing the same session
     stripeSessionId: {
         type: String,
         default: null,
-        index: true,
+        index: { unique: true, sparse: true },
     },
     // Donation only
     roomId: {

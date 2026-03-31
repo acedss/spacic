@@ -59,6 +59,19 @@ export interface TopupPackage {
     priceInCents: number;
     credits: number;
     bonus: string | null;
+    isFeatured: boolean;
+}
+
+export interface SubscriptionPlan {
+    slug: string;
+    name: string;
+    tier: 'PREMIUM' | 'CREATOR';
+    priceMonthlyUsd: number;  // cents
+    priceYearlyUsd: number | null;
+    features: string[];
+    roomCapacity: number;
+    canSubscribeMonthly: boolean;
+    canSubscribeYearly: boolean;
 }
 
 export interface ChatMessage {

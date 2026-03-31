@@ -8,11 +8,59 @@ import { Song } from './models/song.model.js';
 import { User } from './models/user.model.js';
 import { Room } from './models/room.model.js';
 import { Listener } from './models/listener.model.js';
+import { TopupPackage } from './models/topupPackage.model.js';
+import { SubscriptionPlan } from './models/subscriptionPlan.model.js';
+import { Transaction } from './models/transaction.model.js';
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const DEV_CLERK_ID = process.env.DEV_CLERK_ID;
 
-// ── Sample Data ──────────────────────────────────────────────────────────────
+// ── Seed Data ────────────────────────────────────────────────────────────────
+
+const TOPUP_PACKAGES = [
+    { packageId: 'starter', name: 'Starter',  priceUsd: 500,  credits: 500,  bonusPercent: 0,  isFeatured: false, sortOrder: 0 },
+    { packageId: 'popular', name: 'Popular',  priceUsd: 1000, credits: 1100, bonusPercent: 10, isFeatured: true,  sortOrder: 1 },
+    { packageId: 'value',   name: 'Value',    priceUsd: 2500, credits: 2750, bonusPercent: 10, isFeatured: false, sortOrder: 2 },
+    { packageId: 'power',   name: 'Power',    priceUsd: 5000, credits: 6000, bonusPercent: 20, isFeatured: false, sortOrder: 3 },
+];
+
+const SUBSCRIPTION_PLANS = [
+    {
+        slug: 'premium',
+        name: 'Premium',
+        tier: 'PREMIUM',
+        priceMonthlyUsd: 999,   // $9.99/mo
+        priceYearlyUsd: 9588,   // $95.88/yr (20% off)
+        features: [
+            'Host rooms up to 50 listeners',
+            'HD audio quality',
+            'Custom room themes',
+            'Priority support',
+        ],
+        roomCapacity: 50,
+        sortOrder: 0,
+    },
+    {
+        slug: 'creator',
+        name: 'Creator',
+        tier: 'CREATOR',
+        priceMonthlyUsd: 1999,  // $19.99/mo
+        priceYearlyUsd: 19188,  // $191.88/yr (20% off)
+        features: [
+            'Unlimited room listeners',
+            'HD audio quality',
+            'Custom room themes',
+            'Stream goal & donations',
+            'Analytics dashboard',
+            'Priority support',
+            'Early access to new features',
+        ],
+        roomCapacity: 999999,   // effectively unlimited
+        sortOrder: 1,
+    },
+];
+
+// ── Sample Song Data ──────────────────────────────────────────────────────────
 
 const SONGS = [
     {
@@ -78,7 +126,10 @@ const seed = async () => {
     await Song.deleteMany({});
     await Room.deleteMany({});
     await Listener.deleteMany({});
-    console.log('✓ Cleared songs, rooms, listeners');
+    await TopupPackage.deleteMany({});
+    await SubscriptionPlan.deleteMany({});
+    await Transaction.deleteMany({ userId: creator._id });
+    console.log('✓ Cleared songs, rooms, listeners, packages, plans, transactions');
 
     // Insert songs
     const songs = await Song.insertMany(SONGS);
@@ -128,8 +179,37 @@ const seed = async () => {
     ]);
     console.log(`✓ Inserted ${rooms.length} rooms`);
 
+    // Insert top-up packages
+    const packages = await TopupPackage.insertMany(TOPUP_PACKAGES);
+    console.log(`✓ Inserted ${packages.length} top-up packages`);
+
+    // Insert subscription plans
+    const plans = await SubscriptionPlan.insertMany(SUBSCRIPTION_PLANS);
+    console.log(`✓ Inserted ${plans.length} subscription plans`);
+
+    // Seed transaction history for dev user
+    // Mix of topups and donations spanning the last month
+    const daysAgo = (n) => new Date(Date.now() - n * 86_400_000);
+    const txDocs = [
+        { userId: creator._id, type: 'topup',    amount: 1100,  status: 'completed', stripeSessionId: 'cs_seed_001', createdAt: daysAgo(28) },
+        { userId: creator._id, type: 'donation', amount: 200,   status: 'completed', donorName: creator.fullName, roomId: rooms[0]._id, createdAt: daysAgo(25) },
+        { userId: creator._id, type: 'topup',    amount: 2750,  status: 'completed', stripeSessionId: 'cs_seed_002', createdAt: daysAgo(18) },
+        { userId: creator._id, type: 'donation', amount: 500,   status: 'completed', donorName: creator.fullName, roomId: rooms[1]._id, createdAt: daysAgo(15) },
+        { userId: creator._id, type: 'donation', amount: 300,   status: 'completed', donorName: creator.fullName, roomId: rooms[2]._id, createdAt: daysAgo(10) },
+        { userId: creator._id, type: 'topup',    amount: 6000,  status: 'completed', stripeSessionId: 'cs_seed_003', createdAt: daysAgo(5) },
+        { userId: creator._id, type: 'donation', amount: 1000,  status: 'completed', donorName: creator.fullName, roomId: rooms[0]._id, createdAt: daysAgo(2) },
+        { userId: creator._id, type: 'donation', amount: 150,   status: 'completed', donorName: creator.fullName, roomId: rooms[2]._id, createdAt: daysAgo(1) },
+    ];
+    await Transaction.insertMany(txDocs);
+    // balance = topups - donations: 1100+2750+6000 - 200-500-300-1000-150 = 7700
+    const seedBalance = 7700;
+    await creator.updateOne({ balance: seedBalance });
+    console.log(`✓ Inserted ${txDocs.length} transactions, balance set to ${seedBalance} credits ($${(seedBalance/100).toFixed(2)})`);
+
     console.log('\n── Seeded IDs ──────────────────────────────');
     rooms.forEach((r) => console.log(`  Room "${r.title}": ${r._id}`));
+    packages.forEach((p) => console.log(`  Package "${p.name}": ${p.packageId}`));
+    plans.forEach((p) => console.log(`  Plan "${p.name}": ${p.slug}`));
     console.log('────────────────────────────────────────────');
     console.log('\nDone! Start the backend with: npm run dev\n');
 
