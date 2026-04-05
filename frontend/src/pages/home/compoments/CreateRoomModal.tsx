@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
-import { getSongs, createRoom } from '@/lib/roomService';
+import { getSongs, upsertRoom } from '@/lib/roomService';
 import type { Song } from '@/types/types';
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
 const CreateRoomModal = ({ isOpen, onClose }: Props) => {
     const navigate = useNavigate();
     const [title, setTitle] = useState('');
+    const [streamGoalCoins, setStreamGoalCoins] = useState('');
     const [songs, setSongs] = useState<Song[]>([]);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -35,7 +36,8 @@ const CreateRoomModal = ({ isOpen, onClose }: Props) => {
         try {
             setIsSubmitting(true);
             setError(null);
-            const room = await createRoom({ title: title.trim(), playlistIds: selectedIds });
+            const streamGoal = streamGoalCoins ? Math.max(0, parseInt(streamGoalCoins, 10)) : 0;
+            const room = await upsertRoom({ title: title.trim(), playlistIds: selectedIds, streamGoal });
             onClose();
             navigate(`/rooms/${room._id}`);
         } catch {
@@ -69,6 +71,23 @@ const CreateRoomModal = ({ isOpen, onClose }: Props) => {
                             placeholder="e.g. Late Night Vibes"
                             className="w-full bg-zinc-800 text-white rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-purple-500 placeholder:text-zinc-600"
                         />
+                    </div>
+
+                    {/* Stream goal (optional) */}
+                    <div>
+                        <label className="block text-sm text-zinc-400 mb-1.5">
+                            Stream goal <span className="text-zinc-600">(optional, in coins)</span>
+                        </label>
+                        <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={streamGoalCoins}
+                            onChange={(e) => setStreamGoalCoins(e.target.value)}
+                            placeholder="e.g. 1000"
+                            className="w-full bg-zinc-800 text-white rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-purple-500 placeholder:text-zinc-600"
+                        />
+                        <p className="text-xs text-zinc-600 mt-1">Listeners can donate coins toward this goal.</p>
                     </div>
 
                     {/* Song selection */}

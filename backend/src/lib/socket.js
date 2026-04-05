@@ -9,6 +9,7 @@ import { Room } from '../models/room.model.js';
 import { Song } from '../models/song.model.js';
 import { getPresignedUrl } from '../services/s3.services.js';
 import { donateToRoom } from '../services/wallet.service.js';
+import { goOfflineInternal } from '../services/room.service.js';
 
 // Per-process timers — intentionally not in Redis.
 // syncIntervals: lightweight heartbeat, one per room per process.
@@ -47,7 +48,7 @@ const stopSyncCheckpoint = (roomId) => {
 
 const emitSystemMessage = (io, roomId, text) => {
     io.to(roomId).emit('room:chat_message', {
-        id: `sys-${Date.now()}`,
+        id: `sys-${crypto.randomUUID()}`,
         user: { id: 'system', username: 'System' },
         message: text,
         sentAt: new Date().toISOString(),
@@ -55,22 +56,15 @@ const emitSystemMessage = (io, roomId, text) => {
     });
 };
 
-const closeRoomAndNotify = async (io, roomId, reason) => {
+const goOfflineAndNotify = async (io, roomId, reason) => {
     stopSyncCheckpoint(roomId);
     disconnectTimers.delete(roomId);
     songEndedDebounce.delete(roomId);
-    await socketManager.removeRoomSession(roomId);
-
-    await Room.findByIdAndUpdate(roomId, { status: 'closed', 'lifecycle.closedAt': new Date() });
-    await Listener.updateMany({ roomId, isActive: true }, { isActive: false, leftAt: new Date() });
-
-    io.to(roomId).emit('room:closed', { roomId, reason });
+    await goOfflineInternal(roomId);
+    io.to(roomId).emit('room:offline', { roomId, reason });
 };
 
 // ── User Resolution (cache → DB fallback) ────────────────────────────────────
-// All socket events that need user data call this instead of User.findOne().
-// On first call: hits MongoDB and writes to Redis user:clerk:{clerkId} (1h TTL).
-// On repeat calls (reconnects, multiple events): served from Redis — zero DB cost.
 
 const resolveUser = async (clerkId) => {
     const cached = await socketManager.getCachedUser(clerkId);
@@ -91,21 +85,15 @@ const resolveUser = async (clerkId) => {
 };
 
 // ── Session Recovery ──────────────────────────────────────────────────────────
-// Rebuilds Redis room state from MongoDB after a server restart.
-// Also seeds the playlist cache so the first skip after restart skips the DB.
 
 const recoverSessionFromDB = async (roomId) => {
     const room = await Room.findById(roomId).populate('playlist');
-    if (!room || room.status !== 'active') return null;
+    if (!room || room.status !== 'live') return null;
 
     await socketManager.cacheRoomPlaylist(roomId, room.playlist.map((s) => ({
-        _id:      s._id.toString(),
-        title:    s.title,
-        artist:   s.artist,
-        duration: s.duration,
-        imageUrl: s.imageUrl || '',
-        s3Key:    s.s3Key,
-        albumId:  s.albumId?.toString() ?? null,
+        _id: s._id.toString(), title: s.title, artist: s.artist,
+        duration: s.duration, imageUrl: s.imageUrl || '', s3Key: s.s3Key,
+        albumId: s.albumId?.toString() ?? null,
     })));
 
     const idx         = room.playback?.currentSongIndex ?? 0;
@@ -116,7 +104,7 @@ const recoverSessionFromDB = async (roomId) => {
         title:            room.title,
         capacity:         room.capacity,
         currentSongId:    currentSong?._id.toString()  ?? null,
-        currentSongS3Key: currentSong?.s3Key           ?? null, // store key, not URL
+        currentSongS3Key: currentSong?.s3Key           ?? null,
         startTimeUnix:    room.playback?.startTimeUnix ?? null,
         pausedAtMs:       room.playback?.pausedAtMs    ?? 0,
         isPlaying:        true,
@@ -124,8 +112,6 @@ const recoverSessionFromDB = async (roomId) => {
 };
 
 // ── Next Song ─────────────────────────────────────────────────────────────────
-// Reads from playlist cache first — only hits MongoDB on cache miss or new song append.
-// On append: refreshes cache with the new song included (no invalidation needed).
 
 const getNextSong = async (roomId, currentIndex) => {
     let playlist = await socketManager.getCachedPlaylist(roomId);
@@ -134,13 +120,9 @@ const getNextSong = async (roomId, currentIndex) => {
         const room = await Room.findById(roomId).populate('playlist');
         if (!room) throw new Error('Room not found');
         playlist = room.playlist.map((s) => ({
-            _id:      s._id.toString(),
-            title:    s.title,
-            artist:   s.artist,
-            duration: s.duration,
-            imageUrl: s.imageUrl || '',
-            s3Key:    s.s3Key,
-            albumId:  s.albumId?.toString() ?? null,
+            _id: s._id.toString(), title: s.title, artist: s.artist,
+            duration: s.duration, imageUrl: s.imageUrl || '', s3Key: s.s3Key,
+            albumId: s.albumId?.toString() ?? null,
         }));
         await socketManager.cacheRoomPlaylist(roomId, playlist);
     }
@@ -151,29 +133,23 @@ const getNextSong = async (roomId, currentIndex) => {
     if (nextIndex < playlist.length) {
         nextSong = playlist[nextIndex];
     } else {
-        // Append a random song not already in the playlist
         const excludeIds = playlist.map((s) => s._id);
         [nextSong] = await Song.aggregate([{ $match: { _id: { $nin: excludeIds } } }, { $sample: { size: 1 } }]);
         if (!nextSong) [nextSong] = await Song.aggregate([{ $sample: { size: 1 } }]);
         if (!nextSong) throw new Error('No songs available');
 
         const newSongData = {
-            _id:      nextSong._id.toString(),
-            title:    nextSong.title,
-            artist:   nextSong.artist,
-            duration: nextSong.duration,
-            imageUrl: nextSong.imageUrl || '',
-            s3Key:    nextSong.s3Key,
-            albumId:  nextSong.albumId?.toString() ?? null,
+            _id: nextSong._id.toString(), title: nextSong.title, artist: nextSong.artist,
+            duration: nextSong.duration, imageUrl: nextSong.imageUrl || '', s3Key: nextSong.s3Key,
+            albumId: nextSong.albumId?.toString() ?? null,
         };
 
         await Room.findByIdAndUpdate(roomId, { $push: { playlist: nextSong._id } });
-        // Append to cache rather than clearing — next skip still hits cache
         await socketManager.cacheRoomPlaylist(roomId, [...playlist, newSongData]);
         nextSong = newSongData;
     }
 
-    const presignedUrl = await getPresignedUrl(nextSong.s3Key);
+    const presignedUrl  = await getPresignedUrl(nextSong.s3Key);
     const startTimeUnix = Date.now();
 
     await Room.findByIdAndUpdate(roomId, {
@@ -184,11 +160,8 @@ const getNextSong = async (roomId, currentIndex) => {
     });
 
     await socketManager.updateRoomPlaybackState(roomId, {
-        currentSongId:    nextSong._id.toString(),
-        currentSongS3Key: nextSong.s3Key, // store S3 key, not presigned URL
-        startTimeUnix,
-        pausedAtMs:  null,
-        isPlaying:   true,
+        currentSongId: nextSong._id.toString(), currentSongS3Key: nextSong.s3Key,
+        startTimeUnix, pausedAtMs: null, isPlaying: true,
     });
 
     return { nextSong, nextIndex, presignedUrl, startTimeUnix };
@@ -209,24 +182,15 @@ export const initializeSocket = (httpServer) => {
 
     io.on('connection', async (socket) => {
 
-        // ── CRITICAL: Register ALL event handlers synchronously ──────────────
-        // The client emits room:join immediately on 'connect'. If we await
-        // anything before registering handlers, the event arrives while the
-        // connection callback is paused and gets silently dropped — the socket
-        // never joins the room and misses every broadcast.
-
-        // ── Room: Join ────────────────────────────────────────────────────────
         socket.on('room:join', async ({ roomId, clerkId: userClerkId }) => {
             try {
-                // 1. Resolve user — Redis cache first, DB fallback
                 const user = await resolveUser(userClerkId);
                 if (!user) return socket.emit('room:error', { message: 'User not found' });
 
-                // 2. Resolve room — Redis first, DB recovery fallback
                 let roomSession = await socketManager.getRoomById(roomId);
                 if (!roomSession) {
                     roomSession = await recoverSessionFromDB(roomId);
-                    if (!roomSession) return socket.emit('room:error', { message: 'Room not found or not active' });
+                    if (!roomSession) return socket.emit('room:error', { message: 'Room not found or not live' });
                 }
 
                 if (await socketManager.isRoomAtCapacity(roomId)) {
@@ -238,8 +202,6 @@ export const initializeSocket = (httpServer) => {
                 await socketManager.updateUserCurrentRoom(socket.id, roomId);
                 startSyncCheckpoint(io, roomId);
 
-                // 3. Generate a fresh presigned URL for this listener.
-                //    Never serve a URL from Redis — S3 URLs expire in 5 minutes.
                 const playbackState = await socketManager.getRoomPlaybackState(roomId);
                 let currentSongPresignedUrl = null;
                 if (playbackState?.currentSongS3Key) {
@@ -249,9 +211,7 @@ export const initializeSocket = (httpServer) => {
                 const isCreator = roomSession.creatorId === user.userId;
                 socket.emit('room:joined', {
                     roomId,
-                    playback: playbackState
-                        ? { ...playbackState, currentSongPresignedUrl }
-                        : null,
+                    playback: playbackState ? { ...playbackState, currentSongPresignedUrl } : null,
                     serverTimestamp: Date.now(),
                     listenerCount:   roomSession.listenerCount,
                     isCreator,
@@ -269,7 +229,6 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
-        // ── Room: Leave ───────────────────────────────────────────────────────
         socket.on('room:leave', async ({ roomId, clerkId: userClerkId }) => {
             try {
                 const user = await resolveUser(userClerkId);
@@ -296,15 +255,12 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
-        // ── Room: Chat ────────────────────────────────────────────────────────
         socket.on('room:chat', async ({ roomId, message }) => {
             try {
                 const trimmed = typeof message === 'string' ? message.trim() : '';
                 if (!trimmed || trimmed.length > 500) return;
-
                 const userSession = await socketManager.getUserBySocketId(socket.id);
                 if (!userSession) return;
-
                 io.to(roomId).emit('room:chat_message', {
                     id: `${Date.now()}-${socket.id}`,
                     user: { id: userSession.userId, username: userSession.userName, imageUrl: userSession.userImage },
@@ -316,28 +272,55 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
-        // ── Room: Donate ──────────────────────────────────────────────────────
-        socket.on('room:donate', async ({ roomId, amount }) => {
+        socket.on('room:donate', async ({ roomId, amount, idempotencyKey }) => {
             try {
                 const userSession = await socketManager.getUserBySocketId(socket.id);
                 if (!userSession) return socket.emit('room:error', { message: 'Session expired. Please refresh.' });
+                if (!idempotencyKey) return socket.emit('room:error', { message: 'Missing idempotencyKey' });
 
-                const result = await donateToRoom(userSession.clerkId, roomId, amount);
+                const result = await donateToRoom(userSession.clerkId, roomId, amount, idempotencyKey);
 
                 socket.emit('wallet:balance_updated', { balance: result.newBalance });
                 io.to(roomId).emit('room:goal_updated', {
-                    roomId,
-                    streamGoal:        result.streamGoal,
-                    streamGoalCurrent: result.streamGoalCurrent,
-                    donor:             result.donor,
+                    roomId, streamGoal: result.streamGoal,
+                    streamGoalCurrent: result.streamGoalCurrent, donor: result.donor,
                 });
-                emitSystemMessage(io, roomId, `${result.donor.name} donated ${result.donor.amount} credits!`);
+                emitSystemMessage(io, roomId, `${result.donor.name} donated ${result.donor.amount.toLocaleString()} coins!`);
+
+                if (result.goalReached) {
+                    io.to(roomId).emit('room:goal_reached', { roomId });
+                    emitSystemMessage(io, roomId, '🎉 Stream goal reached! Thank you all for your support!');
+                }
             } catch (error) {
                 socket.emit('room:error', { message: error.message });
             }
         });
 
-        // ── Room: Skip (creator/admin only) ───────────────────────────────────
+        socket.on('room:update_goal', async ({ roomId, newGoal }) => {
+            try {
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                const roomSession = await socketManager.getRoomById(roomId);
+                if (!canControlRoom(userSession, roomSession)) {
+                    return socket.emit('room:error', { message: 'Only the creator can update the stream goal' });
+                }
+                if (!Number.isInteger(newGoal) || newGoal <= 0) {
+                    return socket.emit('room:error', { message: 'Goal must be a positive integer' });
+                }
+                const room = await Room.findById(roomId).select('streamGoalCurrent');
+                if (!room) return socket.emit('room:error', { message: 'Room not found' });
+                if (newGoal <= room.streamGoalCurrent) {
+                    return socket.emit('room:error', { message: 'New goal must be higher than current donations' });
+                }
+                await Room.findByIdAndUpdate(roomId, { $set: { streamGoal: newGoal } });
+                io.to(roomId).emit('room:goal_updated', {
+                    roomId, streamGoal: newGoal, streamGoalCurrent: room.streamGoalCurrent, donor: null,
+                });
+                emitSystemMessage(io, roomId, `Creator raised the stream goal to ${newGoal.toLocaleString()} coins!`);
+            } catch (error) {
+                socket.emit('room:error', { message: error.message });
+            }
+        });
+
         socket.on('room:skip', async ({ roomId }) => {
             try {
                 const userSession = await socketManager.getUserBySocketId(socket.id);
@@ -345,10 +328,8 @@ export const initializeSocket = (httpServer) => {
                 if (!canControlRoom(userSession, roomSession)) {
                     return socket.emit('room:error', { message: 'Only the creator or admin can skip songs' });
                 }
-
                 const currentIndex = (await Room.findById(roomId).select('playback.currentSongIndex'))
                     ?.playback?.currentSongIndex ?? 0;
-
                 const { nextSong, nextIndex, presignedUrl, startTimeUnix } = await getNextSong(roomId, currentIndex);
                 io.to(roomId).emit('room:song_changed', {
                     roomId, songIndex: nextIndex, song: nextSong,
@@ -360,23 +341,14 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
-        // ── Room: Seek (creator/admin only) ───────────────────────────────────
         socket.on('room:seek', async ({ roomId, seekPositionMs }) => {
             try {
                 const userSession = await socketManager.getUserBySocketId(socket.id);
                 let roomSession   = await socketManager.getRoomById(roomId);
                 if (!roomSession) roomSession = await recoverSessionFromDB(roomId);
-
-                if (!userSession) {
-                    console.error(`[Server] room:seek — userSession NULL for socket=${socket.id}`);
-                    return socket.emit('room:error', { message: 'Session expired. Please refresh.' });
-                }
-                if (!roomSession) {
-                    console.error(`[Server] room:seek — roomSession NULL for room=${roomId}`);
-                    return socket.emit('room:error', { message: 'Room session not found.' });
-                }
+                if (!userSession) return socket.emit('room:error', { message: 'Session expired.' });
+                if (!roomSession) return socket.emit('room:error', { message: 'Room session not found.' });
                 if (!canControlRoom(userSession, roomSession)) return;
-
                 const startTimeUnix = Date.now() - seekPositionMs;
                 await socketManager.updateRoomPlaybackState(roomId, { startTimeUnix, isPlaying: true, pausedAtMs: null });
                 io.to(roomId).emit('room:sync', { roomId, startTimeUnix, isPlaying: true, pausedAtMs: null, serverTimestamp: Date.now() });
@@ -386,26 +358,15 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
-        // ── Room: Pause (creator/admin only) ──────────────────────────────────
         socket.on('room:pause', async ({ roomId }) => {
             try {
                 const userSession = await socketManager.getUserBySocketId(socket.id);
                 let roomSession   = await socketManager.getRoomById(roomId);
                 if (!roomSession) roomSession = await recoverSessionFromDB(roomId);
-
-                if (!userSession) {
-                    console.error(`[Server] room:pause — userSession NULL for socket=${socket.id}`);
-                    return socket.emit('room:error', { message: 'Session expired. Please refresh.' });
-                }
-                if (!roomSession) {
-                    console.error(`[Server] room:pause — roomSession NULL for room=${roomId}`);
-                    return socket.emit('room:error', { message: 'Room session not found.' });
-                }
+                if (!userSession) return socket.emit('room:error', { message: 'Session expired.' });
+                if (!roomSession) return socket.emit('room:error', { message: 'Room session not found.' });
                 if (!canControlRoom(userSession, roomSession)) return;
-
-                // Idempotency: ignore duplicate pause if already paused
                 if (!roomSession.isPlaying) return;
-
                 const pausedAtMs = await socketManager.computeCurrentPositionMs(roomId);
                 await socketManager.updateRoomPlaybackState(roomId, { isPlaying: false, pausedAtMs });
                 io.to(roomId).emit('room:sync', { roomId, isPlaying: false, pausedAtMs, serverTimestamp: Date.now() });
@@ -415,53 +376,33 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
-        // ── Room: Resume (creator/admin only) ─────────────────────────────────
         socket.on('room:resume', async ({ roomId }) => {
             try {
                 const userSession = await socketManager.getUserBySocketId(socket.id);
                 let roomSession   = await socketManager.getRoomById(roomId);
                 if (!roomSession) roomSession = await recoverSessionFromDB(roomId);
-
-                if (!userSession) {
-                    console.error(`[Server] room:resume — userSession NULL for socket=${socket.id}`);
-                    return socket.emit('room:error', { message: 'Session expired. Please refresh.' });
-                }
-                if (!roomSession) {
-                    console.error(`[Server] room:resume — roomSession NULL for room=${roomId}`);
-                    return socket.emit('room:error', { message: 'Room session not found.' });
-                }
+                if (!userSession) return socket.emit('room:error', { message: 'Session expired.' });
+                if (!roomSession) return socket.emit('room:error', { message: 'Room session not found.' });
                 if (!canControlRoom(userSession, roomSession)) return;
-
-                // Idempotency: ignore duplicate resume if already playing
                 if (roomSession.isPlaying) return;
-
                 const pausedAtMs    = roomSession.pausedAtMs ?? 0;
                 const startTimeUnix = Date.now() - pausedAtMs;
                 await socketManager.updateRoomPlaybackState(roomId, { startTimeUnix, isPlaying: true, pausedAtMs: null });
-                io.to(roomId).emit('room:sync', {
-                    roomId, startTimeUnix, isPlaying: true, pausedAtMs: null, serverTimestamp: Date.now(),
-                });
+                io.to(roomId).emit('room:sync', { roomId, startTimeUnix, isPlaying: true, pausedAtMs: null, serverTimestamp: Date.now() });
             } catch (error) {
                 console.error(`[Server] room:resume ERROR:`, error);
                 socket.emit('room:error', { message: 'Failed to process resume.' });
             }
         });
 
-        // ── Room: Song Ended (auto-advance) ───────────────────────────────────
         socket.on('room:song_ended', async ({ roomId, currentSongIndex }) => {
             try {
                 const lastAdvance = songEndedDebounce.get(roomId);
                 if (lastAdvance && Date.now() - lastAdvance < 3000) return;
-
                 const room = await Room.findById(roomId).select('playback.currentSongIndex');
-                if (!room) {
-                    console.error(`[Server] room:song_ended — room not found: ${roomId}`);
-                    return;
-                }
-
+                if (!room) return;
                 const serverIndex = room.playback?.currentSongIndex ?? 0;
                 if (currentSongIndex !== serverIndex) return;
-
                 songEndedDebounce.set(roomId, Date.now());
                 const { nextSong, nextIndex, presignedUrl, startTimeUnix } = await getNextSong(roomId, currentSongIndex);
                 io.to(roomId).emit('room:song_changed', {
@@ -475,26 +416,21 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
-        // ── Disconnect ────────────────────────────────────────────────────────
         socket.on('disconnect', async () => {
             const userSession = await socketManager.getUserBySocketId(socket.id);
 
             if (userSession?.currentRoomId) {
-                const roomId     = userSession.currentRoomId;
+                const roomId      = userSession.currentRoomId;
                 const roomSession = await socketManager.getRoomById(roomId);
 
                 if (roomSession && roomSession.creatorId === userSession.userId) {
-                    await Room.findByIdAndUpdate(roomId, {
-                        status: 'closing',
-                        'lifecycle.disconnectedAt': new Date(),
-                        'lifecycle.closingAt':      new Date(Date.now() + 15000),
-                    });
+                    // Room stays 'live' in DB during 15s countdown — only goOfflineAndNotify marks it offline
                     io.to(roomId).emit('room:creator_disconnected', {
                         roomId, countdownSeconds: 15,
-                        message:   'Creator disconnected. Room closing in 15 seconds...',
+                        message:   'Creator disconnected. Room going offline in 15 seconds...',
                         closingAt: new Date(Date.now() + 15000),
                     });
-                    const timer = setTimeout(() => closeRoomAndNotify(io, roomId, 'creator_disconnected'), 15000);
+                    const timer = setTimeout(() => goOfflineAndNotify(io, roomId, 'creator_disconnected'), 15000);
                     disconnectTimers.set(roomId, timer);
                 } else {
                     await socketManager.removeRoomListener(roomId, userSession.userId);
@@ -510,44 +446,40 @@ export const initializeSocket = (httpServer) => {
             await socketManager.removeUserSession(socket.id);
         });
 
-        // ── Creator Reconnect ─────────────────────────────────────────────────
         socket.on('room:creator_reconnect', async ({ roomId, clerkId: userClerkId }) => {
             try {
                 const user = await resolveUser(userClerkId);
                 if (!user) return;
 
-                const roomSession = await socketManager.getRoomById(roomId);
-                if (!roomSession || roomSession.creatorId !== user.userId) return;
+                // Rebuild Redis session from DB if it was lost (server restart / timer fired early)
+                let roomSession = await socketManager.getRoomById(roomId);
+                if (!roomSession) {
+                    roomSession = await recoverSessionFromDB(roomId);
+                    if (!roomSession) return; // room is offline — don't reconnect
+                }
+
+                if (roomSession.creatorId !== user.userId) return;
 
                 const timer = disconnectTimers.get(roomId);
                 if (timer) { clearTimeout(timer); disconnectTimers.delete(roomId); }
 
-                await Room.findByIdAndUpdate(roomId, {
-                    status: 'active',
-                    'lifecycle.disconnectedAt': null,
-                    'lifecycle.closingAt':      null,
-                });
+                await Room.findByIdAndUpdate(roomId, { status: 'live' });
                 socket.join(roomId);
+                startSyncCheckpoint(io, roomId); // restart heartbeat if it was stopped
                 io.to(roomId).emit('room:creator_reconnected', { roomId, message: 'Creator is back! Resuming...' });
             } catch (error) {
                 console.error('room:creator_reconnect error', error);
             }
         });
 
-        // ── Async user session setup (AFTER all handlers are registered) ──────
-        // resolveUser hits Redis user:clerk cache first — only calls MongoDB on
-        // first-ever connection. All subsequent reconnects cost zero DB reads.
+        // Async session setup (after all handlers registered)
         const { clerkId } = socket.handshake.auth || {};
         if (clerkId) {
             const user = await resolveUser(clerkId).catch(() => null);
             if (user) {
                 await socketManager.addUserSession(socket.id, {
-                    userId:   user.userId,
-                    clerkId,
-                    userName: user.fullName,
-                    userImage: user.imageUrl,
-                    userTier: user.userTier,
-                    role:     user.role,
+                    userId: user.userId, clerkId, userName: user.fullName,
+                    userImage: user.imageUrl, userTier: user.userTier, role: user.role,
                 });
             }
         }

@@ -20,6 +20,7 @@ interface RoomSessionContextValue {
     sendChat: (message: string) => void;
     skipSong: () => void;
     donate: (amount: number) => void;
+    updateGoal: (newGoal: number) => void;
 }
 
 const RoomSessionContext = createContext<RoomSessionContextValue | null>(null);
@@ -31,7 +32,7 @@ export const RoomSessionProvider = ({ children }: { children: React.ReactNode })
 
     // Socket connection lives here — persists as long as this provider is mounted.
     // When activeRoomId is null or empty, the hook is a no-op (early return guard).
-    const { sendChat, skipSong, leaveRoom: socketLeave, donate } = useRoomSocket(activeRoomId ?? '');
+    const { sendChat, skipSong, leaveRoom: socketLeave, donate, updateGoal } = useRoomSocket(activeRoomId ?? '');
 
     const joinRoom = useCallback((roomId: string) => {
         setActiveRoomId(roomId);
@@ -45,7 +46,7 @@ export const RoomSessionProvider = ({ children }: { children: React.ReactNode })
     }, [socketLeave, setActiveRoomId, roomStore, playerStore]);
 
     return (
-        <RoomSessionContext.Provider value={{ activeRoomId, joinRoom, leaveRoom, sendChat, skipSong, donate }}>
+        <RoomSessionContext.Provider value={{ activeRoomId, joinRoom, leaveRoom, sendChat, skipSong, donate, updateGoal }}>
             {children}
         </RoomSessionContext.Provider>
     );

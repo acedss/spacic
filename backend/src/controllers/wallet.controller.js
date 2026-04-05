@@ -14,7 +14,8 @@ export const getPackages = async (req, res, next) => {
 
 export const getWallet = async (req, res, next) => {
     try {
-        const data = await walletService.getWallet(getClerkId(req));
+        const cursor = req.query.cursor || null;
+        const data = await walletService.getWallet(getClerkId(req), cursor);
         res.json({ success: true, data });
     } catch (error) {
         next(error);

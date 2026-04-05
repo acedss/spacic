@@ -20,32 +20,53 @@ export interface CreateRoomPayload {
     description?: string;
     isPublic?: boolean;
     playlistIds: string[];
+    streamGoal?: number; // coins; 0 = no donation goal
 }
 
-export interface RoomLifecycle {
-    disconnectedAt?: string;
-    closingAt?: string;
-    closedAt?: string;
+export interface RoomStats {
+    totalSessions:        number;
+    totalListeners:       number;
+    totalMinutesListened: number;
+    totalCoinsEarned:     number;
+    totalDonors:          number;
+    peakListeners:        number;
+    topDonors: { name: string; totalCoins: number }[];
+    lastLiveAt:    string | null;
+    lastOfflineAt: string | null;
+}
+
+export interface RoomSession {
+    startedAt: string;
+    endedAt: string;
+    listenerCount: number;
+    minutesListened: number;
+    coinsEarned: number;
+    topDonors: { name: string; totalCoins: number }[];
 }
 
 export interface RoomInfo {
     _id: string;
     creatorId: string;
     title: string;
-    status: 'active' | 'closing' | 'closed';
+    description?: string;
+    status: 'offline' | 'live';
     isPublic: boolean;
     capacity: number;
     voteThresholdPercent: number;
     playlist: Song[];
     playback: RoomPlayback;
-    lifecycle: RoomLifecycle;
+    liveAt?: string | null;
     streamGoal: number;
     streamGoalCurrent: number;
+    favoriteCount: number;
+    stats: RoomStats;
+    sessions?: RoomSession[];
+    listenerCount?: number;
 }
 
 export interface Transaction {
     _id: string;
-    type: 'topup' | 'donation';
+    type: 'topup' | 'donation' | 'goal_payout';
     amount: number; // credits
     status: 'pending' | 'completed' | 'failed';
     roomId?: { _id: string; title: string } | null;

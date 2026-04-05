@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
     Wallet, TrendingUp, ArrowUpRight, Heart, Loader,
-    Zap, Crown, Sparkles, ChevronRight, Star,
+    Zap, Crown, Sparkles, ChevronRight, Star, ChevronDown, Trophy,
 } from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { toast } from 'sonner';
@@ -11,7 +11,7 @@ import type { TopupPackage, Transaction } from '@/types/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const toDollars = (credits: number) => `$${(credits / 100).toFixed(2)}`;
+const toCoins = (credits: number) => `${credits.toLocaleString()} coins`;
 
 const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -61,10 +61,10 @@ const PackageCard = ({ pkg, onSelect, loading }: {
         )}
 
         <span className="text-2xl font-bold text-white mt-1">
-            {toDollars(pkg.priceInCents)}
+            ${(pkg.priceInCents / 100).toFixed(2)}
         </span>
         <div>
-            <p className="text-sm font-medium text-white/80">{pkg.credits.toLocaleString()} credits</p>
+            <p className="text-sm font-medium text-white/80">{pkg.credits.toLocaleString()} coins</p>
             <p className="text-xs text-zinc-500 mt-0.5">{pkg.label}</p>
         </div>
     </button>
@@ -72,33 +72,30 @@ const PackageCard = ({ pkg, onSelect, loading }: {
 
 // ── Transaction row ───────────────────────────────────────────────────────────
 
-const TransactionRow = ({ tx }: { tx: Transaction }) => (
-    <div className="flex items-center gap-3 py-3.5 border-b border-white/5 last:border-0">
-        <div className={cn(
-            'size-9 rounded-xl flex items-center justify-center flex-shrink-0',
-            tx.type === 'topup' ? 'bg-emerald-500/15' : 'bg-pink-500/15',
-        )}>
-            {tx.type === 'topup'
-                ? <ArrowUpRight className="size-4 text-emerald-400" />
-                : <Heart className="size-4 text-pink-400" />
-            }
-        </div>
+const TX_META = {
+    topup:       { bg: 'bg-emerald-500/15', icon: ArrowUpRight, iconColor: 'text-emerald-400', amountColor: 'text-emerald-400', sign: '+', label: () => 'Wallet Top-up' },
+    donation:    { bg: 'bg-pink-500/15',    icon: Heart,         iconColor: 'text-pink-400',    amountColor: 'text-pink-400',    sign: '−', label: (tx: Transaction) => `Donated to "${tx.roomId?.title ?? 'a room'}"` },
+    goal_payout: { bg: 'bg-yellow-500/15',  icon: Trophy,        iconColor: 'text-yellow-400',  amountColor: 'text-yellow-400',  sign: '+', label: (tx: Transaction) => `Goal payout from "${tx.roomId?.title ?? 'a room'}"` },
+} as const;
 
-        <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white/90 truncate">
-                {tx.type === 'topup' ? 'Wallet Top-up' : `Donated to "${tx.roomId?.title ?? 'a room'}"`}
-            </p>
-            <p className="text-xs text-zinc-500">{formatDate(tx.createdAt)}</p>
+const TransactionRow = ({ tx }: { tx: Transaction }) => {
+    const meta = TX_META[tx.type] ?? TX_META.topup;
+    const Icon = meta.icon;
+    return (
+        <div className="flex items-center gap-3 py-3.5 border-b border-white/5 last:border-0">
+            <div className={cn('size-9 rounded-xl flex items-center justify-center flex-shrink-0', meta.bg)}>
+                <Icon className={cn('size-4', meta.iconColor)} />
+            </div>
+            <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white/90 truncate">{meta.label(tx)}</p>
+                <p className="text-xs text-zinc-500">{formatDate(tx.createdAt)}</p>
+            </div>
+            <span className={cn('text-sm font-semibold tabular-nums flex-shrink-0', meta.amountColor)}>
+                {meta.sign}{toCoins(tx.amount)}
+            </span>
         </div>
-
-        <span className={cn(
-            'text-sm font-semibold tabular-nums flex-shrink-0',
-            tx.type === 'topup' ? 'text-emerald-400' : 'text-pink-400',
-        )}>
-            {tx.type === 'topup' ? '+' : '−'}{toDollars(tx.amount)}
-        </span>
-    </div>
-);
+    );
+};
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -110,7 +107,8 @@ const WalletPage = () => {
 
     const {
         balance, userTier, transactions, packages,
-        loading, topupLoading, fetchWallet, fetchPackages, startTopup,
+        loading, topupLoading, loadingMore, hasMore,
+        fetchWallet, fetchPackages, startTopup, loadMore,
     } = useWalletStore();
 
     useEffect(() => {
@@ -133,11 +131,13 @@ const WalletPage = () => {
     const tier = TIER_CONFIG[userTier as keyof typeof TIER_CONFIG] ?? TIER_CONFIG.FREE;
     const TierIcon = tier.icon;
 
-    const filteredTx = transactions.filter((tx) =>
-        txFilter === 'all' ? true : tx.type === txFilter
-    );
+    const filteredTx = transactions.filter((tx) => {
+        if (txFilter === 'all') return true;
+        if (txFilter === 'topup') return tx.type === 'topup' || tx.type === 'goal_payout';
+        return tx.type === txFilter;
+    });
 
-    const topupCount   = transactions.filter((t) => t.type === 'topup').length;
+    const topupCount    = transactions.filter((t) => t.type === 'topup' || t.type === 'goal_payout').length;
     const donationCount = transactions.filter((t) => t.type === 'donation').length;
 
     return (
@@ -158,11 +158,9 @@ const WalletPage = () => {
                         ) : (
                             <>
                                 <p className="text-5xl font-bold tracking-tight text-white">
-                                    {toDollars(balance)}
+                                    {balance.toLocaleString()}
                                 </p>
-                                <p className="text-sm text-zinc-500 mt-1">
-                                    {balance.toLocaleString()} credits
-                                </p>
+                                <p className="text-sm text-zinc-500 mt-1">coins</p>
                             </>
                         )}
 
@@ -248,7 +246,7 @@ const WalletPage = () => {
                         <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1">
                             {([
                                 { key: 'all',      label: `All (${transactions.length})` },
-                                { key: 'topup',    label: `Credits (${topupCount})` },
+                                { key: 'topup',    label: `Coins (${topupCount})` },
                                 { key: 'donation', label: `Donated (${donationCount})` },
                             ] as { key: TxFilter; label: string }[]).map(({ key, label }) => (
                                 <button
@@ -282,11 +280,26 @@ const WalletPage = () => {
                         </p>
                     </div>
                 ) : (
-                    <div className="bg-white/5 border border-white/10 rounded-xl px-4">
-                        {filteredTx.map((tx) => (
-                            <TransactionRow key={tx._id} tx={tx} />
-                        ))}
-                    </div>
+                    <>
+                        <div className="bg-white/5 border border-white/10 rounded-xl px-4">
+                            {filteredTx.map((tx) => (
+                                <TransactionRow key={tx._id} tx={tx} />
+                            ))}
+                        </div>
+
+                        {hasMore && txFilter === 'all' && (
+                            <button
+                                onClick={loadMore}
+                                disabled={loadingMore}
+                                className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all disabled:opacity-50"
+                            >
+                                {loadingMore
+                                    ? <Loader className="size-4 animate-spin" />
+                                    : <><ChevronDown className="size-4" />Load more</>
+                                }
+                            </button>
+                        )}
+                    </>
                 )}
             </div>
 

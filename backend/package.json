@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "seed": "node src/seed.js",
+    "sync-prices": "node src/scripts/syncStripePrices.js",
     "test": "vitest"
   },
   "keywords": [],

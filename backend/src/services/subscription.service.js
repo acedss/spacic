@@ -10,17 +10,17 @@ const PLANS_CACHE_KEY = 'plans:active';
 const PLANS_TTL_S = 300; // 5 minutes
 
 const toClientShape = (doc) => ({
-    slug:                doc.slug,
-    name:                doc.name,
-    tier:                doc.tier,
-    priceMonthlyUsd:     doc.priceMonthlyUsd,
-    priceYearlyUsd:      doc.priceYearlyUsd,
-    features:            doc.features,
-    roomCapacity:        doc.roomCapacity,
-    sortOrder:           doc.sortOrder,
+    slug: doc.slug,
+    name: doc.name,
+    tier: doc.tier,
+    priceMonthlyUsd: doc.priceMonthlyUsd,
+    priceYearlyUsd: doc.priceYearlyUsd,
+    features: doc.features,
+    roomCapacity: doc.roomCapacity,
+    sortOrder: doc.sortOrder,
     // Expose whether purchase is available (price synced with Stripe)
     canSubscribeMonthly: !!doc.stripePriceIdMonthly,
-    canSubscribeYearly:  !!doc.stripePriceIdYearly,
+    canSubscribeYearly: !!doc.stripePriceIdYearly,
 });
 
 export const getActivePlans = async () => {
@@ -58,12 +58,12 @@ export const createSubscribeSession = async (clerkId, slug, billingCycle, rawOri
         mode: 'subscription',
         line_items: [{ price: priceId, quantity: 1 }],
         metadata: {
-            userId:  user._id.toString(),
+            userId: user._id.toString(),
             clerkId,
-            tier:    plan.tier,
+            tier: plan.tier,
         },
         success_url: `${origin}/subscription?status=success`,
-        cancel_url:  `${origin}/subscription?status=cancelled`,
+        cancel_url: `${origin}/subscription?status=cancelled`,
     });
 
     return { url: session.url };

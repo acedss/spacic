@@ -135,7 +135,8 @@ const seed = async () => {
     const songs = await Song.insertMany(SONGS);
     console.log(`✓ Inserted ${songs.length} songs`);
 
-    // Create rooms
+    // Create one permanent room for the dev creator (Twitch-channel model: one room per creator)
+    const liveAt = new Date();
     const rooms = await Room.insertMany([
         {
             creatorId: creator._id,
@@ -144,40 +145,27 @@ const seed = async () => {
             isPublic: true,
             capacity: 50,
             voteThresholdPercent: 50,
-            status: 'active',
-            playlist: [songs[0]._id, songs[1]._id, songs[2]._id],
-            playback: { currentSongIndex: 0, currentPlaybackTimeMs: 0 },
+            status: 'live',
+            liveAt,
+            playlist: songs.map((s) => s._id),
+            playback: { currentSongIndex: 0, startTimeUnix: liveAt.getTime(), pausedAtMs: 0 },
             streamGoal: 500,
-            streamGoalCurrent: 340,
-        },
-        {
-            creatorId: creator._id,
-            title: 'Bass Drop Arena',
-            description: 'Heavy bass, heavy vibes.',
-            isPublic: true,
-            capacity: 50,
-            voteThresholdPercent: 60,
-            status: 'active',
-            playlist: [songs[3]._id, songs[4]._id, songs[5]._id],
-            playback: { currentSongIndex: 0, currentPlaybackTimeMs: 0 },
-            streamGoal: 300,
-            streamGoalCurrent: 120,
-        },
-        {
-            creatorId: creator._id,
-            title: 'Chill Vibes Only',
-            description: 'Low tempo, high mood.',
-            isPublic: true,
-            capacity: 50,
-            voteThresholdPercent: 40,
-            status: 'active',
-            playlist: [songs[0]._id, songs[2]._id, songs[4]._id],
-            playback: { currentSongIndex: 0, currentPlaybackTimeMs: 0 },
-            streamGoal: 200,
-            streamGoalCurrent: 190,
+            streamGoalCurrent: 0,
+            escrow: 0,
+            stats: {
+                totalSessions: 2, totalListeners: 48, totalMinutesListened: 312,
+                totalCoinsEarned: 1200, totalDonors: 8, peakListeners: 22,
+                topDonors: [{ name: 'DevUser', totalCoins: 800 }],
+                lastLiveAt: new Date(Date.now() - 86_400_000),
+                lastOfflineAt: new Date(Date.now() - 82_800_000),
+            },
+            sessions: [
+                { startedAt: new Date(Date.now() - 2 * 86_400_000), endedAt: new Date(Date.now() - 2 * 86_400_000 + 3_600_000), listenerCount: 25, minutesListened: 180, coinsEarned: 700, topDonors: [] },
+                { startedAt: new Date(Date.now() - 86_400_000), endedAt: new Date(Date.now() - 82_800_000), listenerCount: 23, minutesListened: 132, coinsEarned: 500, topDonors: [{ name: 'DevUser', totalCoins: 500 }] },
+            ],
         },
     ]);
-    console.log(`✓ Inserted ${rooms.length} rooms`);
+    console.log(`✓ Inserted ${rooms.length} room (permanent channel)`);
 
     // Insert top-up packages
     const packages = await TopupPackage.insertMany(TOPUP_PACKAGES);
@@ -194,11 +182,11 @@ const seed = async () => {
         { userId: creator._id, type: 'topup',    amount: 1100,  status: 'completed', stripeSessionId: 'cs_seed_001', createdAt: daysAgo(28) },
         { userId: creator._id, type: 'donation', amount: 200,   status: 'completed', donorName: creator.fullName, roomId: rooms[0]._id, createdAt: daysAgo(25) },
         { userId: creator._id, type: 'topup',    amount: 2750,  status: 'completed', stripeSessionId: 'cs_seed_002', createdAt: daysAgo(18) },
-        { userId: creator._id, type: 'donation', amount: 500,   status: 'completed', donorName: creator.fullName, roomId: rooms[1]._id, createdAt: daysAgo(15) },
-        { userId: creator._id, type: 'donation', amount: 300,   status: 'completed', donorName: creator.fullName, roomId: rooms[2]._id, createdAt: daysAgo(10) },
+        { userId: creator._id, type: 'donation', amount: 500,   status: 'completed', donorName: creator.fullName, roomId: rooms[0]._id, createdAt: daysAgo(15) },
+        { userId: creator._id, type: 'donation', amount: 300,   status: 'completed', donorName: creator.fullName, roomId: rooms[0]._id, createdAt: daysAgo(10) },
         { userId: creator._id, type: 'topup',    amount: 6000,  status: 'completed', stripeSessionId: 'cs_seed_003', createdAt: daysAgo(5) },
         { userId: creator._id, type: 'donation', amount: 1000,  status: 'completed', donorName: creator.fullName, roomId: rooms[0]._id, createdAt: daysAgo(2) },
-        { userId: creator._id, type: 'donation', amount: 150,   status: 'completed', donorName: creator.fullName, roomId: rooms[2]._id, createdAt: daysAgo(1) },
+        { userId: creator._id, type: 'donation', amount: 150,   status: 'completed', donorName: creator.fullName, roomId: rooms[0]._id, createdAt: daysAgo(1) },
     ];
     await Transaction.insertMany(txDocs);
     // balance = topups - donations: 1100+2750+6000 - 200-500-300-1000-150 = 7700

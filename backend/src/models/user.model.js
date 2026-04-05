@@ -27,7 +27,21 @@ const userSchema = new mongoose.Schema({
     balance: {
         type: Number,
         default: 0,
-    }
+    },
+    stripeCustomerId: {
+        type: String,
+        default: null,
+        index: { unique: true, sparse: true },
+    },
+    // Lifetime creator stats — accumulated across all rooms on close
+    creatorStats: {
+        totalRoomsHosted:      { type: Number, default: 0 },
+        totalStreams:          { type: Number, default: 0 }, // unique listener joins
+        totalMinutesListened:  { type: Number, default: 0 }, // sum of all listener durations
+        totalCoinsEarned:      { type: Number, default: 0 }, // goal_payout coins received
+        totalUniqueDonors:     { type: Number, default: 0 }, // approximate (union across rooms)
+        lastLiveAt:            { type: Date,   default: null },
+    },
 }, { timestamps: true }
 );
 

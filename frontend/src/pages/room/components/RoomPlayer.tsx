@@ -107,7 +107,7 @@ export const RoomPlayer = ({ onSkip, onClose }: Props) => {
                         className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors"
                     >
                         <X className="size-3.5" />
-                        Close Room
+                        Go Offline
                     </button>
                 )}
             </div>

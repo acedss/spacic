@@ -8,7 +8,7 @@ const transactionSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ["topup", "donation"],
+        enum: ["topup", "donation", "goal_payout"],
         required: true,
     },
     amount: {
@@ -26,6 +26,13 @@ const transactionSchema = new mongoose.Schema({
     stripeSessionId: {
         type: String,
         default: null,
+        index: { unique: true, sparse: true },
+    },
+    // Donation idempotency: client-generated UUID prevents double-charge on socket retry.
+    // NO default — field must be absent (not null) for sparse index to skip non-donations.
+    // sparse: true skips documents where the field doesn't exist; it still indexes null values.
+    idempotencyKey: {
+        type: String,
         index: { unique: true, sparse: true },
     },
     // Donation only

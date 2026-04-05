@@ -1,4 +1,4 @@
-import { Home, Search, Users, Target, Wallet, User, Crown } from 'lucide-react'
+import { Home, Search, Users, Target, Wallet, User, Crown, Radio } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -19,6 +19,7 @@ const navItems = [
     { to: '/search', icon: Search, label: 'Search' },
     { to: '/rooms', icon: Users, label: 'Co-listening Rooms' },
     { to: '/goal', icon: Target, label: 'Album Goals' },
+    { to: '/creator', icon: Radio, label: 'Creator Studio' },
     { to: '/wallet', icon: Wallet, label: 'Wallet', isWallet: true },
     { to: '/subscription', icon: Crown, label: 'Subscription' },
     { to: '/profile', icon: User, label: 'Profile' },
@@ -48,11 +49,12 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
                     {navItems.map(({ to, icon: Icon, label, isWallet }) => {
                         const isProfile = to === '/profile'
                         const badge = isWallet && balance > 0
-                            ? `$${(balance / 100).toFixed(2)}`
+                            ? `${balance.toLocaleString()} 🪙`
                             : undefined
 
                         const linkEl = (
                             <Link
+                                key={to}
                                 to={to}
                                 className='flex items-center py-3 text-white hover:text-purple-300 transition-colors'
                             >

@@ -1,12 +1,30 @@
 import { useUser } from '@clerk/clerk-react'
+import { Link } from 'react-router-dom'
+import { Zap, Star, Crown, ChevronRight } from 'lucide-react'
 import TopBar from '@/components/TopBar'
 import { FeaturedLiveRoom } from './compoments/FeaturedLiveRoom'
 import { AlbumGoals } from './compoments/AlbumGoals'
 import { ActivityStats } from './compoments/ActivityStats'
+import { useWalletStore } from '@/stores/useWalletStore'
+import { useEffect } from 'react'
+import { cn } from '@/lib/utils'
+
+const TIER_CONFIG = {
+    FREE:    { label: 'Free',    icon: Zap,   color: 'text-zinc-400',   bg: 'bg-zinc-400/10' },
+    PREMIUM: { label: 'Premium', icon: Star,  color: 'text-purple-400', bg: 'bg-purple-400/10' },
+    CREATOR: { label: 'Creator', icon: Crown, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
+} as const
 
 const HomePage = () => {
     const { user } = useUser()
     const name = user?.firstName ?? user?.fullName ?? ''
+    const { userTier, fetchWallet } = useWalletStore()
+
+    useEffect(() => { fetchWallet() }, [fetchWallet])
+
+    const tier = TIER_CONFIG[userTier as keyof typeof TIER_CONFIG] ?? TIER_CONFIG.FREE
+    const TierIcon = tier.icon
+
     return (
         <div className='flex flex-col min-h-full bg-zinc-950 text-white'>
             <TopBar />
@@ -18,6 +36,20 @@ const HomePage = () => {
                     <p className='text-zinc-500 mt-2 font-light'>
                         Explore live listening rooms or support your favorite artists.
                     </p>
+                    <div className='flex items-center gap-3 mt-4'>
+                        <span className={cn('flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full', tier.bg, tier.color)}>
+                            <TierIcon className='size-3' />
+                            {tier.label} Plan
+                        </span>
+                        {userTier === 'FREE' && (
+                            <Link
+                                to='/subscription'
+                                className='flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors'
+                            >
+                                Upgrade <ChevronRight className='size-3' />
+                            </Link>
+                        )}
+                    </div>
                 </section>
 
                 <FeaturedLiveRoom />

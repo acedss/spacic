@@ -57,7 +57,13 @@ export const useRoomSocket = (roomId: string) => {
     }, [roomId, userId, emit]);
 
     const donate = useCallback((amount: number) => {
-        emit('room:donate', { roomId, amount });
+        // Generate UUID here (before emit) so retries reuse the same key
+        const idempotencyKey = crypto.randomUUID();
+        emit('room:donate', { roomId, amount, idempotencyKey });
+    }, [roomId, emit]);
+
+    const updateGoal = useCallback((newGoal: number) => {
+        emit('room:update_goal', { roomId, newGoal });
     }, [roomId, emit]);
 
     useEffect(() => {
@@ -304,9 +310,10 @@ export const useRoomSocket = (roomId: string) => {
             }
         });
 
-        socket.on('room:closed', () => {
+        socket.on('room:offline', () => {
             const current = roomStore.room;
-            if (current) roomStore.setRoom({ ...current, status: 'closed' });
+            if (current) roomStore.setRoom({ ...current, status: 'offline' });
+            playerStore.setPlaying(false);
             if (countdownRef.current) {
                 clearInterval(countdownRef.current);
                 countdownRef.current = null;
@@ -325,6 +332,11 @@ export const useRoomSocket = (roomId: string) => {
         }) => {
             const current = roomStore.room;
             if (current) roomStore.setRoom({ ...current, streamGoal, streamGoalCurrent });
+        });
+
+        socket.on('room:goal_reached', () => {
+            // room:goal_updated already set the correct streamGoalCurrent before this fires.
+            // Nothing to override here — this event is just a trigger for UI celebrations.
         });
 
         socket.on('room:error', ({ message }: { message: string }) => {
@@ -353,5 +365,5 @@ export const useRoomSocket = (roomId: string) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, userId]);
 
-    return { sendChat, skipSong, leaveRoom, donate };
+    return { sendChat, skipSong, leaveRoom, donate, updateGoal };
 };

@@ -1,20 +1,52 @@
 // Controller: Room - thin handlers, delegates to room.service
-// Max 50 lines per function; extract request data and call service only.
 
 import * as roomService from "../services/room.service.js";
 
-// Resolves clerkId from Clerk auth OR dev bypass header
 const getClerkId = (req) => req.devBypass ? req.devClerkId : req.auth().userId;
 
-export const createRoom = async (req, res, next) => {
+// ── Creator channel management ────────────────────────────────────────────
+
+export const upsertRoom = async (req, res, next) => {
     try {
         const clerkId = getClerkId(req);
-        const room = await roomService.createRoom(clerkId, req.body);
-        res.status(201).json({ success: true, data: room });
+        const room = await roomService.upsertRoom(clerkId, req.body);
+        res.status(200).json({ success: true, data: room });
     } catch (error) {
         next(error);
     }
 };
+
+export const getMyRoom = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const room = await roomService.getMyRoom(clerkId);
+        res.json({ success: true, data: room });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const goLive = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const room = await roomService.goLive(req.params.roomId, clerkId);
+        res.json({ success: true, data: room });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const goOffline = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const result = await roomService.goOffline(req.params.roomId, clerkId);
+        res.json({ success: true, data: result });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ── Discovery ─────────────────────────────────────────────────────────────
 
 export const getPublicRooms = async (req, res, next) => {
     try {
@@ -40,6 +72,8 @@ export const getRoomById = async (req, res, next) => {
     }
 };
 
+// ── Room session ──────────────────────────────────────────────────────────
+
 export const joinRoom = async (req, res, next) => {
     try {
         const clerkId = getClerkId(req);
@@ -55,16 +89,6 @@ export const leaveRoom = async (req, res, next) => {
         const clerkId = getClerkId(req);
         await roomService.leaveRoom(req.params.roomId, clerkId);
         res.status(204).send();
-    } catch (error) {
-        next(error);
-    }
-};
-
-export const closeRoom = async (req, res, next) => {
-    try {
-        const clerkId = getClerkId(req);
-        const result = await roomService.closeRoom(req.params.roomId, clerkId);
-        res.json({ success: true, data: result });
     } catch (error) {
         next(error);
     }
@@ -97,6 +121,26 @@ export const sendChatMessage = async (req, res, next) => {
         const { message } = req.body;
         const result = await roomService.sendChatMessage(req.params.roomId, clerkId, message);
         res.status(201).json({ success: true, data: result });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const toggleFavorite = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const result = await roomService.toggleFavorite(req.params.roomId, clerkId);
+        res.json({ success: true, data: result });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getCreatorStats = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const stats = await roomService.getCreatorStats(clerkId);
+        res.json({ success: true, data: stats });
     } catch (error) {
         next(error);
     }

@@ -36,6 +36,18 @@ app.use(cors({
     credentials: true,
 }));
 
+// ── Stripe webhook — MUST be registered BEFORE express.json() AND rate limiters ──
+// Reasons:
+// 1. express.json() consumes the body stream; constructEvent() needs raw bytes to
+//    verify the HMAC signature.
+// 2. Rate limiters use prefix matching — /api/wallet/topup matches /api/wallet/topup/webhook.
+//    Stripe sends bursts of events; signature verification is the security layer here.
+app.post(
+    '/api/wallet/topup/webhook',
+    express.raw({ type: 'application/json' }),
+    handleWebhook,
+);
+
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 // Cloudflare passes the real visitor IP in cf-connecting-ip.
 // Behind Nginx + CF, req.ip is the Nginx IP — use the CF header directly.
@@ -50,24 +62,18 @@ app.use('/api/', rateLimit({
     legacyHeaders: false,
 }));
 
-// Strict: 20 req / 15 min on payment endpoints (prevents card-testing)
-app.use(['/api/wallet/topup', '/api/subscriptions/subscribe'], rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 20,
-    keyGenerator: realIp,
-    standardHeaders: 'draft-8',
-    legacyHeaders: false,
-    message: { message: 'Too many payment requests — try again later' },
-}));
-
-// ── Stripe webhook — MUST be registered BEFORE express.json() ─────────────────
-// express.json() consumes the body stream; constructEvent() needs raw bytes to
-// verify the HMAC signature. Mounting here ensures this route gets a Buffer.
-app.post(
-    '/api/wallet/topup/webhook',
-    express.raw({ type: 'application/json' }),
-    handleWebhook,
-);
+// Strict: 20 req / 15 min on payment initiation endpoints (prevents card-testing)
+// Skipped in dev — both test accounts share 127.0.0.1 and exhaust each other's quota.
+if (process.env.NODE_ENV !== 'development') {
+    app.use(['/api/wallet/topup', '/api/subscriptions/subscribe'], rateLimit({
+        windowMs: 15 * 60 * 1000,
+        limit: 20,
+        keyGenerator: realIp,
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        message: { message: 'Too many payment requests — try again later' },
+    }));
+}
 
 app.use(express.json());
 app.use(clerkMiddleware());

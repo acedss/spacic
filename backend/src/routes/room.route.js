@@ -6,19 +6,29 @@ const router = Router();
 
 // Discovery (public, no auth required)
 router.get("/public", roomController.getPublicRooms);
+
+// Static paths — must be before /:roomId so they aren't swallowed as params
+router.get("/me/room",          protectRoute, roomController.getMyRoom);
+router.get("/me/creator-stats", protectRoute, roomController.getCreatorStats);
+
+// Room by ID (works for both offline and live)
 router.get("/:roomId", roomController.getRoomById);
 
-// Room lifecycle (auth required)
-router.post("/", protectRoute, roomController.createRoom);
-router.post("/:roomId/join", protectRoute, roomController.joinRoom);
-router.post("/:roomId/leave", protectRoute, roomController.leaveRoom);
-router.post("/:roomId/close", protectRoute, roomController.closeRoom);
+// Creator channel management
+router.post("/",                  protectRoute, roomController.upsertRoom);
+router.post("/:roomId/go-live",   protectRoute, roomController.goLive);
+router.post("/:roomId/go-offline",protectRoute, roomController.goOffline);
 
-// Creator controls (auth required; creator check is in service layer)
-router.post("/:roomId/skip", protectRoute, roomController.skipSong);
+// Session actions (auth required)
+router.post("/:roomId/join",  protectRoute, roomController.joinRoom);
+router.post("/:roomId/leave", protectRoute, roomController.leaveRoom);
+router.post("/:roomId/skip",  protectRoute, roomController.skipSong);
 router.post("/:roomId/queue", protectRoute, roomController.addToQueue);
 
 // Chat
 router.post("/:roomId/chat", protectRoute, roomController.sendChatMessage);
+
+// Favorites
+router.post("/:roomId/favorite", protectRoute, roomController.toggleFavorite);
 
 export default router;
