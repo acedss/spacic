@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/clerk-react';
 import { io, Socket } from 'socket.io-client';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useWalletStore } from '@/stores/useWalletStore';
 import { useAudioRef, useSongEndedCallbackRef, useTimeUpdateCallbackRef, usePlayStateCallbackRef } from '@/providers/AudioProvider';
 import { useAuthStore } from '@/stores/useAuthStore';
 
@@ -32,6 +33,7 @@ export const useRoomSocket = (roomId: string) => {
     const roomStore = useRoomStore();
     const playerStore = usePlayerStore();
     useAuthStore(); // subscribes to auth state; isAdmin accessed via .getState() in callbacks
+    const walletStore = useWalletStore();
     const audioRef = useAudioRef();
     const songEndedCallbackRef = useSongEndedCallbackRef();
     const timeUpdateCallbackRef = useTimeUpdateCallbackRef();
@@ -42,7 +44,6 @@ export const useRoomSocket = (roomId: string) => {
     }, []);
 
     const sendChat = useCallback((message: string) => {
-        console.log('[Chat] >> SEND room:chat');
         emit('room:chat', { roomId, message });
     }, [roomId, emit]);
 
@@ -54,6 +55,16 @@ export const useRoomSocket = (roomId: string) => {
         emit('room:leave', { roomId, clerkId: userId });
         socketRef.current?.disconnect();
     }, [roomId, userId, emit]);
+
+    const donate = useCallback((amount: number) => {
+        // Generate UUID here (before emit) so retries reuse the same key
+        const idempotencyKey = crypto.randomUUID();
+        emit('room:donate', { roomId, amount, idempotencyKey });
+    }, [roomId, emit]);
+
+    const updateGoal = useCallback((newGoal: number) => {
+        emit('room:update_goal', { roomId, newGoal });
+    }, [roomId, emit]);
 
     useEffect(() => {
         if (!userId || !roomId) return;
@@ -83,7 +94,6 @@ export const useRoomSocket = (roomId: string) => {
             const { isCreator } = useRoomStore.getState();
             const { isAdmin: adminNow } = useAuthStore.getState();
             if (!isSeeked || (!isCreator && !adminNow)) return;
-            console.log(`[Socket] >> SEND room:seek | positionMs=${Math.round(currentTimeMs)} isCreator=${isCreator} isAdmin=${adminNow}`);
             socket.emit('room:seek', { roomId, seekPositionMs: currentTimeMs });
         };
 
@@ -100,7 +110,6 @@ export const useRoomSocket = (roomId: string) => {
         };
 
         socket.on('connect', () => {
-            console.log(`[Socket] >> SEND room:join | room=${roomId} clerkId=${userId}`);
             socket.emit('room:join', { roomId, clerkId: userId });
         });
 
@@ -115,7 +124,6 @@ export const useRoomSocket = (roomId: string) => {
             listenerCount: number;
             serverTimestamp: number;
         }) => {
-            console.log('[Socket] << RECV room:joined', { isCreator, listenerCount });
             roomStore.setIsCreator(isCreator);
             roomStore.setListenerCount(listenerCount);
             if (playback) {
@@ -131,22 +139,12 @@ export const useRoomSocket = (roomId: string) => {
                     serverTimestamp,
                 );
 
-                console.table({
-                    event: 'room:joined',
-                    isPlaying: playback.isPlaying,
-                    startTimeUnix: playback.startTimeUnix,
-                    serverTimestamp,
-                    latencyMs: Date.now() - serverTimestamp,
-                    computedPositionMs: Math.round(positionMs),
-                });
-
                 playerStore.setCurrentTimeMs(positionMs);
                 playerStore.setSynced(false);
 
                 // Force-seek audio element directly — bypasses store→effect race
                 if (audioRef.current) {
                     audioRef.current.currentTime = positionMs / 1000;
-                    console.log('[Socket] Force-seek audio to', Math.round(positionMs), 'ms');
                 }
                 setTimeout(() => {
                     playerStore.setSynced(true);
@@ -193,19 +191,6 @@ export const useRoomSocket = (roomId: string) => {
                 serverTimestamp,
             );
 
-            console.log('[Socket] << RECV room:sync');
-            console.table({
-                event: 'room:sync',
-                isPlaying,
-                startTimeUnix,
-                pausedAtMs,
-                serverTimestamp,
-                clientNow: Date.now(),
-                latencyMs: Date.now() - serverTimestamp,
-                computedPositionMs: Math.round(positionMs),
-                audioCurrentMs: audioRef.current ? Math.round(audioRef.current.currentTime * 1000) : null,
-            });
-
             playerStore.setPlaying(isPlaying);
             if (startTimeUnix !== undefined) playerStore.setStartTimeUnix(startTimeUnix ?? null);
             if (pausedAtMs !== undefined) playerStore.setPausedAtMs(pausedAtMs ?? null);
@@ -219,7 +204,6 @@ export const useRoomSocket = (roomId: string) => {
             // before the useEffect sync correction can fire.
             if (audioRef.current) {
                 audioRef.current.currentTime = positionMs / 1000;
-                console.log('[Socket] Force-seek audio to', Math.round(positionMs), 'ms');
             }
             setTimeout(() => {
                 playerStore.setSynced(true);
@@ -247,17 +231,7 @@ export const useRoomSocket = (roomId: string) => {
             const liveTimeMs = audioRef.current ? audioRef.current.currentTime * 1000 : usePlayerStore.getState().currentTimeMs;
             const drift = Math.abs(liveTimeMs - expectedMs);
 
-            console.table({
-                event: 'sync_checkpoint',
-                expectedMs: Math.round(expectedMs),
-                audioMs: Math.round(liveTimeMs),
-                drift: Math.round(drift),
-                correcting: drift > 500,
-                latencyMs: Date.now() - serverTimestamp,
-            });
-
             if (drift > 500) {
-                console.log(`[Sync] Drift detected: ${Math.round(drift)}ms. Correcting...`);
                 playerStore.setCurrentTimeMs(expectedMs);
                 playerStore.setSynced(false);
                 if (audioRef.current) {
@@ -277,7 +251,7 @@ export const useRoomSocket = (roomId: string) => {
             song?: { _id: string; title: string; artist: string; duration: number; imageUrl?: string; s3Key: string; albumId?: string | null };
             songPresignedUrl?: string;
             startTimeUnix: number;
-            serverTimestamp: number;
+            serverTimestamp?: number;
         }) => {
             syncInProgressRef.current = true;
             // Block onTimeUpdate from overwriting position with stale audio data
@@ -336,13 +310,33 @@ export const useRoomSocket = (roomId: string) => {
             }
         });
 
-        socket.on('room:closed', () => {
+        socket.on('room:offline', () => {
             const current = roomStore.room;
-            if (current) roomStore.setRoom({ ...current, status: 'closed' });
+            if (current) roomStore.setRoom({ ...current, status: 'offline' });
+            playerStore.setPlaying(false);
             if (countdownRef.current) {
                 clearInterval(countdownRef.current);
                 countdownRef.current = null;
             }
+        });
+
+        socket.on('wallet:balance_updated', ({ balance }: { balance: number }) => {
+            walletStore.setBalance(balance);
+        });
+
+        socket.on('room:goal_updated', ({ streamGoal, streamGoalCurrent }: {
+            roomId: string;
+            streamGoal: number;
+            streamGoalCurrent: number;
+            donor: { name: string; amount: number };
+        }) => {
+            const current = roomStore.room;
+            if (current) roomStore.setRoom({ ...current, streamGoal, streamGoalCurrent });
+        });
+
+        socket.on('room:goal_reached', () => {
+            // room:goal_updated already set the correct streamGoalCurrent before this fires.
+            // Nothing to override here — this event is just a trigger for UI celebrations.
         });
 
         socket.on('room:error', ({ message }: { message: string }) => {
@@ -371,5 +365,5 @@ export const useRoomSocket = (roomId: string) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, userId]);
 
-    return { sendChat, skipSong, leaveRoom };
+    return { sendChat, skipSong, leaveRoom, donate, updateGoal };
 };

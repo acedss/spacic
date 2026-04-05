@@ -12,6 +12,7 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         // Attach a request interceptor so every axios call gets a fresh token.
         // Clerk's getToken() caches internally and only refreshes when near expiry.
+        // Interceptor is set up once on mount; getToken reference is captured via closure.
         const interceptorId = axiosInstance.interceptors.request.use(async (config) => {
             try {
                 const token = await getToken();
@@ -22,10 +23,19 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             return config;
         });
 
+        return () => {
+            axiosInstance.interceptors.request.eject(interceptorId);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // interceptor set up once — getToken is stable via closure
+
+    useEffect(() => {
+        // Re-check admin status only when the logged-in user changes.
+        // getToken and checkAdminStatus are intentionally excluded — both are stable
+        // references that don't affect when the check should run.
         const initAuth = async () => {
             try {
-                const token = await getToken()
-                if (token) await checkAdminStatus();
+                if (userId) await checkAdminStatus();
             } catch (error) {
                 console.log("Error in auth provider ", error)
             } finally {
@@ -33,12 +43,8 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             }
         };
         initAuth();
-
-        return () => {
-            axiosInstance.interceptors.request.eject(interceptorId);
-        }
-
-    }, [getToken, checkAdminStatus, userId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userId]);
     if (loading) return (
         <div className="flex items-center justify-center w-full h-screen">
             <Loader className="size-8 text-emerald-50 animate-spin" />

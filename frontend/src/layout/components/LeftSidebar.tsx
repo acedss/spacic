@@ -1,7 +1,8 @@
-import { Home, Search, Users, Target, Wallet, User } from 'lucide-react'
+import { Home, Search, Users, Target, Wallet, User, Crown, Radio } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { useWalletStore } from '@/stores/useWalletStore'
 import {
     Tooltip,
     TooltipContent,
@@ -18,13 +19,16 @@ const navItems = [
     { to: '/search', icon: Search, label: 'Search' },
     { to: '/rooms', icon: Users, label: 'Co-listening Rooms' },
     { to: '/goal', icon: Target, label: 'Album Goals' },
-    { to: '/wallet', icon: Wallet, label: 'Wallet', badge: '1,250' },
+    { to: '/creator', icon: Radio, label: 'Creator Studio' },
+    { to: '/wallet', icon: Wallet, label: 'Wallet', isWallet: true },
+    { to: '/subscription', icon: Crown, label: 'Subscription' },
     { to: '/profile', icon: User, label: 'Profile' },
 ]
 
 export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
     const { user } = useUser()
     const { isAdmin } = useAuthStore()
+    const { balance } = useWalletStore()
 
     return (
         <TooltipProvider delayDuration={200}>
@@ -42,11 +46,15 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
 
                 {/* Nav */}
                 <nav className='flex-1 space-y-1'>
-                    {navItems.map(({ to, icon: Icon, label, badge }) => {
+                    {navItems.map(({ to, icon: Icon, label, isWallet }) => {
                         const isProfile = to === '/profile'
+                        const badge = isWallet && balance > 0
+                            ? `${balance.toLocaleString()} 🪙`
+                            : undefined
 
                         const linkEl = (
                             <Link
+                                key={to}
                                 to={to}
                                 className='flex items-center py-3 text-white hover:text-purple-300 transition-colors'
                             >
@@ -82,10 +90,10 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
                                                     <img
                                                         src={user.imageUrl}
                                                         alt={user.fullName ?? 'User'}
-                                                        className="size-10 rounded-full object-cover flex-shrink-0"
+                                                        className="size-10 rounded-full object-cover shrink-0"
                                                     />
                                                 ) : (
-                                                    <div className="size-10 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0">
+                                                    <div className="size-10 rounded-full bg-zinc-800 flex items-center justify-center shrink-0">
                                                         <User className="size-4 text-zinc-400" />
                                                     </div>
                                                 )}

@@ -6,6 +6,11 @@ import MainLayout from "./layout/MainLayout";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { Toaster } from "./components/ui/sonner";
 import NotFoundPage from "./pages/404/NotFoundPage";
+import WalletPage from "./pages/wallet/WalletPage";
+import SubscriptionPage from "./pages/subscription/SubscriptionPage";
+import ProtectedRoute from "./components/ProtectedRoute";
+import ProfilePage from "./pages/profile/ProfilePage";
+import CreatorDashboardPage from "./pages/creator/CreatorDashboardPage";
 
 export default function App() {
   return (
@@ -15,7 +20,11 @@ export default function App() {
         <Route path="/admin" element={<AdminPage />} />
         <Route element={<MainLayout />}>
           <Route path="/" element={<HomePage />} />
-          <Route path="/rooms/:roomId" element={<RoomPage />} />
+          <Route path="/rooms/:roomId" element={<ProtectedRoute><RoomPage /></ProtectedRoute>} />
+          <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
+          <Route path="/subscription" element={<ProtectedRoute><SubscriptionPage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/creator" element={<ProtectedRoute><CreatorDashboardPage /></ProtectedRoute>} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
