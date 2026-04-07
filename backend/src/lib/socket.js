@@ -3,13 +3,16 @@
 
 import { Server } from 'socket.io';
 import { socketManager } from './socket-manager.js';
+import { setIo } from './io.js';
 import { User } from '../models/user.model.js';
 import { Listener } from '../models/listener.model.js';
 import { Room } from '../models/room.model.js';
 import { Song } from '../models/song.model.js';
+import { Friendship } from '../models/friendship.model.js';
 import { getPresignedUrl } from '../services/s3.services.js';
 import { donateToRoom } from '../services/wallet.service.js';
-import { goOfflineInternal } from '../services/room.service.js';
+import { goOfflineInternal, recordSongTransition } from '../services/room.service.js';
+import geoip from 'geoip-lite';
 
 // Per-process timers — intentionally not in Redis.
 // syncIntervals: lightweight heartbeat, one per room per process.
@@ -56,12 +59,51 @@ const emitSystemMessage = (io, roomId, text) => {
     });
 };
 
+// Notify all friends of a user that their activity feed should refresh.
+// Accepts a single userId or an array to batch-notify after room shutdown.
+const notifyFriendsActivityChanged = async (io, userIdOrIds) => {
+    try {
+        const ids = Array.isArray(userIdOrIds) ? userIdOrIds : [userIdOrIds];
+
+        const friendships = await Friendship.find({
+            $or: [{ requester: { $in: ids } }, { recipient: { $in: ids } }],
+            status: 'accepted',
+        }).select('requester recipient');
+
+        // Collect unique friend IDs to notify — avoid duplicates when multiple
+        // users in a room share the same friend
+        const toNotify = new Set();
+        for (const f of friendships) {
+            const rStr = f.requester.toString();
+            const rcStr = f.recipient.toString();
+            const isRequester = ids.some((id) => id.toString() === rStr);
+            toNotify.add(isRequester ? rcStr : rStr);
+        }
+
+        // Single chained emit rather than N individual io.to() calls
+        if (toNotify.size === 0) return;
+        let emitter = io;
+        for (const friendId of toNotify) emitter = emitter.to(friendId);
+        emitter.emit('friend:activity_changed');
+    } catch (err) {
+        console.error('[Socket] notifyFriendsActivityChanged error:', err.message);
+    }
+};
+
 const goOfflineAndNotify = async (io, roomId, reason) => {
     stopSyncCheckpoint(roomId);
     disconnectTimers.delete(roomId);
     songEndedDebounce.delete(roomId);
+
+    // Capture listener IDs BEFORE goOfflineInternal marks them inactive + clears Redis
+    const activeListeners = await Listener.find({ roomId, isActive: true }).select('userId');
+
     await goOfflineInternal(roomId);
     io.to(roomId).emit('room:offline', { roomId, reason });
+
+    // One batched query for all listener IDs instead of N individual queries
+    const listenerIds = activeListeners.map((l) => l.userId);
+    if (listenerIds.length > 0) notifyFriendsActivityChanged(io, listenerIds);
 };
 
 // ── User Resolution (cache → DB fallback) ────────────────────────────────────
@@ -179,6 +221,7 @@ export const initializeSocket = (httpServer) => {
     const io = new Server(httpServer, {
         cors: { origin: 'http://localhost:5173', methods: ['GET', 'POST'], credentials: true },
     });
+    setIo(io);
 
     io.on('connection', async (socket) => {
 
@@ -202,6 +245,24 @@ export const initializeSocket = (httpServer) => {
                 await socketManager.updateUserCurrentRoom(socket.id, roomId);
                 startSyncCheckpoint(io, roomId);
 
+                // Resolve geo from IP (synchronous lookup, sub-millisecond, no external call)
+                const rawIp = (socket.handshake.headers['x-forwarded-for'] ?? '')
+                    .split(',')[0].trim() || socket.handshake.address;
+                const ip  = rawIp.replace(/^::ffff:/, ''); // strip IPv4-mapped IPv6
+                const geo = geoip.lookup(ip);
+
+                // Persist to DB so activity feed (getFriendsActivity) can find active listeners
+                await Listener.findOneAndUpdate(
+                    { roomId, userId: user.userId },
+                    {
+                        isActive: true, joinedAt: new Date(), $unset: { leftAt: '' },
+                        country: geo?.country ?? null,
+                        region:  geo?.region  ?? null,
+                        city:    geo?.city    ?? null,
+                    },
+                    { upsert: true }
+                );
+
                 const playbackState = await socketManager.getRoomPlaybackState(roomId);
                 let currentSongPresignedUrl = null;
                 if (playbackState?.currentSongS3Key) {
@@ -209,6 +270,20 @@ export const initializeSocket = (httpServer) => {
                 }
 
                 const isCreator = roomSession.creatorId === user.userId;
+
+                // Creator page-reload: cancel the shutdown countdown automatically
+                if (isCreator) {
+                    const pendingTimer = disconnectTimers.get(roomId);
+                    if (pendingTimer) {
+                        clearTimeout(pendingTimer);
+                        disconnectTimers.delete(roomId);
+                        await Room.findByIdAndUpdate(roomId, { status: 'live' });
+                        io.to(roomId).emit('room:creator_reconnected', {
+                            roomId, message: 'Creator is back!',
+                        });
+                    }
+                }
+
                 socket.emit('room:joined', {
                     roomId,
                     playback: playbackState ? { ...playbackState, currentSongPresignedUrl } : null,
@@ -223,6 +298,9 @@ export const initializeSocket = (httpServer) => {
                     listenerCount: updatedRoom?.listenerCount ?? 0,
                 });
                 emitSystemMessage(io, roomId, `${user.fullName} joined the room`);
+
+                // Notify friends that this user joined a room
+                await notifyFriendsActivityChanged(io, user.userId);
             } catch (error) {
                 console.error(`[Server] room:join ERROR:`, error.message);
                 socket.emit('room:error', { message: error.message });
@@ -250,6 +328,9 @@ export const initializeSocket = (httpServer) => {
                     reason: 'voluntary_leave',
                 });
                 emitSystemMessage(io, roomId, `${user.fullName} left the room`);
+
+                // Notify friends that this user left the room
+                await notifyFriendsActivityChanged(io, user.userId);
             } catch (error) {
                 console.error('room:leave error', error);
             }
@@ -328,14 +409,26 @@ export const initializeSocket = (httpServer) => {
                 if (!canControlRoom(userSession, roomSession)) {
                     return socket.emit('room:error', { message: 'Only the creator or admin can skip songs' });
                 }
-                const currentIndex = (await Room.findById(roomId).select('playback.currentSongIndex'))
-                    ?.playback?.currentSongIndex ?? 0;
-                const { nextSong, nextIndex, presignedUrl, startTimeUnix } = await getNextSong(roomId, currentIndex);
+
+                // Fetch index + startTimeUnix together
+                const roomDoc      = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
+                const currentIndex = roomDoc?.playback?.currentSongIndex ?? 0;
+                const prevStart    = roomDoc?.playback?.startTimeUnix ?? null;
+
+                // Snapshot current song BEFORE advancing (needed for analytics)
+                const playlist    = await socketManager.getCachedPlaylist(roomId);
+                const currentSong = playlist?.[currentIndex] ?? null;
+
+                const { nextSong, nextIndex, presignedUrl, startTimeUnix: nextStart } = await getNextSong(roomId, currentIndex);
                 io.to(roomId).emit('room:song_changed', {
                     roomId, songIndex: nextIndex, song: nextSong,
-                    songPresignedUrl: presignedUrl, startTimeUnix, serverTimestamp: Date.now(),
+                    songPresignedUrl: presignedUrl, startTimeUnix: nextStart, serverTimestamp: Date.now(),
                 });
                 emitSystemMessage(io, roomId, `Now playing: ${nextSong.title} — ${nextSong.artist}`);
+
+                // Fire-and-forget — analytics must not block playback
+                recordSongTransition(roomId, currentSong, prevStart, true)
+                    .catch(err => console.error('[room:skip analytics]', err.message));
             } catch (error) {
                 socket.emit('room:error', { message: error.message });
             }
@@ -399,17 +492,29 @@ export const initializeSocket = (httpServer) => {
             try {
                 const lastAdvance = songEndedDebounce.get(roomId);
                 if (lastAdvance && Date.now() - lastAdvance < 3000) return;
-                const room = await Room.findById(roomId).select('playback.currentSongIndex');
-                if (!room) return;
-                const serverIndex = room.playback?.currentSongIndex ?? 0;
+
+                // Fetch index + startTimeUnix together
+                const roomDoc   = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
+                if (!roomDoc) return;
+                const serverIndex = roomDoc.playback?.currentSongIndex ?? 0;
                 if (currentSongIndex !== serverIndex) return;
                 songEndedDebounce.set(roomId, Date.now());
-                const { nextSong, nextIndex, presignedUrl, startTimeUnix } = await getNextSong(roomId, currentSongIndex);
+
+                // Snapshot current song BEFORE advancing (needed for analytics)
+                const playlist    = await socketManager.getCachedPlaylist(roomId);
+                const currentSong = playlist?.[currentSongIndex] ?? null;
+                const prevStart   = roomDoc.playback?.startTimeUnix ?? null;
+
+                const { nextSong, nextIndex, presignedUrl, startTimeUnix: nextStart } = await getNextSong(roomId, currentSongIndex);
                 io.to(roomId).emit('room:song_changed', {
                     roomId, songIndex: nextIndex, song: nextSong,
-                    songPresignedUrl: presignedUrl, startTimeUnix, serverTimestamp: Date.now(),
+                    songPresignedUrl: presignedUrl, startTimeUnix: nextStart, serverTimestamp: Date.now(),
                 });
                 emitSystemMessage(io, roomId, `Now playing: ${nextSong.title} — ${nextSong.artist}`);
+
+                // Fire-and-forget — analytics must not block playback
+                recordSongTransition(roomId, currentSong, prevStart, false)
+                    .catch(err => console.error('[room:song_ended analytics]', err.message));
             } catch (error) {
                 console.error('[Server] room:song_ended ERROR:', error);
                 socket.emit('room:error', { message: 'Failed to advance to next song.' });
@@ -424,13 +529,14 @@ export const initializeSocket = (httpServer) => {
                 const roomSession = await socketManager.getRoomById(roomId);
 
                 if (roomSession && roomSession.creatorId === userSession.userId) {
-                    // Room stays 'live' in DB during 15s countdown — only goOfflineAndNotify marks it offline
+                    // 45s grace period — covers slow page reloads and brief network drops
+                    const GRACE_MS = 45_000;
                     io.to(roomId).emit('room:creator_disconnected', {
-                        roomId, countdownSeconds: 15,
-                        message:   'Creator disconnected. Room going offline in 15 seconds...',
-                        closingAt: new Date(Date.now() + 15000),
+                        roomId, countdownSeconds: Math.floor(GRACE_MS / 1000),
+                        message:   'Creator disconnected. Room going offline soon...',
+                        closingAt: new Date(Date.now() + GRACE_MS),
                     });
-                    const timer = setTimeout(() => goOfflineAndNotify(io, roomId, 'creator_disconnected'), 15000);
+                    const timer = setTimeout(() => goOfflineAndNotify(io, roomId, 'creator_disconnected'), GRACE_MS);
                     disconnectTimers.set(roomId, timer);
                 } else {
                     await socketManager.removeRoomListener(roomId, userSession.userId);
@@ -441,6 +547,11 @@ export const initializeSocket = (httpServer) => {
                         reason: 'network_disconnect',
                     });
                 }
+            }
+
+            // Notify friends that this user went offline
+            if (userSession?.userId) {
+                await notifyFriendsActivityChanged(io, userSession.userId);
             }
 
             await socketManager.removeUserSession(socket.id);
@@ -481,6 +592,8 @@ export const initializeSocket = (httpServer) => {
                     userId: user.userId, clerkId, userName: user.fullName,
                     userImage: user.imageUrl, userTier: user.userTier, role: user.role,
                 });
+                // Personal room — enables io.to(userId).emit(...) for friend events
+                socket.join(user.userId);
             }
         }
     });

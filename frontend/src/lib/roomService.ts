@@ -69,3 +69,20 @@ export const sendChatMessage = async (roomId: string, message: string) => {
     const { data } = await axiosInstance.post(`/rooms/${roomId}/chat`, { message });
     return data.data;
 };
+
+// ── Favorites ──────────────────────────────────────────────────────────────
+
+export const getFavoriteRooms = async () => {
+    const { data } = await axiosInstance.get('/rooms/me/favorites');
+    return data as { data: RoomInfo[] };
+};
+
+export const getFavoriteStatus = async (roomId: string): Promise<boolean> => {
+    const { data } = await axiosInstance.get(`/rooms/${roomId}/favorite`);
+    return data.data.favorited;
+};
+
+export const toggleFavorite = async (roomId: string): Promise<{ favorited: boolean }> => {
+    const { data } = await axiosInstance.post(`/rooms/${roomId}/favorite`);
+    return data.data;
+};

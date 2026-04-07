@@ -1,25 +1,30 @@
-import { Home, Search, Users, Target, Wallet, User, Crown, Radio } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { useUser } from '@clerk/clerk-react'
+import { Home, Search, Users, Target, Wallet, User, Crown, Radio, UserPlus, Zap, Heart } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useUser, useAuth } from '@clerk/clerk-react'
+import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useWalletStore } from '@/stores/useWalletStore'
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { useRoomStore } from '@/stores/useRoomStore'
+import { axiosInstance } from '@/lib/axios'
+import { useSocialSocket } from '@/providers/SocialSocketProvider'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 interface LeftSidebarProps {
     isCollapsed: boolean
 }
 
+type RoomState = 'none' | 'offline' | 'live'
+
+
+
 const navItems = [
     { to: '/', icon: Home, label: 'Home' },
     { to: '/search', icon: Search, label: 'Search' },
     { to: '/rooms', icon: Users, label: 'Co-listening Rooms' },
+    { to: '/friends', icon: UserPlus, label: 'Friends' },
+    { to: '/favorites', icon: Heart, label: 'Favorites' },
     { to: '/goal', icon: Target, label: 'Album Goals' },
-    { to: '/creator', icon: Radio, label: 'Creator Studio' },
     { to: '/wallet', icon: Wallet, label: 'Wallet', isWallet: true },
     { to: '/subscription', icon: Crown, label: 'Subscription' },
     { to: '/profile', icon: User, label: 'Profile' },
@@ -29,6 +34,61 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
     const { user } = useUser()
     const { isAdmin } = useAuthStore()
     const { balance } = useWalletStore()
+    const navigate = useNavigate()
+    const socket   = useSocialSocket()
+    const [roomState, setRoomState] = useState<RoomState>('none')
+    const [liveRoomId, setLiveRoomId] = useState<string | null>(null)
+    const [listenerCount, setListenerCount] = useState(0)
+    // When creator is actively in the room, useRoomStore has live listener count
+    const storeListenerCount = useRoomStore(s => s.listenerCount)
+    const isCreator = useRoomStore(s => s.isCreator)
+    const effectiveListenerCount = (roomState === 'live' && isCreator && storeListenerCount > 0)
+        ? storeListenerCount
+        : listenerCount
+
+    // Fetch initial room status from REST on mount
+    useEffect(() => {
+        axiosInstance.get('/rooms/me/room')
+            .then(({ data }) => {
+                const room = data.data
+                if (!room) return
+                setRoomState(room.status === 'live' ? 'live' : 'offline')
+                if (room.status === 'live') {
+                    setLiveRoomId(room._id)
+                    setListenerCount(room.listenerCount ?? 0)
+                }
+            })
+            .catch(() => {})
+    }, [])
+
+    // Real-time room status via shared socket
+    useEffect(() => {
+        if (!socket) return
+
+        const onLive    = ({ roomId }: { roomId: string }) => { setRoomState('live'); setLiveRoomId(roomId); setListenerCount(0) }
+        const onOffline = () => { setRoomState('offline'); setLiveRoomId(null); setListenerCount(0) }
+
+        socket.on('creator:room_live',    onLive)
+        socket.on('creator:room_offline', onOffline)
+
+        return () => {
+            socket.off('creator:room_live',    onLive)
+            socket.off('creator:room_offline', onOffline)
+        }
+    }, [socket])
+
+    const handleGoLiveCta = () => {
+        if (roomState === 'live' && liveRoomId) {
+            navigate(`/rooms/${liveRoomId}`)
+        } else {
+            navigate('/creator')
+        }
+    }
+
+    const ctaLabel = roomState === 'live' ? 'Live Now' : roomState === 'offline' ? 'Go Live' : 'Create Room'
+    const ctaColor = roomState === 'live'
+        ? 'bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30'
+        : 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30'
 
     return (
         <TooltipProvider delayDuration={200}>
@@ -74,17 +134,17 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
                             </Link>
                         )
 
-                        // Profile: always show card tooltip
+                        // Profile: Popover (click-triggered, works on touch)
                         if (isProfile) {
                             return (
-                                <Tooltip key={to}>
-                                    <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
-                                    <TooltipContent
+                                <Popover key={to}>
+                                    <PopoverTrigger asChild>{linkEl}</PopoverTrigger>
+                                    <PopoverContent
                                         side="right"
                                         sideOffset={12}
-                                        className="p-0 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl"
+                                        className="p-0 w-56 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl"
                                     >
-                                        <div className="p-4 w-56 space-y-3">
+                                        <div className="p-4 space-y-3">
                                             <div className="flex items-center gap-3">
                                                 {user?.imageUrl ? (
                                                     <img
@@ -125,8 +185,8 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
                                                 </Link>
                                             </div>
                                         </div>
-                                    </TooltipContent>
-                                </Tooltip>
+                                    </PopoverContent>
+                                </Popover>
                             )
                         }
 
@@ -148,6 +208,42 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
                         )
                     })}
                 </nav>
+
+                {/* Go Live / Create Room CTA */}
+                <div className='pb-6 px-2'>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <button
+                                onClick={handleGoLiveCta}
+                                className={`w-full flex items-center rounded-xl py-2.5 transition-all ${ctaColor}`}
+                            >
+                                <div className='w-12 flex justify-center shrink-0'>
+                                    {roomState === 'live'
+                                        ? <span className='w-2 h-2 rounded-full bg-green-400 animate-pulse' />
+                                        : <Zap className='size-4' />
+                                    }
+                                </div>
+                                {!isCollapsed && (
+                                    <div className='flex flex-col pr-4'>
+                                        <span className='text-sm font-semibold whitespace-nowrap leading-tight'>
+                                            {roomState === 'live' ? 'Live Now' : ctaLabel}
+                                        </span>
+                                        {roomState === 'live' && effectiveListenerCount > 0 && (
+                                            <span className='text-[10px] text-green-400/70 leading-tight'>
+                                                {effectiveListenerCount} listener{effectiveListenerCount !== 1 ? 's' : ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </button>
+                        </TooltipTrigger>
+                        {isCollapsed && (
+                            <TooltipContent side="right" sideOffset={12}>
+                                <span>{ctaLabel}</span>
+                            </TooltipContent>
+                        )}
+                    </Tooltip>
+                </div>
             </div>
         </TooltipProvider>
     )

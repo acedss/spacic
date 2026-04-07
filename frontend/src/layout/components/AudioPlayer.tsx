@@ -26,8 +26,10 @@ const AudioPlayer = () => {
 
         audioRef.current.src = currentSong.audioUrl;
         skipNextSeekEmitRef.current = true;
-        // New song → start from 0; same song with new URL → keep position
-        audioRef.current.currentTime = isNewSong ? 0 : currentTimeMs / 1000;
+        // Always use currentTimeMs — for new songs it's 0 (set by room:song_changed),
+        // for URL refreshes (presigned URL rotation) it preserves the live position,
+        // and for initial join it's the server-computed offset from room:joined.
+        audioRef.current.currentTime = currentTimeMs / 1000;
         if (isPlaying) audioRef.current.play().catch(() => { });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentSong?._id, currentSong?.audioUrl]);

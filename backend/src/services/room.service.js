@@ -8,8 +8,149 @@ import { User } from "../models/user.model.js";
 import { Song } from "../models/song.model.js";
 import { Transaction } from "../models/transaction.model.js";
 import { RoomFavorite } from "../models/roomFavorite.model.js";
+import { InviteLog } from "../models/inviteLog.model.js";
+import { SongPlay } from "../models/songPlay.model.js";
+import { ListenEvent } from "../models/listenEvent.model.js";
+import { redis } from "../lib/redis.js";
 import { socketManager } from "../lib/socket-manager.js";
+import { getIo } from "../lib/io.js";
 import { getPresignedUrl } from "./s3.services.js";
+
+// ── Song Transition Analytics ─────────────────────────────────────────────────
+// Called fire-and-forget from socket.js on room:skip and room:song_ended.
+// Writes one SongPlay (room aggregate) + N ListenEvents (per user).
+// Never throws — errors are logged and swallowed so playback is unaffected.
+
+export const recordSongTransition = async (roomId, song, startTimeUnix, wasSkipped) => {
+    if (!startTimeUnix || !song?._id) return;
+
+    const songEndMs      = Date.now();
+    const totalDurationMs = songEndMs - startTimeUnix;
+
+    // Skip songs that barely played (rapid double-skip, room just opened)
+    if (totalDurationMs < 1000) return;
+
+    try {
+        // All listeners who were in the room at any point during this song
+        const listeners = await Listener.find({
+            roomId:   new mongoose.Types.ObjectId(roomId),
+            joinedAt: { $lte: new Date(songEndMs) },
+            $or: [
+                { isActive: true },
+                { leftAt: { $gte: new Date(startTimeUnix) } }, // left AFTER song started
+            ],
+        }).lean();
+
+        // Compute per-listener window, grouped by userId.
+        // A reconnect produces two Listener docs for the same user — sum their
+        // windows before applying the 30s threshold to avoid under-counting.
+        const windowsByUser = new Map(); // userId.toString() → { listener, listenedMs }
+        for (const l of listeners) {
+            const uid            = l.userId.toString();
+            const effectiveStart = Math.max(startTimeUnix, l.joinedAt.getTime());
+            const effectiveEnd   = l.isActive
+                ? songEndMs
+                : Math.min(songEndMs, l.leftAt.getTime());
+            const ms             = Math.max(0, effectiveEnd - effectiveStart);
+            const existing       = windowsByUser.get(uid);
+            windowsByUser.set(uid, {
+                listener:   existing?.listener ?? l,           // keep first doc for geo
+                listenedMs: (existing?.listenedMs ?? 0) + ms, // sum reconnect sessions
+            });
+        }
+
+        const windows = [...windowsByUser.values()].map(w => ({
+            ...w, countedStream: w.listenedMs >= 30_000,
+        }));
+
+        const streamListeners = windows.filter(w => w.countedStream).length;
+        const startDate       = new Date(startTimeUnix);
+
+        // 1. Write SongPlay (room-level aggregate, owns the time window)
+        const songPlay = await SongPlay.create({
+            songId:   song._id,
+            roomId:   new mongoose.Types.ObjectId(roomId),
+            startedAt: startDate,
+            endedAt:   new Date(songEndMs),
+            totalDurationMs,
+            wasSkipped,
+            presentCount:    listeners.length,
+            streamListeners,
+            countedStream:   streamListeners > 0,
+        });
+
+        // Pre-compute time fields once (shared across all ListenEvents for this play)
+        const hour      = startDate.getHours();
+        const dayOfWeek = startDate.getDay();
+
+        // 2. Build ListenEvent docs — lean, only listenedMs delta, no timestamp duplication
+        // playedAt copied from startDate so TTL index and time-range queries work
+        const events = windows.map(({ listener, listenedMs, countedStream }) => ({
+            userId:        listener.userId,
+            songPlayId:    songPlay._id,
+            listenedMs,
+            countedStream,
+            wasSkipped,
+            songId:        song._id,
+            artistName:    song.artist,
+            songTitle:     song.title,
+            hour,
+            dayOfWeek,
+            country:       listener.country ?? null,
+            region:        listener.region  ?? null,
+            city:          listener.city    ?? null,
+            playedAt:      startDate,
+        }));
+
+        // 3. Redis real-time leaderboard — ZINCRBY trending:songs:daily <streams> <songId>
+        // Keyed by UTC date so it resets automatically each day. Expire after 2 days for cleanup.
+        const todayKey = `trending:songs:${new Date().toISOString().slice(0, 10)}`;
+
+        // 4. Bulk insert ListenEvents + increment Song counters + update Redis (parallel)
+        await Promise.all([
+            events.length > 0
+                ? ListenEvent.insertMany(events, { ordered: false })
+                : Promise.resolve(),
+            Song.findByIdAndUpdate(song._id, {
+                $inc: {
+                    streamCount: streamListeners,
+                    uniquePlays: 1,
+                    skipCount:   wasSkipped ? 1 : 0,
+                },
+            }),
+            streamListeners > 0
+                ? redis.zincrby(todayKey, streamListeners, song._id.toString())
+                    .then(() => redis.expire(todayKey, 172_800)) // 2-day expiry
+                : Promise.resolve(),
+        ]);
+    } catch (err) {
+        console.error('[recordSongTransition] error:', err.message);
+    }
+};
+
+// ── Referral tracking ─────────────────────────────────────────────────────────
+// Called when a user joins a room via a shared link (/rooms/:id?ref=referrerId).
+// Upsert so duplicate clicks don't create duplicate entries.
+// Called internally with MongoDB ObjectIds
+export const trackReferral = async (referrerId, joinerId, roomId, type = 'link') => {
+    if (!referrerId || !joinerId || referrerId.toString() === joinerId.toString()) return;
+    await InviteLog.updateOne(
+        { referrerId, joinerId, roomId, type },
+        { $setOnInsert: { referrerId, joinerId, roomId, type } },
+        { upsert: true }
+    ).catch(() => {}); // fire-and-forget
+};
+
+// Called from controller with clerkIds — resolves to ObjectIds first
+export const trackReferralByClerkIds = async (joinerClerkId, referrerClerkId, roomId, type = 'link') => {
+    if (!referrerClerkId) return;
+    const [joiner, referrer] = await Promise.all([
+        User.findOne({ clerkId: joinerClerkId }).select('_id'),
+        User.findOne({ clerkId: referrerClerkId }).select('_id'),
+    ]);
+    if (!joiner || !referrer) return;
+    await trackReferral(referrer._id, joiner._id, roomId, type);
+};
 
 // ───── Helpers ──────────────────────────────────────────────────────────────
 
@@ -191,6 +332,24 @@ export const goLive = async (roomId, clerkId) => {
         isPlaying: true,
     });
 
+    // Notify creator that their room is now live
+    const io = getIo();
+    if (io) {
+        io.to(user._id.toString()).emit('creator:room_live', { roomId: room._id.toString() });
+
+        // Notify all users who have favorited this room (online only — best effort)
+        const fans = await RoomFavorite.find({ roomId: room._id }).select('userId').lean();
+        for (const fan of fans) {
+            const fanId = fan.userId.toString();
+            if (fanId === user._id.toString()) continue; // skip creator if they favorited themselves
+            io.to(fanId).emit('room:favorite_live', {
+                roomId:      room._id.toString(),
+                title:       room.title,
+                creatorName: user.fullName,
+            });
+        }
+    }
+
     return {
         ...room.toObject(),
         status: "live",
@@ -203,11 +362,19 @@ export const goLive = async (roomId, clerkId) => {
 // Aggregates this session's stats, accumulates into room.stats, pushes session entry.
 
 export const goOfflineInternal = async (roomId) => {
-    const room = await Room.findById(roomId);
+    const room = await Room.findById(roomId).populate("playlist");
     if (!room || room.status !== "live") return; // already offline or not found
 
     const offlineAt  = new Date();
     const sessionStart = room.liveAt ?? room.createdAt;
+
+    // 0. Record analytics for the currently-playing song (fire-and-forget before listeners are marked left)
+    const currentIdx  = room.playback?.currentSongIndex ?? 0;
+    const currentSong = room.playlist?.[currentIdx] ?? null;
+    const startTimeUnix = room.playback?.startTimeUnix ?? null;
+    if (currentSong && startTimeUnix) {
+        recordSongTransition(roomId, currentSong, startTimeUnix, false).catch(() => {});
+    }
 
     // 1. Payout any remaining escrow (partial goal) to creator
     if (room.escrow > 0) {
@@ -313,6 +480,12 @@ export const goOfflineInternal = async (roomId) => {
     });
 
     await socketManager.removeRoomSession(roomId);
+
+    // Notify creator that their room is now offline
+    const io = getIo();
+    if (io) {
+        io.to(room.creatorId.toString()).emit('creator:room_offline');
+    }
 };
 
 // ───── Go Offline (REST endpoint wrapper — validates creator ownership) ────
@@ -436,6 +609,49 @@ export const sendChatMessage = async (roomId, clerkId, message) => {
         message: message.trim(),
         sentAt: new Date(),
     };
+};
+
+// ───── Get Favorite Rooms ─────────────────────────────────────────────────
+// Returns all rooms the user has favorited with live status and listener count.
+
+export const getFavoriteRooms = async (clerkId) => {
+    const user = await getUserByClerkId(clerkId);
+    const favorites = await RoomFavorite.find({ userId: user._id }).lean();
+    if (!favorites.length) return { data: [] };
+
+    const roomIds = favorites.map(f => f.roomId);
+    const rooms = await Room.find({ _id: { $in: roomIds } })
+        .populate('creatorId', 'fullName imageUrl')
+        .populate({ path: 'playlist', select: 'title artist imageUrl duration', options: { limit: 1 } })
+        .lean();
+
+    const enriched = await Promise.all(rooms.map(async (room) => {
+        const session = room.status === 'live'
+            ? await socketManager.getRoomById(room._id.toString())
+            : null;
+        return {
+            ...room,
+            listenerCount: session?.listenerCount ?? 0,
+            isFavorited: true,
+        };
+    }));
+
+    // Live rooms first, then alphabetical
+    enriched.sort((a, b) => {
+        if (a.status === 'live' && b.status !== 'live') return -1;
+        if (a.status !== 'live' && b.status === 'live') return 1;
+        return a.title.localeCompare(b.title);
+    });
+
+    return { data: enriched };
+};
+
+// ───── Get Favorite Status (single room) ─────────────────────────────────
+
+export const getFavoriteStatus = async (roomId, clerkId) => {
+    const user = await getUserByClerkId(clerkId);
+    const existing = await RoomFavorite.findOne({ userId: user._id, roomId }).lean();
+    return { favorited: !!existing };
 };
 
 // ───── Toggle Favorite ────────────────────────────────────────────────────

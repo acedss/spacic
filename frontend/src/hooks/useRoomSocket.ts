@@ -149,7 +149,7 @@ export const useRoomSocket = (roomId: string) => {
                 setTimeout(() => {
                     playerStore.setSynced(true);
                     syncInProgressRef.current = false;
-                }, 200);
+                }, 400);
 
                 if (playback.currentSongPresignedUrl) {
                     roomStore.updatePlaylistSongUrl(
@@ -208,7 +208,7 @@ export const useRoomSocket = (roomId: string) => {
             setTimeout(() => {
                 playerStore.setSynced(true);
                 syncInProgressRef.current = false;
-            }, 200);
+            }, 400);
         });
 
         // Lightweight heartbeat — re-anchors any client that drifted
@@ -237,7 +237,7 @@ export const useRoomSocket = (roomId: string) => {
                 if (audioRef.current) {
                     audioRef.current.currentTime = expectedMs / 1000;
                 }
-                setTimeout(() => playerStore.setSynced(true), 200);
+                setTimeout(() => playerStore.setSynced(true), 400);
             }
         });
 
@@ -278,7 +278,7 @@ export const useRoomSocket = (roomId: string) => {
             setTimeout(() => {
                 playerStore.setSynced(true);
                 syncInProgressRef.current = false;
-            }, 200);
+            }, 400);
         });
 
         socket.on('room:chat_message', (msg) => {

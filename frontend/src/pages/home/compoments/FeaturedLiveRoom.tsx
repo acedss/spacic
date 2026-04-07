@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { Heart, ChevronLeft, ChevronRight, Loader } from 'lucide-react'
+import { Heart, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { RoomCard } from './RoomCard'
-import { getPublicRooms } from '@/lib/roomService'
+import { getPublicRooms, toggleFavorite, getFavoriteStatus } from '@/lib/roomService'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from 'sonner'
+import { useAuth } from '@clerk/clerk-react'
 
 interface RoomData {
     _id: string
@@ -25,8 +30,10 @@ const goalProgress = (room: RoomData) =>
 export const FeaturedLiveRoom = () => {
     const scrollRef = useRef<HTMLDivElement>(null)
     const navigate = useNavigate()
+    const { userId } = useAuth()
     const [rooms, setRooms] = useState<RoomData[]>([])
     const [loading, setLoading] = useState(true)
+    const [featuredFavorited, setFeaturedFavorited] = useState(false)
 
     useEffect(() => {
         getPublicRooms({ limit: 10, sort: 'listener_count' })
@@ -34,6 +41,25 @@ export const FeaturedLiveRoom = () => {
             .catch(() => setRooms([]))
             .finally(() => setLoading(false))
     }, [])
+
+    // Check favorite status for featured room once loaded
+    useEffect(() => {
+        if (!userId || rooms.length === 0) return
+        getFavoriteStatus(rooms[0]._id)
+            .then(fav => setFeaturedFavorited(fav))
+            .catch(() => {})
+    }, [userId, rooms])
+
+    const handleFeaturedFavorite = async () => {
+        if (!userId) { navigate('/sign-in'); return }
+        try {
+            const { favorited } = await toggleFavorite(rooms[0]._id)
+            setFeaturedFavorited(favorited)
+            toast.success(favorited ? 'Added to favorites' : 'Removed from favorites')
+        } catch {
+            toast.error('Could not update favorites')
+        }
+    }
 
     const scroll = (dir: 'left' | 'right') => {
         scrollRef.current?.scrollBy({
@@ -46,8 +72,17 @@ export const FeaturedLiveRoom = () => {
         return (
             <section>
                 <h2 className='text-2xl font-semibold tracking-tight mb-6'>Featured Live Room</h2>
-                <div className='w-full rounded-[32px] bg-zinc-900 border border-white/10 h-64 flex items-center justify-center'>
-                    <Loader className='size-6 animate-spin text-zinc-500' />
+                <div className='w-full rounded-[32px] overflow-hidden border border-white/10 flex flex-col lg:flex-row'>
+                    <Skeleton className='w-full lg:w-1/2 h-64 lg:h-72 bg-zinc-900' />
+                    <div className='w-full lg:w-1/2 p-8 lg:p-12 space-y-4 bg-zinc-900'>
+                        <Skeleton className='h-8 w-3/4 bg-white/5' />
+                        <Skeleton className='h-5 w-1/2 bg-white/5' />
+                        <Skeleton className='h-4 w-full bg-white/5 mt-4' />
+                        <Skeleton className='h-2 w-full bg-white/5' />
+                        <div className='flex gap-4 pt-4'>
+                            <Skeleton className='h-14 w-40 rounded-2xl bg-white/5' />
+                        </div>
+                    </div>
                 </div>
             </section>
         )
@@ -106,23 +141,30 @@ export const FeaturedLiveRoom = () => {
                                 <span>Album Funding Progress</span>
                                 <span className='text-white'>{featuredProgress}%</span>
                             </div>
-                            <div className='w-full bg-white/5 h-2 rounded-full overflow-hidden'>
-                                <div className='bg-white h-full rounded-full transition-all duration-500' style={{ width: `${featuredProgress}%` }} />
-                            </div>
+                            <Progress value={featuredProgress} className="h-2 bg-white/5 [&>div]:bg-white [&>div]:transition-all [&>div]:duration-500" />
                             <p className='text-xs text-zinc-500'>
                                 {featured.listenerCount.toLocaleString()} listener{featured.listenerCount !== 1 ? 's' : ''} currently in room
                             </p>
                         </div>
                         <div className='flex gap-4 pt-4'>
-                            <button
+                            <Button
                                 onClick={() => navigate(`/rooms/${featured._id}`)}
-                                className='px-10 py-4 bg-white text-black text-base font-bold rounded-2xl hover:bg-zinc-200 transition-all active:scale-95'
+                                className='px-10 py-4 h-auto bg-white text-black text-base font-bold rounded-2xl hover:bg-zinc-200 active:scale-95'
                             >
                                 Join Room
-                            </button>
-                            <button className='px-4 py-4 bg-white/10 text-white rounded-2xl hover:bg-white/20 transition-all border border-white/5'>
-                                <Heart className='size-5' />
-                            </button>
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={handleFeaturedFavorite}
+                                className={`size-14 rounded-2xl border border-white/5 transition-all ${
+                                    featuredFavorited
+                                        ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                                        : 'bg-white/10 text-white hover:bg-white/20'
+                                }`}
+                            >
+                                <Heart className={`size-5 ${featuredFavorited ? 'fill-red-400' : ''}`} />
+                            </Button>
                         </div>
                     </div>
                 </div>
@@ -134,12 +176,12 @@ export const FeaturedLiveRoom = () => {
                     <div className='flex items-center justify-between'>
                         <h3 className='text-lg font-medium text-zinc-400'>Other Active Rooms</h3>
                         <div className='flex gap-1'>
-                            <button onClick={() => scroll('left')} className='p-1 text-zinc-500 hover:text-white transition-colors'>
+                            <Button variant="ghost" size="icon-sm" onClick={() => scroll('left')} className="text-zinc-500 hover:text-white">
                                 <ChevronLeft className='size-5' />
-                            </button>
-                            <button onClick={() => scroll('right')} className='p-1 text-zinc-500 hover:text-white transition-colors'>
+                            </Button>
+                            <Button variant="ghost" size="icon-sm" onClick={() => scroll('right')} className="text-zinc-500 hover:text-white">
                                 <ChevronRight className='size-5' />
-                            </button>
+                            </Button>
                         </div>
                     </div>
                     <div
