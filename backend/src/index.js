@@ -93,6 +93,7 @@ if (process.env.NODE_ENV !== 'development') {
         keyGenerator: realIp,
         standardHeaders: 'draft-8',
         legacyHeaders: false,
+        validate: { keyGeneratorIpFallback: false },
         message: { message: 'Too many payment requests — try again later' },
     }));
 }
@@ -146,4 +147,3 @@ httpServer.listen(PORT, () => {
     connectDB();
     initCron();
 });
-

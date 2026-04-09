@@ -30,8 +30,6 @@ const userSchema = new mongoose.Schema({
     },
     stripeCustomerId: {
         type: String,
-        default: null,
-        index: { unique: true, sparse: true },
     },
     stripeSubscriptionId: {
         type: String,
@@ -51,8 +49,7 @@ const userSchema = new mongoose.Schema({
     // Custom handle — searchable, not Clerk username (avoids MFA re-verification)
     username: {
         type: String,
-        default: null,
-        index: { unique: true, sparse: true },
+        default: undefined,
         match: [/^[a-z0-9_]{3,20}$/, 'Username must be 3-20 lowercase letters, numbers, or underscores'],
     },
 
@@ -66,6 +63,16 @@ const userSchema = new mongoose.Schema({
         lastLiveAt:            { type: Date,   default: null },
     },
 }, { timestamps: true }
+);
+
+// Optional unique fields should only be indexed when present as strings.
+userSchema.index(
+    { stripeCustomerId: 1 },
+    { name: 'stripeCustomerId_unique_if_string', unique: true, partialFilterExpression: { stripeCustomerId: { $type: 'string' } } },
+);
+userSchema.index(
+    { username: 1 },
+    { name: 'username_unique_if_string', unique: true, partialFilterExpression: { username: { $type: 'string' } } },
 );
 
 export const User = mongoose.model("User", userSchema);

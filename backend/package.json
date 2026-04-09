@@ -8,6 +8,7 @@
     "seed": "node src/seed.js",
     "sync-prices": "node src/scripts/syncStripePrices.js",
     "setup-stripe": "node src/scripts/setupStripe.js",
+    "fix:user-indexes": "node src/scripts/fixUserIndexes.js",
     "seed:analytics": "node src/scripts/seedAnalytics.js",
     "test": "vitest"
   },
