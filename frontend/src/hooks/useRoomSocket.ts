@@ -248,13 +248,11 @@ export const useRoomSocket = (roomId: string) => {
             song,
             songPresignedUrl,
             startTimeUnix,
-            serverTimestamp,
         }: {
             songIndex: number;
             song?: { _id: string; title: string; artist: string; duration: number; imageUrl?: string; s3Key: string; albumId?: string | null };
             songPresignedUrl?: string;
             startTimeUnix: number;
-            serverTimestamp?: number;
         }) => {
             syncInProgressRef.current = true;
             // Block onTimeUpdate from overwriting position with stale audio data

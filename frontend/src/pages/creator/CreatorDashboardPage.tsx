@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Radio, Users, Clock, Gem, Heart, Save, Loader2, ExternalLink, Search, Check, Plus, X } from 'lucide-react';
+import { Radio, Users, Clock, Gem, Heart, Save, Loader2, ExternalLink, Search, Check, Plus } from 'lucide-react';
 import { getMyRoom, upsertRoom, goLive, goOffline, getSongs } from '@/lib/roomService';
 import type { RoomInfo, RoomSession, Song } from '@/types/types';
 import { cn } from '@/lib/utils';

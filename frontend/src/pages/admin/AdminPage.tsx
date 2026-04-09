@@ -249,7 +249,7 @@ const OverviewSection = () => {
                                             <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
                                             <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
                                             <YAxis tick={AXIS_STYLE} tickFormatter={v => `$${v}`} />
-                                            <Tooltip contentStyle={TIP_STYLE} formatter={(v: number) => `$${v.toFixed(2)}`} />
+                                            <Tooltip contentStyle={TIP_STYLE} formatter={(v) => `$${Number(v).toFixed(2)}`} />
                                             <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11, color: '#a1a1aa' }} />
                                             <Area type="monotone" dataKey="Top-ups"   stroke={CHART_COLORS.revenue}   fill="url(#gTopup)" strokeWidth={2} dot={false} />
                                             <Area type="monotone" dataKey="Donations" stroke={CHART_COLORS.donations} fill="url(#gDon)"   strokeWidth={2} dot={false} />
@@ -315,7 +315,7 @@ const OverviewSection = () => {
                                                 <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
                                                 <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
                                                 <YAxis tick={AXIS_STYLE} tickFormatter={v => `$${v}`} />
-                                                <Tooltip contentStyle={TIP_STYLE} formatter={(v: number) => [`$${v}`, 'Revenue']} />
+                                                <Tooltip contentStyle={TIP_STYLE} formatter={(v) => [`$${Number(v)}`, 'Revenue']} />
                                                 <Bar dataKey="revenue" name="Revenue" fill={CHART_COLORS.revenue} radius={[3, 3, 0, 0]} />
                                             </BarChart>
                                         </ResponsiveContainer>
@@ -335,7 +335,7 @@ const OverviewSection = () => {
                                                 <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
                                                 <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
                                                 <YAxis tick={AXIS_STYLE} tickFormatter={v => `$${v}`} />
-                                                <Tooltip contentStyle={TIP_STYLE} formatter={(v: number) => [`$${v}`, 'Donations']} />
+                                                <Tooltip contentStyle={TIP_STYLE} formatter={(v) => [`$${Number(v)}`, 'Donations']} />
                                                 <Area type="monotone" dataKey="amount" name="Donations" stroke={CHART_COLORS.donations} fill="url(#gDon2)" strokeWidth={2} dot={false} />
                                             </AreaChart>
                                         </ResponsiveContainer>
@@ -358,7 +358,7 @@ const OverviewSection = () => {
                                                 >
                                                     {[CHART_COLORS.revenue, CHART_COLORS.donations].map((c, i) => <Cell key={i} fill={c} />)}
                                                 </Pie>
-                                                <Tooltip contentStyle={TIP_STYLE} formatter={(v: number) => `$${(v / 100).toFixed(2)}`} />
+                                                <Tooltip contentStyle={TIP_STYLE} formatter={(v) => `$${(Number(v) / 100).toFixed(2)}`} />
                                             </PieChart>
                                         </ResponsiveContainer>
 
@@ -1288,7 +1288,7 @@ const TopupSection = () => {
                                     <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
                                     <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
                                     <YAxis tick={AXIS_STYLE} tickFormatter={v => `$${(v/100).toFixed(0)}`} />
-                                    <Tooltip contentStyle={TIP_STYLE} formatter={(v: number) => [`$${(v/100).toFixed(2)}`, 'Revenue']} />
+                                    <Tooltip contentStyle={TIP_STYLE} formatter={(v) => [`$${(Number(v)/100).toFixed(2)}`, 'Revenue']} />
                                     <Bar dataKey="revenue" name="Revenue" fill={CHART_COLORS.revenue} radius={[3, 3, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
@@ -1307,7 +1307,7 @@ const TopupSection = () => {
                                     <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
                                     <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
                                     <YAxis tick={AXIS_STYLE} tickFormatter={v => `$${(v/100).toFixed(0)}`} />
-                                    <Tooltip contentStyle={TIP_STYLE} formatter={(v: number) => [`$${(v/100).toFixed(2)}`, 'Donations']} />
+                                    <Tooltip contentStyle={TIP_STYLE} formatter={(v) => [`$${(Number(v)/100).toFixed(2)}`, 'Donations']} />
                                     <Area type="monotone" dataKey="amount" name="Donations" stroke={CHART_COLORS.donations} fill="url(#don)" strokeWidth={2} dot={false} />
                                 </AreaChart>
                             </ResponsiveContainer>

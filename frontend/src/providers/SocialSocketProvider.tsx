@@ -2,7 +2,8 @@
 // Replaces the separate io() calls in FriendsActivity + LeftSidebar.
 // Room-specific socket (useRoomSocket) stays separate — it has a join/leave lifecycle.
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { useAuth } from '@clerk/clerk-react'
 import { toast } from 'sonner'
