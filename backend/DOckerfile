@@ -12,4 +12,5 @@ COPY . .
 EXPOSE 4000
 
 # Start the server
+# EG
 CMD ["node", "index.js"]
