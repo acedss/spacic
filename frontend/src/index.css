@@ -124,9 +124,11 @@
 
 @utility liquid-glass {
     background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.08);
+    --tw-backdrop-blur: blur(24px);
+    --tw-backdrop-saturate: saturate(180%);
+    -webkit-backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-saturate);
+    backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-saturate);
 }
 
 @utility hide-scrollbar {
