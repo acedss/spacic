@@ -1,16 +1,9 @@
 FROM node:20-alpine
 WORKDIR /app
-
-# Install dependencies first (better caching)
 COPY package*.json ./
 RUN npm install --production
-
-# Copy the rest of the code
 COPY . .
-
-# Match the port you set in Cloudflare (4000)
 EXPOSE 4000
 
-# Start the server
-# EG
-CMD ["node", "index.js"]
+
+CMD ["node", "src/index.js"]
