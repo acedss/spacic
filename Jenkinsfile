@@ -83,7 +83,7 @@ pipeline {
         stage('Deploy with Docker Compose') {
             steps {
                 // Build the new images and recreate containers seamlessly
-                sh 'docker compose up --build -d'
+                sh 'docker-compose up --build -d'
             }
         }
     }
