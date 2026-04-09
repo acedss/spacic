@@ -67,8 +67,7 @@ pipeline {
                 
                 echo "STRIPE_SECRET_KEY=${STRIPE_SK}" >> backend/.env
                 echo "STRIPE_WEBHOOK_SECRET=${STRIPE_WH}" >> backend/.env
-                echo "STRIPE_PREMIUM_PRICE_MONTHLY=${STRIPE_PREM}" >> backend/.env
-                echo "STRIPE_CREATOR_PRICE_MONTHLY=${STRIPE_CREATOR}" >> backend/.env
+
                 
                 echo "ALLOWED_ORIGINS=https://spacic.aceds.space" >> backend/.env
                 echo "FRONTEND_URL=https://spacic.aceds.space" >> backend/.env
