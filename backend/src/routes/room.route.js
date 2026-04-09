@@ -24,7 +24,8 @@ router.post("/:roomId/go-offline",protectRoute, roomController.goOffline);
 router.post("/:roomId/join",  protectRoute, roomController.joinRoom);
 router.post("/:roomId/leave", protectRoute, roomController.leaveRoom);
 router.post("/:roomId/skip",  protectRoute, roomController.skipSong);
-router.post("/:roomId/queue", protectRoute, roomController.addToQueue);
+router.post("/:roomId/queue",  protectRoute, roomController.addToQueue);
+router.patch("/:roomId/queue", protectRoute, roomController.updateQueueWhileLive);
 
 // Chat
 router.post("/:roomId/chat", protectRoute, roomController.sendChatMessage);

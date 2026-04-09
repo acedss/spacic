@@ -1,6 +1,8 @@
 import { SkipForward, Users, Wifi, WifiOff, Music2, X } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 
 interface Props {
     onSkip: () => void;
@@ -24,9 +26,9 @@ export const RoomPlayer = ({ onSkip, onClose }: Props) => {
     if (!room) return null;
 
     return (
-        <div className="flex flex-col bg-zinc-950 rounded-2xl border border-white/5 overflow-hidden h-full">
+        <div className="flex flex-col bg-zinc-950 rounded-2xl border border-white/5 overflow-hidden md:h-full">
             {/* Album Art */}
-            <div className="relative aspect-square bg-zinc-900 flex-shrink-0">
+            <div className="relative aspect-square bg-zinc-900 flex-shrink-0 max-h-64 md:max-h-none">
                 {currentSong?.imageUrl ? (
                     <img
                         src={currentSong.imageUrl}
@@ -53,12 +55,7 @@ export const RoomPlayer = ({ onSkip, onClose }: Props) => {
 
             {/* Progress Bar */}
             <div className="px-5 pb-3">
-                <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-                    <div
-                        className="h-full bg-white rounded-full transition-all duration-1000"
-                        style={{ width: `${Math.min(progress, 100)}%` }}
-                    />
-                </div>
+                <Progress value={Math.min(progress, 100)} className="h-1 bg-white/10 [&>div]:bg-white [&>div]:transition-all [&>div]:duration-1000" />
                 <div className="flex justify-between text-xs text-zinc-600 mt-1">
                     <span>{formatTime(currentTimeMs / 1000)}</span>
                     <span>{formatTime(duration)}</span>
@@ -73,13 +70,10 @@ export const RoomPlayer = ({ onSkip, onClose }: Props) => {
                 </div>
 
                 {isCreator && (
-                    <button
-                        onClick={onSkip}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-xs font-medium"
-                    >
+                    <Button onClick={onSkip} variant="ghost" size="sm" className="bg-white/10 hover:bg-white/20 text-xs h-7 px-3">
                         <SkipForward className="size-3.5" />
                         Skip
-                    </button>
+                    </Button>
                 )}
 
                 <div className="flex items-center gap-1.5 text-xs">
@@ -102,13 +96,10 @@ export const RoomPlayer = ({ onSkip, onClose }: Props) => {
                     <span className="text-xs text-zinc-700 capitalize">{room.status}</span>
                 </div>
                 {isCreator && (
-                    <button
-                        onClick={onClose}
-                        className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors"
-                    >
+                    <Button onClick={onClose} variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-400/10 text-xs h-7 px-2">
                         <X className="size-3.5" />
                         Go Offline
-                    </button>
+                    </Button>
                 )}
             </div>
         </div>

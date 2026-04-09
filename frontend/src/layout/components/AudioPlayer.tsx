@@ -21,14 +21,14 @@ const AudioPlayer = () => {
     // Load new song when track changes OR when audioUrl becomes available
     useEffect(() => {
         if (!audioRef.current || !currentSong?.audioUrl) return;
-        const isNewSong = currentSong._id !== prevSongIdRef.current;
         prevSongIdRef.current = currentSong._id;
 
         audioRef.current.src = currentSong.audioUrl;
         skipNextSeekEmitRef.current = true;
-        // Always use currentTimeMs — for new songs it's 0 (set by room:song_changed),
-        // for URL refreshes (presigned URL rotation) it preserves the live position,
-        // and for initial join it's the server-computed offset from room:joined.
+        // Use currentTimeMs for all cases:
+        //   - New song: 0 (set by room:song_changed) — sync_checkpoint corrects drift within 2s
+        //   - URL refresh: preserves live position
+        //   - Initial join: server-computed offset from room:joined
         audioRef.current.currentTime = currentTimeMs / 1000;
         if (isPlaying) audioRef.current.play().catch(() => { });
         // eslint-disable-next-line react-hooks/exhaustive-deps

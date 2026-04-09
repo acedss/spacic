@@ -25,8 +25,7 @@ export const getWallet = async (req, res, next) => {
 export const createTopupSession = async (req, res, next) => {
     try {
         const { packageId } = req.body;
-        const origin = req.headers.origin || "http://localhost:5173";
-        const result = await walletService.createTopupSession(getClerkId(req), packageId, origin);
+        const result = await walletService.createTopupSession(getClerkId(req), packageId);
         res.json({ success: true, data: result });
     } catch (error) {
         next(error);

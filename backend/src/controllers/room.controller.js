@@ -166,6 +166,16 @@ export const getCreatorStats = async (req, res, next) => {
     }
 };
 
+export const updateQueueWhileLive = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const result = await roomService.updateQueueWhileLive(clerkId, req.params.roomId, req.body);
+        res.json({ success: true, data: result });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const trackReferral = async (req, res, next) => {
     try {
         const clerkId        = getClerkId(req);

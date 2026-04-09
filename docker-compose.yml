@@ -1,0 +1,23 @@
+services:
+  spacic-be:
+    build: ./backend
+    container_name: spacic-be
+    env_file: ./backend/.env
+    networks:
+      - web_gateway
+    restart: always
+
+  spacic-fe:
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=https://spapi.aceds.space
+        - VITE_SOCKET_URL=https://spapi.aceds.space
+    container_name: spacic-fe
+    networks:
+      - web_gateway
+    restart: always
+
+networks:
+  web_gateway:
+    external: true

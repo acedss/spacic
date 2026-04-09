@@ -1,8 +1,8 @@
 import { axiosInstance } from '@/lib/axios';
 import type { RoomInfo, Song, CreateRoomPayload } from '@/types/types';
 
-export const getSongs = async (): Promise<Song[]> => {
-    const { data } = await axiosInstance.get('/songs');
+export const getSongs = async (metaOnly = false): Promise<Song[]> => {
+    const { data } = await axiosInstance.get('/songs', metaOnly ? { params: { meta: '1' } } : undefined);
     return data;
 };
 
@@ -68,6 +68,15 @@ export const addToQueue = async (roomId: string, songId: string) => {
 export const sendChatMessage = async (roomId: string, message: string) => {
     const { data } = await axiosInstance.post(`/rooms/${roomId}/chat`, { message });
     return data.data;
+};
+
+// ── Live queue management ──────────────────────────────────────────────────
+
+export const updateQueueWhileLive = async (
+    roomId: string,
+    payload: { playlistIds: string[]; streamGoal?: number }
+): Promise<void> => {
+    await axiosInstance.patch(`/rooms/${roomId}/queue`, payload);
 };
 
 // ── Favorites ──────────────────────────────────────────────────────────────

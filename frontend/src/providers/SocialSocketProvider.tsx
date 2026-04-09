@@ -8,7 +8,7 @@ import { useAuth } from '@clerk/clerk-react'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000'
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin
 
 const SocialSocketContext = createContext<Socket | null>(null)
 
@@ -22,7 +22,7 @@ export const SocialSocketProvider = ({ children }: { children: ReactNode }) => {
 
         const s = io(SOCKET_URL, {
             auth:       { clerkId: userId },
-            transports: ['websocket'],
+            transports: ['websocket', 'polling'],
         })
         setSocket(s)
 

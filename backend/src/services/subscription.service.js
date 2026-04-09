@@ -33,12 +33,66 @@ export const getActivePlans = async () => {
     return plans;
 };
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',');
-const sanitizeOrigin = (origin) =>
-    ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-export const createSubscribeSession = async (clerkId, slug, billingCycle, rawOrigin) => {
-    const origin = sanitizeOrigin(rawOrigin);
+const err = (msg, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
+
+export const getSubscriptionStatus = async (clerkId) => {
+    const user = await User.findOne({ clerkId })
+        .select('userTier subscriptionStatus currentPeriodEnd stripeSubscriptionId')
+        .lean();
+    if (!user) throw err('User not found', 404);
+
+    // Fetch billing cycle from Stripe if we have a subscription ID
+    let billingCycle = null;
+    if (user.stripeSubscriptionId && stripe) {
+        try {
+            const sub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId, {
+                expand: ['items.data.price'],
+            });
+            billingCycle = sub.items.data[0]?.price?.recurring?.interval === 'year' ? 'yearly' : 'monthly';
+        } catch { /* non-critical */ }
+    }
+
+    return {
+        tier:             user.userTier,
+        status:           user.subscriptionStatus ?? null,
+        currentPeriodEnd: user.currentPeriodEnd ?? null,
+        billingCycle,
+        hasStripeSubscription: !!user.stripeSubscriptionId,
+    };
+};
+
+export const cancelSubscription = async (clerkId) => {
+    if (!stripe) throw err('Stripe is not configured', 500);
+    const user = await User.findOne({ clerkId }).select('stripeSubscriptionId subscriptionStatus').lean();
+    if (!user?.stripeSubscriptionId) throw err('No active Stripe subscription found — contact support', 400);
+    if (user.subscriptionStatus === 'cancel_at_period_end') throw err('Subscription is already scheduled for cancellation', 400);
+
+    const sub = await stripe.subscriptions.update(user.stripeSubscriptionId, { cancel_at_period_end: true });
+    const periodEnd = new Date(sub.current_period_end * 1000);
+
+    await User.findOneAndUpdate({ clerkId }, {
+        $set: { subscriptionStatus: 'cancel_at_period_end', currentPeriodEnd: periodEnd }
+    });
+
+    return { status: 'cancel_at_period_end', currentPeriodEnd: periodEnd };
+};
+
+export const reactivateSubscription = async (clerkId) => {
+    if (!stripe) throw err('Stripe is not configured', 500);
+    const user = await User.findOne({ clerkId }).select('stripeSubscriptionId subscriptionStatus').lean();
+    if (!user?.stripeSubscriptionId) throw err('No subscription found', 400);
+    if (user.subscriptionStatus !== 'cancel_at_period_end') throw err('Subscription is not scheduled for cancellation', 400);
+
+    await stripe.subscriptions.update(user.stripeSubscriptionId, { cancel_at_period_end: false });
+    await User.findOneAndUpdate({ clerkId }, { $set: { subscriptionStatus: 'active' } });
+
+    return { status: 'active' };
+};
+
+export const createSubscribeSession = async (clerkId, slug, billingCycle) => {
+    const origin = FRONTEND_URL;
     if (!stripe) throw new Error('Stripe is not configured');
 
     const plan = await SubscriptionPlan.findOne({ slug, isActive: true }).lean();

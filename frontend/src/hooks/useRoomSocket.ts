@@ -7,7 +7,7 @@ import { useWalletStore } from '@/stores/useWalletStore';
 import { useAudioRef, useSongEndedCallbackRef, useTimeUpdateCallbackRef, usePlayStateCallbackRef } from '@/providers/AudioProvider';
 import { useAuthStore } from '@/stores/useAuthStore';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin;
 
 export const computePositionFromSync = (
     isPlaying: boolean,
@@ -105,7 +105,6 @@ export const useRoomSocket = (roomId: string) => {
             // Don't re-emit when triggered by incoming room:sync
             if (syncInProgressRef.current) return;
             const event = isPlaying ? 'room:resume' : 'room:pause';
-            console.log(`[Socket] >> SEND ${event} | room=${roomId}`);
             socket.emit(event, { roomId });
         };
 
@@ -146,10 +145,13 @@ export const useRoomSocket = (roomId: string) => {
                 if (audioRef.current) {
                     audioRef.current.currentTime = positionMs / 1000;
                 }
+                // 1200ms on join: covers URL state update → React re-render →
+                // AudioPlayer song-load effect → audio.play() → onPlay event chain.
+                // Shorter (400ms) is enough for sync events that don't change src.
                 setTimeout(() => {
                     playerStore.setSynced(true);
                     syncInProgressRef.current = false;
-                }, 400);
+                }, 1200);
 
                 if (playback.currentSongPresignedUrl) {
                     roomStore.updatePlaylistSongUrl(
@@ -231,7 +233,7 @@ export const useRoomSocket = (roomId: string) => {
             const liveTimeMs = audioRef.current ? audioRef.current.currentTime * 1000 : usePlayerStore.getState().currentTimeMs;
             const drift = Math.abs(liveTimeMs - expectedMs);
 
-            if (drift > 500) {
+            if (drift > 300) {
                 playerStore.setCurrentTimeMs(expectedMs);
                 playerStore.setSynced(false);
                 if (audioRef.current) {
@@ -246,6 +248,7 @@ export const useRoomSocket = (roomId: string) => {
             song,
             songPresignedUrl,
             startTimeUnix,
+            serverTimestamp,
         }: {
             songIndex: number;
             song?: { _id: string; title: string; artist: string; duration: number; imageUrl?: string; s3Key: string; albumId?: string | null };
@@ -332,6 +335,13 @@ export const useRoomSocket = (roomId: string) => {
         }) => {
             const current = roomStore.room;
             if (current) roomStore.setRoom({ ...current, streamGoal, streamGoalCurrent });
+        });
+
+        socket.on('room:playlist_updated', ({ playlist }: { playlist: Array<{ _id: string; title: string; artist: string; duration: number; imageUrl: string; s3Key: string; albumId: string | null }> }) => {
+            const current = useRoomStore.getState().room;
+            if (current) {
+                roomStore.setRoom({ ...current, playlist: playlist.map(s => ({ ...s, audioUrl: '' })) });
+            }
         });
 
         socket.on('room:goal_reached', () => {

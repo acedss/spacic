@@ -17,8 +17,10 @@ import geoip from 'geoip-lite';
 // Per-process timers — intentionally not in Redis.
 // syncIntervals: lightweight heartbeat, one per room per process.
 // disconnectTimers: 15s countdown, must fire on the process that started it.
+// notifyTimers: delayed "creator disconnected" notification — silent reconnect window.
 const syncIntervals    = new Map();
 const disconnectTimers = new Map();
+const notifyTimers     = new Map();
 // Debounce: multiple clients fire song_ended simultaneously; only first within 3s wins.
 const songEndedDebounce = new Map();
 
@@ -38,7 +40,7 @@ const startSyncCheckpoint = (io, roomId) => {
             serverTimestamp: Date.now(),
             listenerCount: room.listenerCount,
         });
-    }, 5000);
+    }, 2000);
     syncIntervals.set(roomId, interval);
 };
 
@@ -94,6 +96,8 @@ const goOfflineAndNotify = async (io, roomId, reason) => {
     stopSyncCheckpoint(roomId);
     disconnectTimers.delete(roomId);
     songEndedDebounce.delete(roomId);
+    const pendingNotify = notifyTimers.get(roomId);
+    if (pendingNotify) { clearTimeout(pendingNotify); notifyTimers.delete(roomId); }
 
     // Capture listener IDs BEFORE goOfflineInternal marks them inactive + clears Redis
     const activeListeners = await Listener.find({ roomId, isActive: true }).select('userId');
@@ -218,8 +222,9 @@ const canControlRoom = (userSession, roomSession) =>
 // ── Socket Server ────────────────────────────────────────────────────────────
 
 export const initializeSocket = (httpServer) => {
+    const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim());
     const io = new Server(httpServer, {
-        cors: { origin: 'http://localhost:5173', methods: ['GET', 'POST'], credentials: true },
+        cors: { origin: allowedOrigins, methods: ['GET', 'POST'], credentials: true },
     });
     setIo(io);
 
@@ -273,6 +278,9 @@ export const initializeSocket = (httpServer) => {
 
                 // Creator page-reload: cancel the shutdown countdown automatically
                 if (isCreator) {
+                    const pendingNotify = notifyTimers.get(roomId);
+                    if (pendingNotify) { clearTimeout(pendingNotify); notifyTimers.delete(roomId); }
+
                     const pendingTimer = disconnectTimers.get(roomId);
                     if (pendingTimer) {
                         clearTimeout(pendingTimer);
@@ -529,13 +537,23 @@ export const initializeSocket = (httpServer) => {
                 const roomSession = await socketManager.getRoomById(roomId);
 
                 if (roomSession && roomSession.creatorId === userSession.userId) {
-                    // 45s grace period — covers slow page reloads and brief network drops
-                    const GRACE_MS = 45_000;
-                    io.to(roomId).emit('room:creator_disconnected', {
-                        roomId, countdownSeconds: Math.floor(GRACE_MS / 1000),
-                        message:   'Creator disconnected. Room going offline soon...',
-                        closingAt: new Date(Date.now() + GRACE_MS),
-                    });
+                    const SILENT_MS = 10_000;  // silent reconnect window — no notification shown
+                    const GRACE_MS  = 45_000;  // total time before room closes
+
+                    // Delay notification by SILENT_MS so a quick page reload never shows
+                    // the countdown to listeners at all.
+                    const notifyTimer = setTimeout(() => {
+                        notifyTimers.delete(roomId);
+                        const remaining = Math.floor((GRACE_MS - SILENT_MS) / 1000);
+                        io.to(roomId).emit('room:creator_disconnected', {
+                            roomId,
+                            countdownSeconds: remaining,
+                            message:   'Creator disconnected. Room going offline soon...',
+                            closingAt: new Date(Date.now() + (GRACE_MS - SILENT_MS)),
+                        });
+                    }, SILENT_MS);
+                    notifyTimers.set(roomId, notifyTimer);
+
                     const timer = setTimeout(() => goOfflineAndNotify(io, roomId, 'creator_disconnected'), GRACE_MS);
                     disconnectTimers.set(roomId, timer);
                 } else {
@@ -570,6 +588,9 @@ export const initializeSocket = (httpServer) => {
                 }
 
                 if (roomSession.creatorId !== user.userId) return;
+
+                const pendingNotify = notifyTimers.get(roomId);
+                if (pendingNotify) { clearTimeout(pendingNotify); notifyTimers.delete(roomId); }
 
                 const timer = disconnectTimers.get(roomId);
                 if (timer) { clearTimeout(timer); disconnectTimers.delete(roomId); }

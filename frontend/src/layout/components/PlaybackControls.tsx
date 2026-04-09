@@ -1,11 +1,16 @@
-import { Play, Pause, Heart, Volume2, Wifi, WifiOff } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Play, Pause, Heart, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
 import { useAudioRef } from '@/providers/AudioProvider';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useActiveRoomStore } from '@/stores/useActiveRoomStore';
+import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
+import { toggleFavorite, getFavoriteStatus } from '@/lib/roomService';
+import { toast } from 'sonner';
 
 const formatTime = (seconds: number): string => {
     const m = Math.floor(seconds / 60);
@@ -17,13 +22,31 @@ export const PlaybackControls = () => {
     const audioRef = useAudioRef();
     const { room, isCreator, listenerCount } = useRoomStore();
     const { isAdmin } = useAuthStore();
+    const { userId } = useAuth();
     const { currentSongIndex, currentTimeMs, isPlaying, isSynced, setPlaying } = usePlayerStore();
     const { activeRoomId } = useActiveRoomStore();
     const location = useLocation();
     const canSeek = isCreator || isAdmin;
 
-    // True when the user is in a room but browsing a different page
+    const [volume, setVolume] = useState(80);
+    const [isFavorited, setIsFavorited] = useState(false);
+    const isSeeking = useRef(false);
+    const [seekPreview, setSeekPreview] = useState<number | null>(null);
+
     const isBackgrounded = !!activeRoomId && location.pathname !== `/rooms/${activeRoomId}`;
+
+    // Sync volume to audio element
+    useEffect(() => {
+        if (audioRef.current) audioRef.current.volume = volume / 100;
+    }, [audioRef, volume]);
+
+    // Load favorite status when room changes
+    useEffect(() => {
+        if (!userId || !room?._id) return;
+        getFavoriteStatus(room._id)
+            .then(fav => setIsFavorited(fav))
+            .catch(() => {});
+    }, [userId, room?._id]);
 
     if (!room) {
         return (
@@ -40,123 +63,167 @@ export const PlaybackControls = () => {
 
     const togglePlay = () => {
         if (!audioRef.current) return;
-        if (isPlaying) {
-            audioRef.current.pause();
-        } else {
-            audioRef.current.play().catch(() => {});
-        }
-        // Only creator/admin updates the store immediately (optimistic).
-        // The onPlay/onPause callback then emits room:resume/room:pause,
-        // and the server broadcasts room:sync to all clients.
+        if (isPlaying) { audioRef.current.pause(); } else { audioRef.current.play().catch(() => {}); }
         if (canSeek) setPlaying(!isPlaying);
     };
 
-    const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!canSeek || !audioRef.current || duration === 0) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const ratio = (e.clientX - rect.left) / rect.width;
-        audioRef.current.currentTime = Math.max(0, Math.min(ratio * duration, duration));
+    const handleFavorite = async () => {
+        if (!userId) return;
+        try {
+            const { favorited } = await toggleFavorite(room._id);
+            setIsFavorited(favorited);
+            toast.success(favorited ? 'Added to favorites' : 'Removed from favorites');
+        } catch {
+            toast.error('Could not update favorites');
+        }
     };
 
-    return (
-        <div className="flex items-center h-full gap-4 px-8">
+    // Seek via Slider — value is 0–100
+    const handleSeekChange = (vals: number[]) => {
+        if (!canSeek || !audioRef.current || duration === 0) return;
+        isSeeking.current = true;
+        const ratio = vals[0] / 100;
+        setSeekPreview(ratio * duration);
+        audioRef.current.currentTime = ratio * duration;
+    };
+    const handleSeekCommit = () => {
+        isSeeking.current = false;
+        setSeekPreview(null);
+    };
 
-            {/* Left: Song info */}
-            <div className="flex items-center gap-4 w-1/4">
+    const displayTime = seekPreview !== null ? seekPreview : currentTimeMs / 1000;
+
+    const SyncBadge = () => isSynced ? (
+        <span className="flex items-center gap-1 text-[10px] text-emerald-400 flex-shrink-0">
+            <Wifi className="size-3" /><span className="hidden sm:inline">Synced</span>
+        </span>
+    ) : (
+        <span className="flex items-center gap-1 text-[10px] text-yellow-400 flex-shrink-0">
+            <WifiOff className="size-3" /><span className="hidden sm:inline">Syncing</span>
+        </span>
+    );
+
+    return (
+        <div className="flex flex-col justify-center h-full px-4 md:px-8 gap-1.5">
+
+            {/* Row 1: thumbnail + song info + controls */}
+            <div className="flex items-center gap-3">
+
+                {/* Thumbnail */}
                 {currentSong?.imageUrl ? (
                     <img
                         src={currentSong.imageUrl}
                         alt={currentSong.title}
-                        className="size-14 rounded-xl object-cover flex-shrink-0 shadow-lg"
+                        className="size-10 md:size-14 rounded-xl object-cover flex-shrink-0 shadow-lg"
                     />
                 ) : (
-                    <div className="size-14 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
-                        <span className="text-slate-500 text-xl">♪</span>
+                    <div className="size-10 md:size-14 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
+                        <span className="text-slate-500 text-lg">♪</span>
                     </div>
                 )}
-                <div className="min-w-0">
-                    <h5 className="text-slate-100 font-bold text-sm truncate">{currentSong?.title ?? '—'}</h5>
-                    <p className="text-slate-400 text-xs truncate">{currentSong?.artist ?? room.title}</p>
-                </div>
-                <button className="text-slate-400 hover:text-red-400 transition-colors ml-2 flex-shrink-0">
-                    <Heart className="size-5" />
-                </button>
-            </div>
 
-            {/* Center: Controls + Progress */}
-            <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto gap-2">
-                <div className="flex items-center gap-8">
+                {/* Song info */}
+                <div className="flex-1 min-w-0">
+                    <p className="text-slate-100 font-bold text-xs sm:text-sm truncate leading-tight">
+                        {currentSong?.title ?? '—'}
+                    </p>
+                    <p className="text-slate-400 text-[10px] sm:text-xs truncate">
+                        {currentSong?.artist ?? room.title}
+                    </p>
+                </div>
+
+                {/* Favorite */}
+                <button
+                    onClick={handleFavorite}
+                    className={cn(
+                        'hidden sm:block transition-colors flex-shrink-0',
+                        isFavorited ? 'text-red-400' : 'text-slate-400 hover:text-red-400'
+                    )}
+                >
+                    <Heart className={cn('size-4', isFavorited && 'fill-red-400')} />
+                </button>
+
+                {/* Play/Pause */}
+                <button
+                    onClick={togglePlay}
+                    className="size-10 md:size-12 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform flex-shrink-0"
+                >
+                    {isPlaying
+                        ? <Pause className="size-4 md:size-5 fill-black stroke-none" />
+                        : <Play  className="size-4 md:size-5 fill-black stroke-none ml-0.5" />
+                    }
+                </button>
+
+                {/* Volume — desktop only */}
+                <div className="hidden md:flex items-center gap-2 w-28 flex-shrink-0">
                     <button
-                        onClick={togglePlay}
-                        className="size-12 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 transition-transform flex-shrink-0"
+                        onClick={() => setVolume(v => v === 0 ? 80 : 0)}
+                        className="text-slate-400 hover:text-white transition-colors flex-shrink-0"
                     >
-                        {isPlaying
-                            ? <Pause className="size-5 fill-black stroke-none" />
-                            : <Play className="size-5 fill-black stroke-none ml-0.5" />
+                        {volume === 0
+                            ? <VolumeX className="size-4" />
+                            : <Volume2 className="size-4" />
                         }
                     </button>
+                    <Slider
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={[volume]}
+                        onValueChange={(vals) => setVolume(vals[0])}
+                        className="flex-1"
+                    />
                 </div>
 
-                {/* Progress bar */}
-                <div className="w-full flex items-center gap-3">
-                    <span className="text-[10px] font-medium text-slate-500 w-8 text-right tabular-nums flex-shrink-0">
-                        {formatTime(currentTimeMs / 1000)}
-                    </span>
-                    <div
-                        className={cn(
-                            'flex-1 h-1 bg-white/10 rounded-full relative overflow-hidden group',
-                            canSeek && 'cursor-pointer'
-                        )}
-                        onClick={handleSeek}
-                    >
-                        <div
-                            className="absolute left-0 top-0 h-full bg-blue-500 rounded-full transition-all"
-                            style={{ width: `${Math.min(progress, 100)}%` }}
-                        />
-                        {canSeek && (
-                            <div
-                                className="absolute top-1/2 -translate-y-1/2 size-2 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity -translate-x-1/2"
-                                style={{ left: `${Math.min(progress, 100)}%` }}
-                            />
-                        )}
-                    </div>
-                    <span className="text-[10px] font-medium text-slate-500 w-8 tabular-nums flex-shrink-0">
-                        {formatTime(duration)}
-                    </span>
-                </div>
-            </div>
+                {/* Sync badge */}
+                <SyncBadge />
 
-            {/* Right: Volume + extras + Return to Room pill */}
-            <div className="w-1/4 flex items-center justify-end gap-4">
-                <div className="flex items-center gap-2 w-24">
-                    <Volume2 className="text-slate-400 size-4 flex-shrink-0" />
-                    <div className="flex-1 h-1 bg-white/10 rounded-full">
-                        <div className="h-full w-4/5 bg-slate-300 rounded-full" />
-                    </div>
-                </div>
-                {isSynced ? (
-                    <span className="flex items-center gap-1 text-[10px] text-emerald-400 flex-shrink-0">
-                        <Wifi className="size-3" />Synced
-                    </span>
-                ) : (
-                    <span className="flex items-center gap-1 text-[10px] text-yellow-400 flex-shrink-0">
-                        <WifiOff className="size-3" />Syncing
-                    </span>
-                )}
-
+                {/* Return-to-room pill */}
                 {isBackgrounded && (
                     <Link
                         to={`/rooms/${activeRoomId}`}
-                        className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex-shrink-0"
+                        className="hidden sm:flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 px-2.5 py-1 rounded-full text-xs font-bold transition-colors flex-shrink-0"
                     >
                         <span className="size-1.5 bg-red-400 rounded-full animate-pulse" />
-                        {room?.title ?? 'Live Room'}
+                        <span className="hidden md:inline">{room?.title ?? 'Live Room'}</span>
+                        <span className="md:hidden">Live</span>
                         {listenerCount > 0 && (
-                            <span className="text-red-400/60">• {listenerCount}</span>
+                            <span className="text-red-400/60 hidden md:inline">· {listenerCount}</span>
                         )}
                     </Link>
                 )}
             </div>
+
+            {/* Row 2: seek bar */}
+            <div className="flex items-center gap-2">
+                <span className="text-[9px] font-medium text-slate-500 w-7 text-right tabular-nums flex-shrink-0">
+                    {formatTime(displayTime)}
+                </span>
+                <Slider
+                    min={0}
+                    max={100}
+                    step={0.01}
+                    value={[isSeeking.current ? (seekPreview! / duration * 100) : Math.min(progress, 100)]}
+                    onValueChange={handleSeekChange}
+                    onValueCommit={handleSeekCommit}
+                    disabled={!canSeek}
+                    className={cn('flex-1', !canSeek && 'opacity-100 [&_[data-slot=slider-thumb]]:hidden')}
+                />
+                <span className="text-[9px] font-medium text-slate-500 w-7 tabular-nums flex-shrink-0">
+                    {formatTime(duration)}
+                </span>
+            </div>
+
+            {/* Mobile: return-to-room pill */}
+            {isBackgrounded && (
+                <Link
+                    to={`/rooms/${activeRoomId}`}
+                    className="sm:hidden w-full flex items-center justify-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 py-1 rounded-lg text-xs font-bold"
+                >
+                    <span className="size-1.5 bg-red-400 rounded-full animate-pulse" />
+                    Return to {room?.title ?? 'Live Room'}
+                </Link>
+            )}
         </div>
     );
 };

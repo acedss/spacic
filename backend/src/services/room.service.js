@@ -162,6 +162,51 @@ const getUserByClerkId = async (clerkId) => {
     return user;
 };
 
+// ───── Update Queue While Live ───────────────────────────────────────────────
+// Allows creator to add/remove songs and adjust stream goal without going offline.
+// Does NOT allow changing title, description, or visibility — those disrupt UX.
+// Also re-caches the playlist in Redis so socket.js getNextSong picks it up immediately.
+
+export const updateQueueWhileLive = async (clerkId, roomId, { playlistIds, streamGoal }) => {
+    const user = await getUserByClerkId(clerkId);
+    const room = await Room.findById(roomId).select('creatorId status playlist');
+    if (!room) throw new Error('Room not found');
+    if (room.creatorId.toString() !== user._id.toString()) throw new Error('Only the creator can update the queue');
+    if (room.status !== 'live') throw new Error('Room is not live');
+    if (!playlistIds || playlistIds.length === 0) throw new Error('Playlist must have at least one song');
+
+    // Fetch full song docs for the new playlist (needed for Redis cache)
+    const songs = await Song.find({ _id: { $in: playlistIds } }).select('_id title artist duration imageUrl s3Key albumId').lean();
+    // Preserve the order the creator specified
+    const ordered = playlistIds.map(id => songs.find(s => s._id.toString() === id)).filter(Boolean);
+
+    const update = { playlist: playlistIds };
+    if (streamGoal !== undefined) update.streamGoal = Math.max(0, Math.floor(streamGoal));
+
+    await Room.findByIdAndUpdate(roomId, update);
+
+    const mappedPlaylist = ordered.map(s => ({
+        _id: s._id.toString(),
+        title: s.title,
+        artist: s.artist,
+        duration: s.duration,
+        imageUrl: s.imageUrl ?? '',
+        s3Key: s.s3Key,
+        albumId: s.albumId?.toString() ?? null,
+    }));
+
+    // Re-cache in Redis so getNextSong picks up the new playlist immediately
+    await socketManager.cacheRoomPlaylist(roomId, mappedPlaylist);
+
+    // Notify all clients in the room — frontend RoomStore updates playlist reactively
+    const io = getIo();
+    if (io) {
+        io.to(roomId).emit('room:playlist_updated', { playlist: mappedPlaylist });
+    }
+
+    return { success: true };
+};
+
 // ───── Upsert Room (create or update creator's permanent channel) ─────────
 // One room per creator — creates on first call, updates settings on subsequent calls.
 

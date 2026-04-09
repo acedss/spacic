@@ -9,11 +9,16 @@ export const getAllSongs = async (req, res, next) => {
     try {
         const songs = await Song.find().sort({ createdAt: -1 }).lean();
 
+        // ?meta=1 — skip presigned URL generation (used by creator song picker)
+        // Avoids N parallel S3 requests when only title/artist/imageUrl are needed.
+        if (req.query.meta === '1') {
+            return res.status(200).json(songs.map(s => ({ ...s, audioUrl: '' })));
+        }
+
         const songsWithUrls = await Promise.all(songs.map(async (song) => ({
             ...song,
-            audioUrl: await getPresignedUrl(song.s3Key) 
+            audioUrl: await getPresignedUrl(song.s3Key),
         })));
-        console.log("Fetched songs with URLs:", songsWithUrls);
         res.status(200).json(songsWithUrls);
     } catch (error) {
         next(error);

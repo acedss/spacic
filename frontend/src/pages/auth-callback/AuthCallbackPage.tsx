@@ -20,6 +20,7 @@ const AuthCallbackPage = () => {
                     fullName: user.fullName || `${user.firstName} ${user.lastName}`,
                     imageUrl: user.imageUrl,
                     role: 'USER',
+                    username: user.username ?? undefined,
                 });
             } catch (error) {
                 console.error('Sync Error:', error);

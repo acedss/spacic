@@ -43,13 +43,10 @@ const getPackage = async (packageId) => {
   
 // ── Create Stripe Checkout Session ───────────────────────────────────────────
 
-// Allowed redirect origins — prevents attacker from injecting Origin: https://evil.com
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',');
-const sanitizeOrigin = (origin) =>
-    ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-export const createTopupSession = async (clerkId, packageId, rawOrigin) => {
-    const origin = sanitizeOrigin(rawOrigin);
+export const createTopupSession = async (clerkId, packageId) => {
+    const origin = FRONTEND_URL;
     if (!stripe) throw new Error("Stripe is not configured");
 
     const user = await User.findOne({ clerkId });
@@ -129,36 +126,81 @@ export const handleWebhook = async (rawBody, signature) => {
         return { received: true };
     }
 
-    // ── Subscription activated ────────────────────────────────────────────────
+    // ── Subscription activated (Checkout completed) ───────────────────────────
     if (event.type === "checkout.session.completed" && event.data.object.mode === "subscription") {
         const session = event.data.object;
         const { userId, tier } = session.metadata;
 
+        // Retrieve full subscription to get current_period_end
+        const sub = await stripe.subscriptions.retrieve(session.subscription);
+
         await User.findByIdAndUpdate(userId, {
             userTier: tier,
             stripeCustomerId: session.customer,
+            stripeSubscriptionId: session.subscription,
+            subscriptionStatus: "active",
+            currentPeriodEnd: new Date(sub.current_period_end * 1000),
         });
         console.log(`[Subscription] Activated tier=${tier} for user ${userId}`);
         return { received: true };
     }
 
+    // ── Subscription updated (cancel toggle, plan change, renewal) ────────────
+    if (event.type === "customer.subscription.updated") {
+        const sub = event.data.object;
+        const update = { currentPeriodEnd: new Date(sub.current_period_end * 1000) };
+
+        if (sub.cancel_at_period_end) {
+            update.subscriptionStatus = "cancel_at_period_end";
+        } else if (sub.status === "active") {
+            update.subscriptionStatus = "active";
+        } else if (sub.status === "past_due") {
+            update.subscriptionStatus = "past_due";
+        }
+
+        const user = await User.findOneAndUpdate(
+            { stripeCustomerId: sub.customer },
+            { $set: update },
+            { new: true },
+        );
+        if (user) console.log(`[Subscription] Updated status=${update.subscriptionStatus} for user ${user._id}`);
+        return { received: true };
+    }
+
+    // ── Renewal payment succeeded ─────────────────────────────────────────────
+    if (event.type === "invoice.paid") {
+        const invoice = event.data.object;
+        if (invoice.subscription) {
+            const sub = await stripe.subscriptions.retrieve(invoice.subscription);
+            await User.findOneAndUpdate(
+                { stripeCustomerId: invoice.customer },
+                { $set: { subscriptionStatus: "active", currentPeriodEnd: new Date(sub.current_period_end * 1000) } },
+            );
+            console.log(`[Subscription] Renewal paid — customer: ${invoice.customer}`);
+        }
+        return { received: true };
+    }
+
     // ── Subscription cancelled / expired ──────────────────────────────────────
     if (event.type === "customer.subscription.deleted") {
-        const subscription = event.data.object;
+        const sub = event.data.object;
         const user = await User.findOneAndUpdate(
-            { stripeCustomerId: subscription.customer },
-            { userTier: "FREE" },
+            { stripeCustomerId: sub.customer },
+            { $set: { userTier: "FREE", subscriptionStatus: "canceled", stripeSubscriptionId: null, currentPeriodEnd: null } },
             { new: true },
         );
         if (user) console.log(`[Subscription] Downgraded user ${user._id} to FREE`);
         return { received: true };
     }
 
-    // ── Renewal payment failed ────────────────────────────────────────────────
+    // ── Renewal payment failed — keep access, mark past_due ──────────────────
     if (event.type === "invoice.payment_failed") {
         const invoice = event.data.object;
+        await User.findOneAndUpdate(
+            { stripeCustomerId: invoice.customer },
+            { $set: { subscriptionStatus: "past_due" } },
+        );
         console.warn(`[Subscription] Payment failed — customer: ${invoice.customer}, attempt: ${invoice.attempt_count}`);
-        // TODO: send in-app notification or email when notification system is in place
         return { received: true };
     }
 

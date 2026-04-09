@@ -33,8 +33,14 @@ initializeSocket(httpServer);
 app.use(helmet());
 
 
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim());
+
 app.use(cors({
-    origin: 'http://localhost:5173',
+    origin: (origin, cb) => {
+        // Allow requests with no origin (server-to-server, Postman, webhooks)
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+        cb(new Error(`CORS: origin ${origin} not allowed`));
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Clerk-Auth-Token', 'x-dev-token'],
     credentials: true,
