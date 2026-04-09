@@ -82,8 +82,21 @@ pipeline {
 
         stage('Deploy with Docker Compose') {
             steps {
-                // Build the new images and recreate containers seamlessly
-                sh 'docker compose up --build -d'
+                sh """
+                # Create a temporary root .env so docker compose can see these variables
+                echo "VITE_API_URL=https://spapi.aceds.space" > .env
+                echo "VITE_SOCKET_URL=https://spapi.aceds.space" >> .env
+                echo "VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PK}" >> .env
+
+                # Shut down any existing containers and clear orphans
+                docker compose down --remove-orphans
+
+                # Launch the new build
+                docker compose up --build -d
+                
+                # Cleanup the temp root .env
+                rm .env
+                """
             }
         }
     }
