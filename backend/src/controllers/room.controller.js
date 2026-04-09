@@ -136,11 +136,53 @@ export const toggleFavorite = async (req, res, next) => {
     }
 };
 
+export const getFavoriteRooms = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const result = await roomService.getFavoriteRooms(clerkId);
+        res.json({ success: true, ...result });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getFavoriteStatus = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const result = await roomService.getFavoriteStatus(req.params.roomId, clerkId);
+        res.json({ success: true, data: result });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getCreatorStats = async (req, res, next) => {
     try {
         const clerkId = getClerkId(req);
         const stats = await roomService.getCreatorStats(clerkId);
         res.json({ success: true, data: stats });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateQueueWhileLive = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const result = await roomService.updateQueueWhileLive(clerkId, req.params.roomId, req.body);
+        res.json({ success: true, data: result });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const trackReferral = async (req, res, next) => {
+    try {
+        const clerkId        = getClerkId(req);
+        const { ref, type }  = req.body;   // ref = referrer's clerkId, type = 'link' | 'activity_join'
+        const { roomId }     = req.params;
+        await roomService.trackReferralByClerkIds(clerkId, ref, roomId, type);
+        res.status(204).send();
     } catch (error) {
         next(error);
     }

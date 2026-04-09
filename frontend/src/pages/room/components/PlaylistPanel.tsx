@@ -1,6 +1,8 @@
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { Music2 } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 
 export const PlaylistPanel = () => {
     const { room } = useRoomStore();
@@ -9,13 +11,14 @@ export const PlaylistPanel = () => {
 
     return (
         <div className="bg-zinc-900 rounded-2xl border border-white/5 overflow-hidden flex-shrink-0">
-            <div className="px-4 py-3 border-b border-white/5">
+            <div className="px-4 py-3">
                 <h3 className="text-sm font-semibold text-zinc-300">
                     Queue <span className="text-zinc-500 font-normal">({playlist.length})</span>
                 </h3>
             </div>
+            <Separator className="bg-white/5" />
 
-            <div className="overflow-y-auto max-h-56">
+            <ScrollArea className="max-h-56">
                 {playlist.length === 0 ? (
                     <div className="p-6 text-center">
                         <Music2 className="size-8 text-zinc-700 mx-auto mb-2" />
@@ -24,7 +27,7 @@ export const PlaylistPanel = () => {
                 ) : (
                     playlist.map((song, idx) => (
                         <div
-                            key={song._id}
+                            key={`${idx}-${song._id}`}
                             className={`flex items-center gap-3 px-4 py-3 transition-colors ${
                                 idx === currentSongIndex
                                     ? 'bg-white/5 border-l-2 border-emerald-500'
@@ -52,7 +55,7 @@ export const PlaylistPanel = () => {
                         </div>
                     ))
                 )}
-            </div>
+            </ScrollArea>
         </div>
     );
 };

@@ -23,6 +23,11 @@ const listenerSchema = new mongoose.Schema({
         type: Boolean,
         default: true,
     },
+
+    // Geo — resolved from IP at room-join time via geoip-lite
+    country: { type: String, default: null },  // 'VN', 'US', 'JP' ...
+    region:  { type: String, default: null },  // state / province
+    city:    { type: String, default: null },
 });
 
 // Prevent duplicate active listeners for same user+room

@@ -7,6 +7,10 @@ import {
 import { useWalletStore } from '@/stores/useWalletStore';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { TopupPackage, Transaction } from '@/types/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -154,7 +158,10 @@ const WalletPage = () => {
                         <p className="text-xs text-zinc-400 uppercase tracking-widest mb-2">Available Balance</p>
 
                         {loading ? (
-                            <Loader className="size-6 animate-spin text-zinc-400 mt-2" />
+                            <div className="mt-2 space-y-2">
+                                <Skeleton className="h-12 w-40 bg-white/10" />
+                                <Skeleton className="h-4 w-12 bg-white/10" />
+                            </div>
                         ) : (
                             <>
                                 <p className="text-5xl font-bold tracking-tight text-white">
@@ -166,10 +173,10 @@ const WalletPage = () => {
 
                         {/* Tier badge */}
                         <div className="flex items-center gap-3 mt-4">
-                            <span className={cn('flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full', tier.bg, tier.color)}>
+                            <Badge className={cn('gap-1.5 text-xs font-semibold', tier.bg, tier.color, 'border-0 hover:opacity-100')}>
                                 <TierIcon className="size-3" />
                                 {tier.label} Plan
-                            </span>
+                            </Badge>
 
                             {userTier === 'FREE' && (
                                 <Link
@@ -243,32 +250,34 @@ const WalletPage = () => {
 
                     {/* Filter tabs */}
                     {transactions.length > 0 && (
-                        <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1">
-                            {([
-                                { key: 'all',      label: `All (${transactions.length})` },
-                                { key: 'topup',    label: `Coins (${topupCount})` },
-                                { key: 'donation', label: `Donated (${donationCount})` },
-                            ] as { key: TxFilter; label: string }[]).map(({ key, label }) => (
-                                <button
-                                    key={key}
-                                    onClick={() => setTxFilter(key)}
-                                    className={cn(
-                                        'text-xs px-3 py-1.5 rounded-lg font-medium transition-all',
-                                        txFilter === key
-                                            ? 'bg-white/10 text-white'
-                                            : 'text-zinc-500 hover:text-zinc-300',
-                                    )}
-                                >
-                                    {label}
-                                </button>
-                            ))}
-                        </div>
+                        <Tabs value={txFilter} onValueChange={(v) => setTxFilter(v as TxFilter)}>
+                            <TabsList className="bg-white/5 border border-white/5 h-8">
+                                <TabsTrigger value="all" className="text-xs data-[state=active]:bg-white/10 data-[state=active]:text-white text-zinc-500 h-6 px-2.5">
+                                    All ({transactions.length})
+                                </TabsTrigger>
+                                <TabsTrigger value="topup" className="text-xs data-[state=active]:bg-white/10 data-[state=active]:text-white text-zinc-500 h-6 px-2.5">
+                                    Coins ({topupCount})
+                                </TabsTrigger>
+                                <TabsTrigger value="donation" className="text-xs data-[state=active]:bg-white/10 data-[state=active]:text-white text-zinc-500 h-6 px-2.5">
+                                    Donated ({donationCount})
+                                </TabsTrigger>
+                            </TabsList>
+                        </Tabs>
                     )}
                 </div>
 
                 {loading ? (
-                    <div className="flex justify-center py-8">
-                        <Loader className="size-5 animate-spin text-zinc-600" />
+                    <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 space-y-1">
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className="flex items-center gap-3 py-3.5 border-b border-white/5 last:border-0">
+                                <Skeleton className="size-9 rounded-xl bg-white/5" />
+                                <div className="flex-1 space-y-1.5">
+                                    <Skeleton className="h-4 w-40 bg-white/5" />
+                                    <Skeleton className="h-3 w-24 bg-white/5" />
+                                </div>
+                                <Skeleton className="h-4 w-20 bg-white/5" />
+                            </div>
+                        ))}
                     </div>
                 ) : filteredTx.length === 0 ? (
                     <div className="text-center py-10 border border-white/5 rounded-2xl">
@@ -288,16 +297,17 @@ const WalletPage = () => {
                         </div>
 
                         {hasMore && txFilter === 'all' && (
-                            <button
+                            <Button
                                 onClick={loadMore}
                                 disabled={loadingMore}
-                                className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all disabled:opacity-50"
+                                variant="ghost"
+                                className="mt-3 w-full text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl"
                             >
                                 {loadingMore
                                     ? <Loader className="size-4 animate-spin" />
                                     : <><ChevronDown className="size-4" />Load more</>
                                 }
-                            </button>
+                            </Button>
                         )}
                     </>
                 )}

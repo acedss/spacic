@@ -1,11 +1,12 @@
 import { axiosInstance } from "@/lib/axios"
-import { useAuth } from "@clerk/clerk-react"
+import { useAuth, useUser } from "@clerk/clerk-react"
 import { useState, useEffect } from "react"
 import { Loader } from "lucide-react"
 import { useAuthStore } from "@/stores/useAuthStore";
 
 const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const { getToken, userId } = useAuth()
+    const { user } = useUser()
     const [loading, setLoading] = useState(true)
     const { checkAdminStatus } = useAuthStore()
 
@@ -28,6 +29,20 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // interceptor set up once — getToken is stable via closure
+
+    // Ensure the user exists in MongoDB whenever they're authenticated.
+    // Handles cases where /auth-callback was never visited (deep links, existing sessions).
+    useEffect(() => {
+        if (!userId || !user) return;
+        axiosInstance.post('/auth/callback', {
+            clerkId: user.id,
+            fullName: user.fullName || [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Unknown',
+            imageUrl: user.imageUrl,
+            role: 'USER',
+            username: user.username ?? undefined,
+        }).catch(() => {}); // fire-and-forget — non-blocking
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userId]);
 
     useEffect(() => {
         // Re-check admin status only when the logged-in user changes.

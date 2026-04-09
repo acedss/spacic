@@ -11,6 +11,8 @@ import SubscriptionPage from "./pages/subscription/SubscriptionPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ProfilePage from "./pages/profile/ProfilePage";
 import CreatorDashboardPage from "./pages/creator/CreatorDashboardPage";
+import FriendsPage from "./pages/friends/FriendsPage";
+import FavoritesPage from "./pages/favorites/FavoritesPage";
 
 export default function App() {
   return (
@@ -25,6 +27,8 @@ export default function App() {
           <Route path="/subscription" element={<ProtectedRoute><SubscriptionPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/creator" element={<ProtectedRoute><CreatorDashboardPage /></ProtectedRoute>} />
+          <Route path="/friends" element={<ProtectedRoute><FriendsPage /></ProtectedRoute>} />
+          <Route path="/favorites" element={<ProtectedRoute><FavoritesPage /></ProtectedRoute>} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

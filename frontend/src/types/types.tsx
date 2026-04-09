@@ -95,6 +95,56 @@ export interface SubscriptionPlan {
     canSubscribeYearly: boolean;
 }
 
+// ── Friends Service (Sprint 4) ────────────────────────────────────────────────
+
+export interface Friend {
+    friendshipId: string;
+    userId:       string;
+    fullName:     string;
+    imageUrl:     string;
+}
+
+export interface FriendRequest {
+    _id:    string; // friendshipId
+    status: 'pending' | 'accepted' | 'declined';
+    requester: Friend;
+    recipient: Friend;
+    createdAt: string;
+}
+
+export interface FriendSearchResult {
+    userId:          string;
+    fullName:        string;
+    imageUrl:        string;
+    username:        string | null;
+    friendshipId:    string | null;
+    friendshipStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted';
+}
+
+export interface FriendActivityItem {
+    userId:   string;
+    fullName: string;
+    imageUrl: string;
+    room?:    { _id: string; title: string };
+    joinedAt?: string;
+}
+
+export interface FriendActivity {
+    listening: FriendActivityItem[];
+    online:    FriendActivityItem[];
+    offline:   FriendActivityItem[];
+}
+
+export interface FriendInvite {
+    inviteId:   string;
+    inviteCode: string;   // for ?ref= URL tracking and analytics
+    from:       { userId: string; fullName: string; imageUrl: string };
+    room:       { _id: string; title: string };
+    expiresAt:  string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface ChatMessage {
     id: string;
     user: {

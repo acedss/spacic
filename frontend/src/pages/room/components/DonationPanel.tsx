@@ -4,6 +4,11 @@ import { useRoomStore } from '@/stores/useRoomStore';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 const QUICK_AMOUNTS = [100, 500, 1000, 2500]; // in credits
 
@@ -83,17 +88,14 @@ export const DonationPanel = ({ onDonate, onUpdateGoal, isCreator }: DonationPan
                 </div>
 
                 {/* Progress bar */}
-                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                    <div
-                        className={cn(
-                            'h-full rounded-full transition-all duration-700',
-                            goalReached
-                                ? 'bg-gradient-to-r from-yellow-400 to-yellow-300'
-                                : 'bg-gradient-to-r from-yellow-500 to-orange-500'
-                        )}
-                        style={{ width: `${progress}%` }}
-                    />
-                </div>
+                <Progress
+                    value={progress}
+                    className={cn(
+                        'h-2 bg-white/10',
+                        goalReached ? '[&>div]:bg-gradient-to-r [&>div]:from-yellow-400 [&>div]:to-yellow-300'
+                                    : '[&>div]:bg-gradient-to-r [&>div]:from-yellow-500 [&>div]:to-orange-500'
+                    )}
+                />
 
                 {/* Quick donate buttons — hidden when goal reached */}
                 {!goalReached && (
@@ -115,11 +117,11 @@ export const DonationPanel = ({ onDonate, onUpdateGoal, isCreator }: DonationPan
                             ))}
                         </div>
 
-                        <button
+                        <Button
                             onClick={handleDonate}
                             disabled={!selected || donating}
                             className={cn(
-                                'w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all',
+                                'w-full text-sm font-medium',
                                 selected && !donating
                                     ? 'bg-yellow-500 hover:bg-yellow-400 text-black'
                                     : 'bg-white/5 text-zinc-600 cursor-not-allowed'
@@ -127,7 +129,7 @@ export const DonationPanel = ({ onDonate, onUpdateGoal, isCreator }: DonationPan
                         >
                             <Heart className={cn('size-4', donating && 'animate-pulse')} />
                             {donating ? 'Sending...' : selected ? `Donate ${toCoins(selected)}` : 'Select an amount'}
-                        </button>
+                        </Button>
 
                         <p className="text-center text-xs text-zinc-600">
                             Your balance: {toCoins(balance)}
@@ -143,47 +145,48 @@ export const DonationPanel = ({ onDonate, onUpdateGoal, isCreator }: DonationPan
                 )}
             </div>
 
-            {/* ── Increase Goal Modal (creator only) ─────────────────────────── */}
-            {showGoalModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4">
-                        <div>
-                            <h3 className="text-lg font-semibold text-white">Raise Stream Goal</h3>
-                            <p className="text-xs text-zinc-500 mt-1">
-                                Current: {toCoins(room.streamGoalCurrent)} raised. New goal must be higher.
-                            </p>
-                        </div>
+            {/* ── Increase Goal Dialog (creator only) ────────────────────────── */}
+            <Dialog open={showGoalModal} onOpenChange={(open) => { if (!open) { setShowGoalModal(false); setNewGoalDollars(''); } }}>
+                <DialogContent className="bg-zinc-900 border-white/10 text-white max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Raise Stream Goal</DialogTitle>
+                        <p className="text-xs text-zinc-500 mt-1">
+                            Current: {toCoins(room.streamGoalCurrent)} raised. New goal must be higher.
+                        </p>
+                    </DialogHeader>
 
-                        <div className="relative">
-                            <input
-                                type="number"
-                                min={room.streamGoalCurrent + 1}
-                                step="1"
-                                autoFocus
-                                value={newGoalDollars}
-                                onChange={(e) => setNewGoalDollars(e.target.value)}
-                                placeholder={`More than ${room.streamGoalCurrent.toLocaleString()} coins`}
-                                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-purple-500 placeholder:text-zinc-600"
-                            />
-                        </div>
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => { setShowGoalModal(false); setNewGoalDollars(''); }}
-                                className="flex-1 py-2.5 rounded-xl text-sm bg-white/5 hover:bg-white/10 text-zinc-400 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleGoalSubmit}
-                                className="flex-1 py-2.5 rounded-xl text-sm bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors"
-                            >
-                                Raise Goal
-                            </button>
-                        </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="new-goal" className="text-zinc-400">New goal (coins)</Label>
+                        <Input
+                            id="new-goal"
+                            type="number"
+                            min={room.streamGoalCurrent + 1}
+                            step="1"
+                            autoFocus
+                            value={newGoalDollars}
+                            onChange={(e) => setNewGoalDollars(e.target.value)}
+                            placeholder={`More than ${room.streamGoalCurrent.toLocaleString()} coins`}
+                            className="bg-zinc-800 border-white/10 text-white placeholder:text-zinc-600 focus-visible:ring-purple-500"
+                        />
                     </div>
-                </div>
-            )}
+
+                    <DialogFooter className="gap-3">
+                        <Button
+                            variant="ghost"
+                            onClick={() => { setShowGoalModal(false); setNewGoalDollars(''); }}
+                            className="flex-1 bg-white/5 hover:bg-white/10 text-zinc-400"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleGoalSubmit}
+                            className="flex-1 bg-purple-600 hover:bg-purple-500 text-white"
+                        >
+                            Raise Goal
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     );
 };

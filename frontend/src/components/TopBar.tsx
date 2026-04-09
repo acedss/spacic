@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, LayoutDashboardIcon, Plus } from "lucide-rea
 import { Link, useNavigate } from "react-router-dom";
 import SignInOAuthButtons from "./ui/SignInOAuthButtons";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { Button } from "@/components/ui/button";
 import CreateRoomModal from "@/pages/home/compoments/CreateRoomModal";
 
 const TopBar = () => {
@@ -15,31 +16,28 @@ const TopBar = () => {
     return (
         <>
             <div className='z-50 sticky top-0 flex items-center justify-between p-1.5 bg-white/10 backdrop-blur-lg border-white/20 shadow-lg rounded-b-xl'>
-                <div className='flex items-center gap-2 text-purple-300 text-center'>
-                    <ChevronLeft
-                        className="rounded-4xl hover:bg-purple-500/50 cursor-pointer"
-                        onClick={() => navigate(-1)}
-                    />
-                    <ChevronRight
-                        className="rounded-4xl hover:bg-purple-500/50 cursor-pointer"
-                        onClick={() => navigate(1)}
-                    />
+                <div className='flex items-center gap-1 text-purple-300'>
+                    <Button variant="ghost" size="icon-sm" onClick={() => navigate(-1)} className="rounded-full hover:bg-purple-500/20 hover:text-purple-300">
+                        <ChevronLeft className="size-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" onClick={() => navigate(1)} className="rounded-full hover:bg-purple-500/20 hover:text-purple-300">
+                        <ChevronRight className="size-4" />
+                    </Button>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                     {isAdmin && (
-                        <Link to={"/admin"} className="flex items-center gap-2 text-white hover:text-black bg-zinc-400/20 py-1 px-3 text-sm rounded-xl">
-                            <LayoutDashboardIcon className="size-4" />
-                            <p className="mr-1">Admin</p>
-                        </Link>
+                        <Button variant="ghost" size="sm" asChild className="bg-zinc-400/20 hover:bg-zinc-400/30 text-white rounded-xl">
+                            <Link to="/admin">
+                                <LayoutDashboardIcon className="size-4" />
+                                Admin
+                            </Link>
+                        </Button>
                     )}
                     {isSignedIn && (
-                        <button
-                            onClick={() => setShowCreateRoom(true)}
-                            className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white py-1 px-3 text-sm rounded-xl transition-colors"
-                        >
+                        <Button size="sm" onClick={() => setShowCreateRoom(true)} className="bg-purple-600 hover:bg-purple-500 text-white rounded-xl">
                             <Plus className="size-4" />
                             Create Room
-                        </button>
+                        </Button>
                     )}
                     {!isSignedIn && <SignInOAuthButtons />}
                     <UserButton userProfileUrl="/profile" />

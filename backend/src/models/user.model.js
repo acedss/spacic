@@ -33,6 +33,29 @@ const userSchema = new mongoose.Schema({
         default: null,
         index: { unique: true, sparse: true },
     },
+    stripeSubscriptionId: {
+        type: String,
+        default: null,
+    },
+    // Mirrors Stripe subscription status — drives access control + UI banners
+    subscriptionStatus: {
+        type: String,
+        enum: ['active', 'past_due', 'cancel_at_period_end', 'canceled', null],
+        default: null,
+    },
+    // When the current paid period ends (used for cancel_at_period_end grace period)
+    currentPeriodEnd: {
+        type: Date,
+        default: null,
+    },
+    // Custom handle — searchable, not Clerk username (avoids MFA re-verification)
+    username: {
+        type: String,
+        default: null,
+        index: { unique: true, sparse: true },
+        match: [/^[a-z0-9_]{3,20}$/, 'Username must be 3-20 lowercase letters, numbers, or underscores'],
+    },
+
     // Lifetime creator stats — accumulated across all rooms on close
     creatorStats: {
         totalRoomsHosted:      { type: Number, default: 0 },

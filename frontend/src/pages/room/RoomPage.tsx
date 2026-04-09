@@ -1,7 +1,9 @@
 import { useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
+import { axiosInstance } from '@/lib/axios';
 import { Loader, LogOut, Radio, Users, Clock, Gem, Heart } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useRoomSession } from '@/providers/RoomSessionProvider';
@@ -16,11 +18,21 @@ import type { RoomInfo } from '@/types/types';
 export const RoomPage = () => {
     const { roomId } = useParams<{ roomId: string }>();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { userId } = useAuth();
 
     const roomStore = useRoomStore();
     const playerStore = usePlayerStore();
     const { joinRoom, leaveRoom, sendChat, skipSong, donate, updateGoal } = useRoomSession();
+
+    // Track referral once on mount — fire-and-forget, never blocks UX
+    useEffect(() => {
+        const ref  = searchParams.get('ref');
+        const type = searchParams.get('type') ?? 'link';   // 'link' | 'activity_join'
+        if (!ref || !roomId) return;
+        axiosInstance.post(`/rooms/${roomId}/referral`, { ref, type }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [roomId]);
 
     useEffect(() => {
         if (!roomId) return;
@@ -75,12 +87,9 @@ export const RoomPage = () => {
         return (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
                 <p className="text-red-400">{roomStore.error}</p>
-                <button
-                    onClick={() => navigate('/')}
-                    className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-sm"
-                >
+                <Button variant="ghost" onClick={() => navigate('/')} className="bg-white/10 hover:bg-white/20 rounded-lg text-sm">
                     Go Home
-                </button>
+                </Button>
             </div>
         );
     }
@@ -90,25 +99,28 @@ export const RoomPage = () => {
     }
 
     return (
-        <div className="flex flex-col md:flex-row h-full gap-4 p-4 min-h-0 relative">
+        <div className="flex flex-col md:flex-row md:h-full gap-4 p-4 min-h-0 relative">
             {/* Leave button */}
-            <button
+            <Button
                 onClick={handleLeave}
-                className="absolute top-4 right-4 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-lg text-xs text-zinc-300 transition-colors"
+                variant="ghost"
+                size="sm"
+                className="absolute top-4 right-4 z-10 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-lg text-xs text-zinc-300"
             >
                 <LogOut className="size-3.5" />
                 Leave
-            </button>
+            </Button>
 
             {/* Left: Player */}
             <div className="w-full md:w-72 flex-shrink-0">
                 <RoomPlayer onSkip={skipSong} onClose={handleGoOffline} />
             </div>
 
-            {/* Right: Queue + Chat + Donation */}
+            {/* Right: Queue + Chat/Invite + Donation */}
             <div className="flex flex-col flex-1 gap-4 min-h-0 overflow-hidden">
                 <PlaylistPanel />
                 <DonationPanel onDonate={donate} onUpdateGoal={updateGoal} isCreator={roomStore.isCreator} />
+
                 <div className="flex-1 min-h-0">
                     <ChatPanel onSendMessage={sendChat} />
                 </div>
@@ -171,12 +183,9 @@ const RoomOfflineView = ({ room, onBack }: { room: RoomInfo; onBack: () => void 
             )}
 
             <p className="text-zinc-600 text-sm">Check back later when the creator goes live.</p>
-            <button
-                onClick={onBack}
-                className="px-5 py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl text-sm text-white transition-colors"
-            >
+            <Button variant="ghost" onClick={onBack} className="bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl text-sm text-white">
                 Find Live Rooms
-            </button>
+            </Button>
         </div>
     );
 };

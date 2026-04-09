@@ -7,6 +7,8 @@
     "dev": "nodemon src/index.js",
     "seed": "node src/seed.js",
     "sync-prices": "node src/scripts/syncStripePrices.js",
+    "setup-stripe": "node src/scripts/setupStripe.js",
+    "seed:analytics": "node src/scripts/seedAnalytics.js",
     "test": "vitest"
   },
   "keywords": [],
@@ -24,10 +26,12 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
+    "geoip-lite": "^2.0.1",
     "helmet": "^8.1.0",
     "ioredis": "^5.4.2",
     "mongodb": "^7.0.0",
     "mongoose": "^9.1.5",
+    "node-cron": "^4.2.1",
     "socket.io": "^4.8.3",
     "stripe": "^20.4.1",
     "svix": "^1.82.0"

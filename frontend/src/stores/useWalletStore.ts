@@ -13,6 +13,7 @@ interface WalletStore {
     loadingMore: boolean;
     nextCursor: string | null;
     hasMore: boolean;
+    hasFetched: boolean;
 
     fetchWallet: () => Promise<void>;
     fetchPackages: () => Promise<void>;
@@ -31,6 +32,7 @@ export const useWalletStore = create<WalletStore>((set, get) => ({
     loadingMore: false,
     nextCursor: null,
     hasMore: false,
+    hasFetched: false,
 
     fetchWallet: async () => {
         set({ loading: true });
@@ -42,6 +44,7 @@ export const useWalletStore = create<WalletStore>((set, get) => ({
                 transactions: data.data.transactions,
                 nextCursor: data.data.nextCursor,
                 hasMore: data.data.hasMore,
+                hasFetched: true,
             });
         } catch {
             toast.error('Failed to load wallet');
