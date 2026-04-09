@@ -73,7 +73,7 @@ pipeline {
 
                 // Injecting variables into the Frontend .env (For Vite build process)
                 sh """
-                echo "VITE_API_URL=https://spapi.aceds.space" > frontend/.env
+                echo "VITE_API_URL=https://spapi.aceds.space/api" > frontend/.env
                 echo "VITE_SOCKET_URL=https://spapi.aceds.space" >> frontend/.env
                 echo "VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PK}" >> frontend/.env
                 """
@@ -84,7 +84,7 @@ pipeline {
             steps {
                 sh """
                 # Create a temporary root .env so docker compose can see these variables
-                echo "VITE_API_URL=https://spapi.aceds.space" > .env
+                echo "VITE_API_URL=https://spapi.aceds.space/api" > .env
                 echo "VITE_SOCKET_URL=https://spapi.aceds.space" >> .env
                 echo "VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PK}" >> .env
 
