@@ -19,8 +19,6 @@ pipeline {
         // Stripe Billing
         STRIPE_SK      = credentials('STRIPE_SECRET_KEY')
         STRIPE_WH      = credentials('STRIPE_WEBHOOK_SECRET')
-        STRIPE_PREM    = credentials('STRIPE_PREMIUM_PRICE_MONTHLY')
-        STRIPE_CREATOR = credentials('STRIPE_CREATOR_PRICE_MONTHLY')
         
         // Developer Tools
         BYPASS_TOKEN   = credentials('DEV_BYPASS_TOKEN')
