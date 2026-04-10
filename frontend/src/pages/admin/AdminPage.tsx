@@ -19,16 +19,55 @@ import {
 
 // ── Analytics context (fetched once, shared across all sections) ──────────────
 
+type AnalyticsGranularity = 'hourly' | 'daily' | 'weekly' | 'monthly';
+
 interface AnalyticsData {
     dailyRevenue:   { date: string; revenue: number; txns: number }[];
     dailySignups:   { date: string; count: number }[];
     topArtists:     { artist: string; songs: number }[];
     tierDist:       { tier: string; count: number }[];
     donationsByDay: { date: string; amount: number; count: number }[];
+    roomDailySessions: { date: string; sessions: number; listeners: number; minutesListened: number; coinsEarned: number }[];
+    topRooms: { roomId: string; title: string; status: 'live' | 'offline'; favoriteCount: number; sessions: number; listeners: number; minutesListened: number; coinsEarned: number; avgListeners: number }[];
+    roomSummary: {
+        totalRooms: number;
+        liveRooms: number;
+        sessions: number;
+        listeners: number;
+        minutesListened: number;
+        coinsEarned: number;
+    };
+    granularity: AnalyticsGranularity;
+    from: string;
+    to: string;
     days: number;
 }
 
-const AnalyticsCtx = createContext<{ data: AnalyticsData | null; loading: boolean }>({ data: null, loading: true });
+interface AnalyticsCtxValue {
+    data: AnalyticsData | null;
+    loading: boolean;
+    granularity: AnalyticsGranularity;
+    setGranularity: (value: AnalyticsGranularity) => void;
+    from: string;
+    setFrom: (value: string) => void;
+    to: string;
+    setTo: (value: string) => void;
+    applyRange: () => void;
+    refresh: () => void;
+}
+
+const AnalyticsCtx = createContext<AnalyticsCtxValue>({
+    data: null,
+    loading: true,
+    granularity: 'daily',
+    setGranularity: () => {},
+    from: '',
+    setFrom: () => {},
+    to: '',
+    setTo: () => {},
+    applyRange: () => {},
+    refresh: () => {},
+});
 const useAnalytics = () => useContext(AnalyticsCtx);
 
 // ── Chart shared styles ───────────────────────────────────────────────────────
@@ -104,23 +143,65 @@ const TIER_COLORS: Record<string, string> = {
 
 const formatCredits = (c: number) => `$${(c / 100).toFixed(2)}`;
 const fmtDuration   = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const fmtMinutesCompact = (m: number) => (m >= 60 ? `${(m / 60).toFixed(1)}h` : `${m}m`);
+const toDate = (value: string) => {
+    const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value;
+    const date = new Date(iso);
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+const fmtDateShort = (value: string) => {
+    const d = toDate(value);
+    return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : value;
+};
+const fmtDateLong = (value: string) => {
+    const d = toDate(value);
+    return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : value;
+};
+const sortByDateAsc = <T extends { date: string }>(arr: T[]) =>
+    [...arr].sort((a, b) => {
+        const aT = toDate(a.date)?.getTime() ?? 0;
+        const bT = toDate(b.date)?.getTime() ?? 0;
+        return aT - bT;
+    });
+const toDateTimeInputValue = (date: Date) => {
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+};
+const fmtDateTimeInput = (value: string) => {
+    const d = toDate(value);
+    return d ? d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : value;
+};
 
 // ── Overview section ──────────────────────────────────────────────────────────
 
-type OverviewTab = 'overview' | 'revenue' | 'users' | 'content';
+type OverviewTab = 'overview' | 'revenue' | 'users' | 'content' | 'rooms';
 
 const OVERVIEW_TABS: { id: OverviewTab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'revenue',  label: 'Revenue'  },
     { id: 'users',    label: 'Users'    },
     { id: 'content',  label: 'Content'  },
+    { id: 'rooms',    label: 'Rooms'    },
 ];
 
 const OverviewSection = () => {
     const [stats, setStats]     = useState<Stats | null>(null);
     const [loading, setLoading] = useState(true);
     const [tab, setTab]         = useState<OverviewTab>('overview');
-    const { data: an, loading: anLoading } = useAnalytics();
+    const [roomSortKey, setRoomSortKey] = useState<'listeners' | 'coinsEarned' | 'minutesListened' | 'sessions' | 'avgListeners'>('listeners');
+    const [roomSortDir, setRoomSortDir] = useState<'asc' | 'desc'>('desc');
+    const {
+        data: an,
+        loading: anLoading,
+        granularity,
+        setGranularity,
+        from,
+        setFrom,
+        to,
+        setTo,
+        applyRange,
+        refresh,
+    } = useAnalytics();
 
     useEffect(() => {
         axiosInstance.get('/admin/stats')
@@ -132,39 +213,81 @@ const OverviewSection = () => {
     if (loading) return <div className="flex items-center gap-2 text-zinc-400"><Loader className="size-4 animate-spin" /> Loading...</div>;
     if (!stats)  return null;
 
+    const dailyRevenue = sortByDateAsc(an?.dailyRevenue ?? []);
+    const donationsByDay = sortByDateAsc(an?.donationsByDay ?? []);
+    const dailySignups = sortByDateAsc(an?.dailySignups ?? []);
+    const roomDaily = sortByDateAsc(an?.roomDailySessions ?? []);
+    const donationsByDate = new Map(donationsByDay.map((d) => [d.date, d]));
+
     // ── Derived KPIs ────────────────────────────────────────────────────────────
-    const totalRevenueCents    = an?.dailyRevenue.reduce((s, d) => s + d.revenue, 0) ?? 0;
-    const totalDonationsCents  = an?.donationsByDay.reduce((s, d) => s + d.amount, 0) ?? 0;
-    const totalTxns            = an?.dailyRevenue.reduce((s, d) => s + d.txns, 0) ?? 0;
-    const totalSignups         = an?.dailySignups.reduce((s, d) => s + d.count, 0) ?? 0;
+    const totalRevenueCents    = dailyRevenue.reduce((s, d) => s + d.revenue, 0);
+    const totalDonationsCents  = donationsByDay.reduce((s, d) => s + d.amount, 0);
+    const totalTxns            = dailyRevenue.reduce((s, d) => s + d.txns, 0);
+    const totalSignups         = dailySignups.reduce((s, d) => s + d.count, 0);
     const conversionRate       = stats.totalUsers > 0
         ? (((stats.users.PREMIUM + stats.users.CREATOR) / stats.totalUsers) * 100).toFixed(1)
         : '0.0';
     const avgTxn               = totalTxns > 0 ? (totalRevenueCents / totalTxns / 100).toFixed(2) : '0.00';
 
+    const rangeDays = an?.days ?? 0;
+
     const kpis = [
-        { label: 'Total Revenue',    value: `$${(totalRevenueCents / 100).toFixed(0)}`,   sub: 'credit top-ups · 30d',    color: 'text-violet-400',  icon: TrendingUp },
+        { label: 'Total Revenue',    value: `$${(totalRevenueCents / 100).toFixed(0)}`,   sub: `credit top-ups · ${rangeDays}d`, color: 'text-violet-400',  icon: TrendingUp },
         { label: 'Platform Users',   value: stats.totalUsers.toLocaleString(),             sub: `${stats.users.FREE} free tier`, color: 'text-emerald-400', icon: Users },
         { label: 'Premium Conv.',    value: `${conversionRate}%`,                          sub: 'paid subscribers',        color: 'text-sky-400',     icon: TrendingUp },
-        { label: 'Creator Earnings', value: `$${(totalDonationsCents / 100).toFixed(0)}`, sub: 'donations · 30d',         color: 'text-amber-400',   icon: TrendingUp },
+        { label: 'Creator Earnings', value: `$${(totalDonationsCents / 100).toFixed(0)}`, sub: `donations · ${rangeDays}d`, color: 'text-amber-400',   icon: TrendingUp },
         { label: 'Avg Transaction',  value: `$${avgTxn}`,                                  sub: `${totalTxns} top-ups`,    color: 'text-pink-400',    icon: CreditCard },
-        { label: 'New Signups',      value: totalSignups.toLocaleString(),                 sub: 'last 30 days',            color: 'text-teal-400',    icon: TrendingUp },
+        { label: 'New Signups',      value: totalSignups.toLocaleString(),                 sub: `last ${rangeDays} days`,  color: 'text-teal-400',    icon: TrendingUp },
     ];
 
     // ── Chart data ───────────────────────────────────────────────────────────────
-    const combinedTrend = an?.dailyRevenue.map(d => {
-        const don = an.donationsByDay.find(x => x.date === d.date);
+    const combinedTrend = dailyRevenue.map(d => {
+        const don = donationsByDate.get(d.date);
         return {
             date: d.date,
             'Top-ups':   +(d.revenue / 100).toFixed(2),
             'Donations': +((don?.amount ?? 0) / 100).toFixed(2),
         };
-    }) ?? [];
+    });
 
-    const tierPie = an?.tierDist.map(t => ({
+    const tierPie = (an?.tierDist ?? []).map(t => ({
         name: t.tier, value: t.count,
         color: (CHART_COLORS as any)[t.tier] ?? '#52525b',
-    })) ?? [];
+    }));
+
+    const roomSummary = an?.roomSummary ?? {
+        totalRooms: 0,
+        liveRooms: 0,
+        sessions: 0,
+        listeners: 0,
+        minutesListened: 0,
+        coinsEarned: 0,
+    };
+
+    const topRoomsSorted = [...(an?.topRooms ?? [])].sort((a, b) => {
+        const dir = roomSortDir === 'asc' ? 1 : -1;
+        return (a[roomSortKey] - b[roomSortKey]) * dir;
+    });
+
+    const exportAnalytics = () => {
+        const payload = {
+            generatedAt: new Date().toISOString(),
+            rangeDays,
+            granularity,
+            from,
+            to,
+            tab,
+            stats,
+            analytics: an,
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `admin-analytics-${tab}-${granularity}-${rangeDays}d.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
 
     return (
         <div className="space-y-8">
@@ -177,14 +300,58 @@ const OverviewSection = () => {
                         Overview of your music platform's performance and creator ecosystem
                     </p>
                 </div>
-                <Button
-                    size="sm" variant="outline"
-                    className="border-white/10 text-zinc-400 hover:text-white gap-1.5 shrink-0"
-                    onClick={() => {}}
-                >
-                    <Download className="size-3.5" /> Export
-                </Button>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                        value={granularity}
+                        onChange={e => setGranularity(e.target.value as AnalyticsGranularity)}
+                        className="h-9 rounded-lg border border-white/10 bg-white/5 px-2.5 text-xs text-zinc-300"
+                    >
+                        <option value="hourly">Hourly</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                    <Input
+                        type="datetime-local"
+                        value={from}
+                        onChange={e => setFrom(e.target.value)}
+                        className="h-9 w-[180px] bg-white/5 border-white/10 text-xs text-zinc-300"
+                    />
+                    <Input
+                        type="datetime-local"
+                        value={to}
+                        onChange={e => setTo(e.target.value)}
+                        className="h-9 w-[180px] bg-white/5 border-white/10 text-xs text-zinc-300"
+                    />
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-white/10 text-zinc-400 hover:text-white"
+                        onClick={applyRange}
+                    >
+                        Apply
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-white/10 text-zinc-400 hover:text-white"
+                        onClick={refresh}
+                    >
+                        Refresh
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-white/10 text-zinc-400 hover:text-white gap-1.5 shrink-0"
+                        onClick={exportAnalytics}
+                    >
+                        <Download className="size-3.5" /> Export
+                    </Button>
+                </div>
             </div>
+            <p className="text-xs text-zinc-600 -mt-5">
+                Showing {granularity} data from {fmtDateTimeInput(from)} to {fmtDateTimeInput(to)}
+            </p>
 
             {/* ── Tabs ────────────────────────────────────────────────────────── */}
             <div className="flex gap-0 border-b border-white/10">
@@ -230,7 +397,7 @@ const OverviewSection = () => {
                         <div className="space-y-6">
                             <div className="flex items-center justify-between">
                                 <h3 className="text-sm font-semibold text-zinc-300">Revenue &amp; Donation Trends</h3>
-                                <span className="text-xs text-zinc-600 bg-white/5 border border-white/10 px-2.5 py-1 rounded-lg">Past 30 days</span>
+                                <span className="text-xs text-zinc-600 bg-white/5 border border-white/10 px-2.5 py-1 rounded-lg">Past {rangeDays} days</span>
                             </div>
                             <ChartCard title="">
                                 {combinedTrend.length === 0 ? <EmptyChart /> : (
@@ -247,9 +414,13 @@ const OverviewSection = () => {
                                                 </linearGradient>
                                             </defs>
                                             <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
-                                            <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
+                                            <XAxis dataKey="date" tick={AXIS_STYLE} tickFormatter={fmtDateShort} interval="preserveStartEnd" />
                                             <YAxis tick={AXIS_STYLE} tickFormatter={v => `$${v}`} />
-                                            <Tooltip contentStyle={TIP_STYLE} formatter={(v) => `$${Number(v).toFixed(2)}`} />
+                                            <Tooltip
+                                                contentStyle={TIP_STYLE}
+                                                labelFormatter={value => fmtDateLong(String(value))}
+                                                formatter={(v) => `$${Number(v).toFixed(2)}`}
+                                            />
                                             <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11, color: '#a1a1aa' }} />
                                             <Area type="monotone" dataKey="Top-ups"   stroke={CHART_COLORS.revenue}   fill="url(#gTopup)" strokeWidth={2} dot={false} />
                                             <Area type="monotone" dataKey="Donations" stroke={CHART_COLORS.donations} fill="url(#gDon)"   strokeWidth={2} dot={false} />
@@ -306,16 +477,20 @@ const OverviewSection = () => {
                         <div className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <ChartCard title="Daily top-up revenue">
-                                    {an.dailyRevenue.length === 0 ? <EmptyChart /> : (
+                                    {dailyRevenue.length === 0 ? <EmptyChart /> : (
                                         <ResponsiveContainer width="100%" height={180}>
                                             <BarChart
-                                                data={an.dailyRevenue.map(d => ({ ...d, revenue: +(d.revenue / 100).toFixed(2) }))}
+                                                data={dailyRevenue.map(d => ({ ...d, revenue: +(d.revenue / 100).toFixed(2) }))}
                                                 barCategoryGap="20%"
                                             >
                                                 <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
-                                                <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
+                                                <XAxis dataKey="date" tick={AXIS_STYLE} tickFormatter={fmtDateShort} interval="preserveStartEnd" />
                                                 <YAxis tick={AXIS_STYLE} tickFormatter={v => `$${v}`} />
-                                                <Tooltip contentStyle={TIP_STYLE} formatter={(v) => [`$${Number(v)}`, 'Revenue']} />
+                                                <Tooltip
+                                                    contentStyle={TIP_STYLE}
+                                                    labelFormatter={value => fmtDateLong(String(value))}
+                                                    formatter={(v) => [`$${Number(v)}`, 'Revenue']}
+                                                />
                                                 <Bar dataKey="revenue" name="Revenue" fill={CHART_COLORS.revenue} radius={[3, 3, 0, 0]} />
                                             </BarChart>
                                         </ResponsiveContainer>
@@ -323,9 +498,9 @@ const OverviewSection = () => {
                                 </ChartCard>
 
                                 <ChartCard title="Creator donations per day">
-                                    {an.donationsByDay.length === 0 ? <EmptyChart /> : (
+                                    {donationsByDay.length === 0 ? <EmptyChart /> : (
                                         <ResponsiveContainer width="100%" height={180}>
-                                            <AreaChart data={an.donationsByDay.map(d => ({ ...d, amount: +(d.amount / 100).toFixed(2) }))}>
+                                            <AreaChart data={donationsByDay.map(d => ({ ...d, amount: +(d.amount / 100).toFixed(2) }))}>
                                                 <defs>
                                                     <linearGradient id="gDon2" x1="0" y1="0" x2="0" y2="1">
                                                         <stop offset="5%"  stopColor={CHART_COLORS.donations} stopOpacity={0.35} />
@@ -333,9 +508,13 @@ const OverviewSection = () => {
                                                     </linearGradient>
                                                 </defs>
                                                 <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
-                                                <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
+                                                <XAxis dataKey="date" tick={AXIS_STYLE} tickFormatter={fmtDateShort} interval="preserveStartEnd" />
                                                 <YAxis tick={AXIS_STYLE} tickFormatter={v => `$${v}`} />
-                                                <Tooltip contentStyle={TIP_STYLE} formatter={(v) => [`$${Number(v)}`, 'Donations']} />
+                                                <Tooltip
+                                                    contentStyle={TIP_STYLE}
+                                                    labelFormatter={value => fmtDateLong(String(value))}
+                                                    formatter={(v) => [`$${Number(v)}`, 'Donations']}
+                                                />
                                                 <Area type="monotone" dataKey="amount" name="Donations" stroke={CHART_COLORS.donations} fill="url(#gDon2)" strokeWidth={2} dot={false} />
                                             </AreaChart>
                                         </ResponsiveContainer>
@@ -405,10 +584,10 @@ const OverviewSection = () => {
                     {tab === 'users' && (
                         <div className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <ChartCard title="New signups — last 30 days" className="md:col-span-2">
-                                    {an.dailySignups.length === 0 ? <EmptyChart /> : (
+                                <ChartCard title={`New signups — last ${rangeDays} days`} className="md:col-span-2">
+                                    {dailySignups.length === 0 ? <EmptyChart /> : (
                                         <ResponsiveContainer width="100%" height={180}>
-                                            <AreaChart data={an.dailySignups}>
+                                            <AreaChart data={dailySignups}>
                                                 <defs>
                                                     <linearGradient id="gSig" x1="0" y1="0" x2="0" y2="1">
                                                         <stop offset="5%"  stopColor={CHART_COLORS.signups} stopOpacity={0.35} />
@@ -416,9 +595,9 @@ const OverviewSection = () => {
                                                     </linearGradient>
                                                 </defs>
                                                 <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
-                                                <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
+                                                <XAxis dataKey="date" tick={AXIS_STYLE} tickFormatter={fmtDateShort} interval="preserveStartEnd" />
                                                 <YAxis tick={AXIS_STYLE} allowDecimals={false} />
-                                                <Tooltip contentStyle={TIP_STYLE} />
+                                                <Tooltip contentStyle={TIP_STYLE} labelFormatter={value => fmtDateLong(String(value))} />
                                                 <Area type="monotone" dataKey="count" name="Signups" stroke={CHART_COLORS.signups} fill="url(#gSig)" strokeWidth={2} dot={false} />
                                             </AreaChart>
                                         </ResponsiveContainer>
@@ -497,6 +676,126 @@ const OverviewSection = () => {
                                             <Bar dataKey="songs" name="Songs" fill={CHART_COLORS.revenue} radius={[0, 4, 4, 0]} />
                                         </BarChart>
                                     </ResponsiveContainer>
+                                )}
+                            </ChartCard>
+                        </div>
+                    )}
+
+                    {/* ── ROOMS TAB ─────────────────────────────────────────────── */}
+                    {tab === 'rooms' && (
+                        <div className="space-y-5">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                {[
+                                    { label: 'Total Rooms', value: roomSummary.totalRooms.toLocaleString(), color: 'text-violet-400' },
+                                    { label: 'Live Right Now', value: roomSummary.liveRooms.toLocaleString(), color: 'text-emerald-400' },
+                                    { label: `Sessions (${rangeDays}d)`, value: roomSummary.sessions.toLocaleString(), color: 'text-sky-400' },
+                                    { label: `Listeners (${rangeDays}d)`, value: roomSummary.listeners.toLocaleString(), color: 'text-amber-400' },
+                                ].map(card => (
+                                    <div key={card.label} className="rounded-xl border border-white/10 bg-white/5 p-4">
+                                        <p className="text-xs text-zinc-500 mb-1.5">{card.label}</p>
+                                        <p className={cn('text-2xl font-bold tabular-nums', card.color)}>{card.value}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <ChartCard title={`Room session trend — last ${rangeDays} days`}>
+                                {roomDaily.length === 0 ? <EmptyChart /> : (
+                                    <ResponsiveContainer width="100%" height={220}>
+                                        <AreaChart data={roomDaily}>
+                                            <defs>
+                                                <linearGradient id="gRoomSessions" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.35} />
+                                                    <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
+                                                </linearGradient>
+                                                <linearGradient id="gRoomListeners" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.35} />
+                                                    <stop offset="95%" stopColor="#a78bfa" stopOpacity={0} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+                                            <XAxis dataKey="date" tick={AXIS_STYLE} tickFormatter={fmtDateShort} interval="preserveStartEnd" />
+                                            <YAxis yAxisId="left" tick={AXIS_STYLE} allowDecimals={false} />
+                                            <YAxis yAxisId="right" orientation="right" tick={AXIS_STYLE} allowDecimals={false} />
+                                            <Tooltip
+                                                contentStyle={TIP_STYLE}
+                                                labelFormatter={value => fmtDateLong(String(value))}
+                                                formatter={(value, name) => {
+                                                    if (name === 'Minutes') return [fmtMinutesCompact(Number(value)), name];
+                                                    if (name === 'Coins') return [formatCredits(Number(value)), name];
+                                                    return [Number(value).toLocaleString(), name];
+                                                }}
+                                            />
+                                            <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11, color: '#a1a1aa' }} />
+                                            <Area yAxisId="left" type="monotone" dataKey="sessions" name="Sessions" stroke="#38bdf8" fill="url(#gRoomSessions)" strokeWidth={2} dot={false} />
+                                            <Area yAxisId="right" type="monotone" dataKey="listeners" name="Listeners" stroke="#a78bfa" fill="url(#gRoomListeners)" strokeWidth={2} dot={false} />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                )}
+                            </ChartCard>
+
+                            <ChartCard title={`Top rooms in the last ${rangeDays} days`}>
+                                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                    <div className="inline-flex items-center gap-2 text-xs text-zinc-500">
+                                        Sort by
+                                        <select
+                                            value={roomSortKey}
+                                            onChange={e => setRoomSortKey(e.target.value as typeof roomSortKey)}
+                                            className="bg-zinc-900 border border-white/10 rounded-md px-2 py-1 text-zinc-300"
+                                        >
+                                            <option value="listeners">Listeners</option>
+                                            <option value="coinsEarned">Coins earned</option>
+                                            <option value="minutesListened">Minutes listened</option>
+                                            <option value="sessions">Sessions</option>
+                                            <option value="avgListeners">Avg listeners</option>
+                                        </select>
+                                    </div>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="border-white/10 text-zinc-300 hover:text-white"
+                                        onClick={() => setRoomSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+                                    >
+                                        {roomSortDir === 'desc' ? 'Highest first' : 'Lowest first'}
+                                    </Button>
+                                </div>
+                                {topRoomsSorted.length === 0 ? <EmptyChart /> : (
+                                    <div className="rounded-lg border border-white/10 overflow-hidden">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow className="border-white/10 hover:bg-transparent">
+                                                    <TableHead className="text-zinc-500">Room</TableHead>
+                                                    <TableHead className="text-zinc-500 text-right">Sessions</TableHead>
+                                                    <TableHead className="text-zinc-500 text-right">Listeners</TableHead>
+                                                    <TableHead className="text-zinc-500 text-right">Avg/listeners</TableHead>
+                                                    <TableHead className="text-zinc-500 text-right">Minutes</TableHead>
+                                                    <TableHead className="text-zinc-500 text-right">Coins</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {topRoomsSorted.slice(0, 12).map(room => (
+                                                    <TableRow key={room.roomId} className="border-white/5">
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={cn(
+                                                                    'inline-block size-2 rounded-full',
+                                                                    room.status === 'live' ? 'bg-emerald-400' : 'bg-zinc-600',
+                                                                )} />
+                                                                <div className="min-w-0">
+                                                                    <p className="text-sm text-white truncate max-w-[240px]">{room.title}</p>
+                                                                    <p className="text-[11px] text-zinc-500">{room.favoriteCount.toLocaleString()} favorites</p>
+                                                                </div>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-zinc-300">{room.sessions.toLocaleString()}</TableCell>
+                                                        <TableCell className="text-right text-zinc-300">{room.listeners.toLocaleString()}</TableCell>
+                                                        <TableCell className="text-right text-zinc-300">{room.avgListeners.toFixed(1)}</TableCell>
+                                                        <TableCell className="text-right text-zinc-300">{fmtMinutesCompact(room.minutesListened)}</TableCell>
+                                                        <TableCell className="text-right text-emerald-400">{formatCredits(room.coinsEarned)}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
                                 )}
                             </ChartCard>
                         </div>
@@ -804,7 +1103,9 @@ const UsersSection = () => {
         } finally { setChangingTier(null); }
     };
 
+    const dailySignups = sortByDateAsc(an?.dailySignups ?? []);
     const tierPie = an?.tierDist.map(t => ({ name: t.tier, value: t.count, color: (CHART_COLORS as any)[t.tier] ?? '#52525b' })) ?? [];
+    const rangeDays = an?.days ?? 0;
 
     return (
         <div className="space-y-5">
@@ -816,10 +1117,10 @@ const UsersSection = () => {
             {/* Charts */}
             {!anLoading && an && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <ChartCard title="New signups (last 30 days)" className="md:col-span-2">
-                        {an.dailySignups.length === 0 ? <EmptyChart /> : (
+                    <ChartCard title={`New signups (last ${rangeDays} days)`} className="md:col-span-2">
+                        {dailySignups.length === 0 ? <EmptyChart /> : (
                             <ResponsiveContainer width="100%" height={140}>
-                                <AreaChart data={an.dailySignups}>
+                                <AreaChart data={dailySignups}>
                                     <defs>
                                         <linearGradient id="sig2" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%"  stopColor={CHART_COLORS.signups} stopOpacity={0.3} />
@@ -827,9 +1128,9 @@ const UsersSection = () => {
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
-                                    <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
+                                    <XAxis dataKey="date" tick={AXIS_STYLE} tickFormatter={fmtDateShort} interval="preserveStartEnd" />
                                     <YAxis tick={AXIS_STYLE} allowDecimals={false} />
-                                    <Tooltip contentStyle={TIP_STYLE} />
+                                    <Tooltip contentStyle={TIP_STYLE} labelFormatter={value => fmtDateLong(String(value))} />
                                     <Area type="monotone" dataKey="count" name="Signups" stroke={CHART_COLORS.signups} fill="url(#sig2)" strokeWidth={2} dot={false} />
                                 </AreaChart>
                             </ResponsiveContainer>
@@ -1163,6 +1464,9 @@ const TopupSection = () => {
     const [showNew, setShowNew]   = useState(false);
     const [draft, setDraft]       = useState({ ...EMPTY_PKG });
     const { data: an, loading: anLoading } = useAnalytics();
+    const rangeDays = an?.days ?? 0;
+    const dailyRevenue = sortByDateAsc(an?.dailyRevenue ?? []);
+    const donationsByDay = sortByDateAsc(an?.donationsByDay ?? []);
 
     useEffect(() => {
         axiosInstance.get('/admin/topup-packages')
@@ -1281,23 +1585,27 @@ const TopupSection = () => {
             {/* Revenue charts */}
             {!anLoading && an && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <ChartCard title="Daily top-up revenue (last 30 days)">
-                        {an.dailyRevenue.length === 0 ? <EmptyChart /> : (
+                    <ChartCard title={`Daily top-up revenue (last ${rangeDays} days)`}>
+                        {dailyRevenue.length === 0 ? <EmptyChart /> : (
                             <ResponsiveContainer width="100%" height={140}>
-                                <BarChart data={an.dailyRevenue} barCategoryGap="20%">
+                                <BarChart data={dailyRevenue} barCategoryGap="20%">
                                     <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
-                                    <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
+                                    <XAxis dataKey="date" tick={AXIS_STYLE} tickFormatter={fmtDateShort} interval="preserveStartEnd" />
                                     <YAxis tick={AXIS_STYLE} tickFormatter={v => `$${(v/100).toFixed(0)}`} />
-                                    <Tooltip contentStyle={TIP_STYLE} formatter={(v) => [`$${(Number(v)/100).toFixed(2)}`, 'Revenue']} />
+                                    <Tooltip
+                                        contentStyle={TIP_STYLE}
+                                        labelFormatter={value => fmtDateLong(String(value))}
+                                        formatter={(v) => [`$${(Number(v)/100).toFixed(2)}`, 'Revenue']}
+                                    />
                                     <Bar dataKey="revenue" name="Revenue" fill={CHART_COLORS.revenue} radius={[3, 3, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         )}
                     </ChartCard>
-                    <ChartCard title="Donations per day (last 30 days)">
-                        {an.donationsByDay.length === 0 ? <EmptyChart /> : (
+                    <ChartCard title={`Donations per day (last ${rangeDays} days)`}>
+                        {donationsByDay.length === 0 ? <EmptyChart /> : (
                             <ResponsiveContainer width="100%" height={140}>
-                                <AreaChart data={an.donationsByDay}>
+                                <AreaChart data={donationsByDay}>
                                     <defs>
                                         <linearGradient id="don" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%"  stopColor={CHART_COLORS.donations} stopOpacity={0.3} />
@@ -1305,9 +1613,13 @@ const TopupSection = () => {
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
-                                    <XAxis dataKey="date" tick={AXIS_STYLE} interval="preserveStartEnd" />
+                                    <XAxis dataKey="date" tick={AXIS_STYLE} tickFormatter={fmtDateShort} interval="preserveStartEnd" />
                                     <YAxis tick={AXIS_STYLE} tickFormatter={v => `$${(v/100).toFixed(0)}`} />
-                                    <Tooltip contentStyle={TIP_STYLE} formatter={(v) => [`$${(Number(v)/100).toFixed(2)}`, 'Donations']} />
+                                    <Tooltip
+                                        contentStyle={TIP_STYLE}
+                                        labelFormatter={value => fmtDateLong(String(value))}
+                                        formatter={(v) => [`$${(Number(v)/100).toFixed(2)}`, 'Donations']}
+                                    />
                                     <Area type="monotone" dataKey="amount" name="Donations" stroke={CHART_COLORS.donations} fill="url(#don)" strokeWidth={2} dot={false} />
                                 </AreaChart>
                             </ResponsiveContainer>
@@ -1382,13 +1694,55 @@ export const AdminPage = () => {
     const [section, setSection] = useState<Section>('overview');
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
     const [analyticsLoading, setAnalyticsLoading] = useState(true);
+    const [initialRange] = useState(() => {
+        const to = new Date();
+        const from = new Date(to.getTime() - 30 * 86_400_000);
+        return {
+            to: toDateTimeInputValue(to),
+            from: toDateTimeInputValue(from),
+        };
+    });
+    const [analyticsGranularity, setAnalyticsGranularity] = useState<AnalyticsGranularity>('daily');
+    const [analyticsFrom, setAnalyticsFrom] = useState(initialRange.from);
+    const [analyticsTo, setAnalyticsTo] = useState(initialRange.to);
+    const [appliedGranularity, setAppliedGranularity] = useState<AnalyticsGranularity>('daily');
+    const [appliedFrom, setAppliedFrom] = useState(initialRange.from);
+    const [appliedTo, setAppliedTo] = useState(initialRange.to);
+    const [analyticsRefreshTick, setAnalyticsRefreshTick] = useState(0);
+
+    const applyAnalyticsRange = () => {
+        const fromDate = toDate(analyticsFrom);
+        const toDateValue = toDate(analyticsTo);
+        if (!fromDate || !toDateValue) {
+            toast.error('Invalid date range');
+            return;
+        }
+        if (fromDate >= toDateValue) {
+            toast.error('From time must be before To time');
+            return;
+        }
+        setAnalyticsLoading(true);
+        setAppliedGranularity(analyticsGranularity);
+        setAppliedFrom(analyticsFrom);
+        setAppliedTo(analyticsTo);
+    };
 
     useEffect(() => {
-        axiosInstance.get('/admin/analytics')
-            .then(r => setAnalytics(r.data.data))
-            .catch(() => toast.error('Failed to load analytics'))
-            .finally(() => setAnalyticsLoading(false));
-    }, []);
+        let canceled = false;
+        const fromIso = toDate(appliedFrom)?.toISOString();
+        const toIso = toDate(appliedTo)?.toISOString();
+        axiosInstance.get('/admin/analytics', {
+            params: {
+                granularity: appliedGranularity,
+                from: fromIso,
+                to: toIso,
+            },
+        })
+            .then(r => { if (!canceled) setAnalytics(r.data.data); })
+            .catch(() => { if (!canceled) toast.error('Failed to load analytics'); })
+            .finally(() => { if (!canceled) setAnalyticsLoading(false); });
+        return () => { canceled = true; };
+    }, [appliedGranularity, appliedFrom, appliedTo, analyticsRefreshTick]);
 
     if (isLoading) return (
         <div className="min-h-screen flex items-center justify-center bg-zinc-950">
@@ -1403,7 +1757,23 @@ export const AdminPage = () => {
     );
 
     return (
-        <AnalyticsCtx.Provider value={{ data: analytics, loading: analyticsLoading }}>
+        <AnalyticsCtx.Provider
+            value={{
+                data: analytics,
+                loading: analyticsLoading,
+                granularity: analyticsGranularity,
+                setGranularity: setAnalyticsGranularity,
+                from: analyticsFrom,
+                setFrom: setAnalyticsFrom,
+                to: analyticsTo,
+                setTo: setAnalyticsTo,
+                applyRange: applyAnalyticsRange,
+                refresh: () => {
+                    setAnalyticsLoading(true);
+                    setAnalyticsRefreshTick(v => v + 1);
+                },
+            }}
+        >
             <div className="min-h-screen bg-zinc-950 flex">
                 {/* Sidebar */}
                 <aside className="w-56 border-r border-white/5 p-4 flex flex-col gap-1 shrink-0">
@@ -1427,7 +1797,7 @@ export const AdminPage = () => {
 
                 {/* Content */}
                 <main className="flex-1 p-8 overflow-y-auto">
-                    <div className="max-w-3xl mx-auto">
+                    <div className="max-w-7xl mx-auto">
                         {section === 'overview' && <OverviewSection />}
                         {section === 'plans'    && <PlansSection />}
                         {section === 'topup'    && <TopupSection />}

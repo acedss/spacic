@@ -4,6 +4,7 @@ import { SubscriptionPlan } from '../models/subscriptionPlan.model.js';
 import { TopupPackage } from '../models/topupPackage.model.js';
 import { User } from '../models/user.model.js';
 import { Song } from '../models/song.model.js';
+import { Room } from '../models/room.model.js';
 import { Transaction } from '../models/transaction.model.js';
 import { SongPlay } from '../models/songPlay.model.js';
 import { ListenEvent } from '../models/listenEvent.model.js';
@@ -11,7 +12,15 @@ import { SongDailyStat } from '../models/songDailyStat.model.js';
 import { redis } from '../lib/redis.js';
 import s3Config from '../lib/s3.js';
 
-export const checkAdmin = async (req, res) => res.json({ admin: true });
+export const checkAdmin = async (req, res, next) => {
+    try {
+        const clerkId = req.devBypass ? req.devClerkId : req.auth()?.userId;
+        if (!clerkId) return res.json({ admin: false });
+
+        const user = await User.findOne({ clerkId }).select('role').lean();
+        res.json({ admin: user?.role === 'ADMIN' });
+    } catch (e) { next(e); }
+};
 
 // ── Plans ─────────────────────────────────────────────────────────────────────
 
@@ -205,23 +214,53 @@ export const deleteSong = async (req, res, next) => {
 
 export const getAnalytics = async (req, res, next) => {
     try {
-        const days  = Math.min(parseInt(req.query.days ?? '30', 10), 90);
-        const since = new Date(Date.now() - days * 86_400_000);
+        const parseDateInput = (value) => {
+            if (!value) return null;
+            const d = new Date(String(value));
+            return Number.isNaN(d.getTime()) ? null : d;
+        };
+        const granularityMap = {
+            hourly: 'hour',
+            daily: 'day',
+            weekly: 'week',
+            monthly: 'month',
+        };
+        const granularityInput = String(req.query.granularity ?? 'daily').toLowerCase();
+        const granularity = Object.keys(granularityMap).includes(granularityInput) ? granularityInput : 'daily';
 
-        const [dailyRevenue, dailySignups, topArtists, tierDist, donationsByDay] = await Promise.all([
+        const now = new Date();
+        const fallbackFrom = new Date(now.getTime() - 30 * 86_400_000);
+        const from = parseDateInput(req.query.from) ?? fallbackFrom;
+        const to = parseDateInput(req.query.to) ?? now;
+        if (from >= to) return res.status(400).json({ message: 'Invalid time range: "from" must be before "to"' });
+        if (to.getTime() - from.getTime() > 366 * 86_400_000) {
+            return res.status(400).json({ message: 'Maximum supported range is 366 days' });
+        }
+
+        const bucketExpr = (field) => {
+            if (granularity === 'weekly') {
+                return { $dateTrunc: { date: field, unit: 'week', startOfWeek: 'monday', timezone: 'UTC' } };
+            }
+            return { $dateTrunc: { date: field, unit: granularityMap[granularity], timezone: 'UTC' } };
+        };
+        const bucketIso = {
+            $dateToString: { format: '%Y-%m-%dT%H:%M:%SZ', date: '$_id', timezone: 'UTC' },
+        };
+
+        const [dailyRevenue, dailySignups, topArtists, tierDist, donationsByDay, roomDailySessions, topRooms, roomCount, liveRoomCount] = await Promise.all([
             // Credits topped up per day
             Transaction.aggregate([
-                { $match: { type: 'topup', status: 'completed', createdAt: { $gte: since } } },
-                { $group: { _id: { $dateToString: { format: '%m/%d', date: '$createdAt' } }, revenue: { $sum: '$amount' }, txns: { $sum: 1 } } },
+                { $match: { type: 'topup', status: 'completed', createdAt: { $gte: from, $lte: to } } },
+                { $group: { _id: bucketExpr('$createdAt'), revenue: { $sum: '$amount' }, txns: { $sum: 1 } } },
                 { $sort: { _id: 1 } },
-                { $project: { _id: 0, date: '$_id', revenue: 1, txns: 1 } },
+                { $project: { _id: 0, date: bucketIso, revenue: 1, txns: 1 } },
             ]),
             // New users per day
             User.aggregate([
-                { $match: { createdAt: { $gte: since } } },
-                { $group: { _id: { $dateToString: { format: '%m/%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+                { $match: { createdAt: { $gte: from, $lte: to } } },
+                { $group: { _id: bucketExpr('$createdAt'), count: { $sum: 1 } } },
                 { $sort: { _id: 1 } },
-                { $project: { _id: 0, date: '$_id', count: 1 } },
+                { $project: { _id: 0, date: bucketIso, count: 1 } },
             ]),
             // Top 8 artists by song count
             Song.aggregate([
@@ -237,14 +276,98 @@ export const getAnalytics = async (req, res, next) => {
             ]),
             // Donations per day
             Transaction.aggregate([
-                { $match: { type: 'donation', status: 'completed', createdAt: { $gte: since } } },
-                { $group: { _id: { $dateToString: { format: '%m/%d', date: '$createdAt' } }, amount: { $sum: '$amount' }, count: { $sum: 1 } } },
+                { $match: { type: 'donation', status: 'completed', createdAt: { $gte: from, $lte: to } } },
+                { $group: { _id: bucketExpr('$createdAt'), amount: { $sum: '$amount' }, count: { $sum: 1 } } },
                 { $sort: { _id: 1 } },
-                { $project: { _id: 0, date: '$_id', amount: 1, count: 1 } },
+                { $project: { _id: 0, date: bucketIso, amount: 1, count: 1 } },
             ]),
+            // Room sessions by day (time-series trend for room health)
+            Room.aggregate([
+                { $unwind: '$sessions' },
+                { $match: { 'sessions.startedAt': { $gte: from, $lte: to } } },
+                {
+                    $group: {
+                        _id: bucketExpr('$sessions.startedAt'),
+                        sessions: { $sum: 1 },
+                        listeners: { $sum: { $ifNull: ['$sessions.listenerCount', 0] } },
+                        minutesListened: { $sum: { $ifNull: ['$sessions.minutesListened', 0] } },
+                        coinsEarned: { $sum: { $ifNull: ['$sessions.coinsEarned', 0] } },
+                    },
+                },
+                { $sort: { _id: 1 } },
+                { $project: { _id: 0, date: bucketIso, sessions: 1, listeners: 1, minutesListened: 1, coinsEarned: 1 } },
+            ]),
+            // Top rooms during selected period (for sortable leaderboard UI)
+            Room.aggregate([
+                { $unwind: '$sessions' },
+                { $match: { 'sessions.startedAt': { $gte: from, $lte: to } } },
+                {
+                    $group: {
+                        _id: '$_id',
+                        title: { $first: '$title' },
+                        status: { $first: '$status' },
+                        favoriteCount: { $first: '$favoriteCount' },
+                        sessions: { $sum: 1 },
+                        listeners: { $sum: { $ifNull: ['$sessions.listenerCount', 0] } },
+                        minutesListened: { $sum: { $ifNull: ['$sessions.minutesListened', 0] } },
+                        coinsEarned: { $sum: { $ifNull: ['$sessions.coinsEarned', 0] } },
+                        avgListeners: { $avg: { $ifNull: ['$sessions.listenerCount', 0] } },
+                    },
+                },
+                { $sort: { listeners: -1 } },
+                { $limit: 50 },
+                {
+                    $project: {
+                        _id: 0,
+                        roomId: '$_id',
+                        title: 1,
+                        status: 1,
+                        favoriteCount: 1,
+                        sessions: 1,
+                        listeners: 1,
+                        minutesListened: 1,
+                        coinsEarned: 1,
+                        avgListeners: { $round: ['$avgListeners', 1] },
+                    },
+                },
+            ]),
+            Room.countDocuments({}),
+            Room.countDocuments({ status: 'live' }),
         ]);
 
-        res.json({ success: true, data: { dailyRevenue, dailySignups, topArtists, tierDist, donationsByDay, days } });
+        const roomSummary = roomDailySessions.reduce((acc, day) => {
+            acc.sessions += day.sessions;
+            acc.listeners += day.listeners;
+            acc.minutesListened += day.minutesListened;
+            acc.coinsEarned += day.coinsEarned;
+            return acc;
+        }, {
+            totalRooms: roomCount,
+            liveRooms: liveRoomCount,
+            sessions: 0,
+            listeners: 0,
+            minutesListened: 0,
+            coinsEarned: 0,
+        });
+        const days = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86_400_000));
+
+        res.json({
+            success: true,
+            data: {
+                dailyRevenue,
+                dailySignups,
+                topArtists,
+                tierDist,
+                donationsByDay,
+                roomDailySessions,
+                topRooms,
+                roomSummary,
+                granularity,
+                from: from.toISOString(),
+                to: to.toISOString(),
+                days,
+            },
+        });
     } catch (e) { next(e); }
 };
 

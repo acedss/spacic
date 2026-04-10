@@ -3,9 +3,9 @@ import { requireAdmin, protectRoute } from '../middlewares/auth.middleware.js';
 import * as admin from '../controllers/admin.controller.js';
 
 const router = Router();
-router.use(protectRoute, requireAdmin);
 
-router.get('/check', admin.checkAdmin);
+router.get('/check', protectRoute, admin.checkAdmin);
+router.use(protectRoute, requireAdmin);
 
 // Plans
 router.get('/plans',            admin.getPlans);
