@@ -762,3 +762,220 @@ export const getCreatorStats = async (clerkId) => {
         })),
     };
 };
+
+// ───── Get Creator Room Analytics ───────────────────────────────────────────
+// Time-range analytics scoped to creator's own room, used by Creator dashboard.
+
+export const getCreatorRoomAnalytics = async (clerkId, { from, to, granularity } = {}) => {
+    const parseDateInput = (value) => {
+        if (!value) return null;
+        const parsed = new Date(String(value));
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+    const granularityMap = {
+        hourly: "hour",
+        daily: "day",
+        weekly: "week",
+        monthly: "month",
+    };
+    const granularityInput = String(granularity ?? "daily").toLowerCase();
+    const normalizedGranularity = Object.keys(granularityMap).includes(granularityInput)
+        ? granularityInput
+        : "daily";
+
+    const now = new Date();
+    const fallbackFrom = new Date(now.getTime() - 30 * 86_400_000);
+    const fromDate = parseDateInput(from) ?? fallbackFrom;
+    const toDate = parseDateInput(to) ?? now;
+    if (fromDate >= toDate) {
+        const error = new Error('Invalid time range: "from" must be before "to"');
+        error.statusCode = 400;
+        throw error;
+    }
+    if (toDate.getTime() - fromDate.getTime() > 366 * 86_400_000) {
+        const error = new Error("Maximum supported range is 366 days");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const user = await User.findOne({ clerkId }).select("_id");
+    if (!user) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const room = await Room.findOne({ creatorId: user._id }).select(
+        "_id title status favoriteCount streamGoal streamGoalCurrent stats sessions"
+    );
+    if (!room) {
+        return {
+            room: null,
+            summary: {
+                sessions: 0,
+                listeners: 0,
+                minutesListened: 0,
+                coinsEarned: 0,
+                peakListeners: 0,
+                avgListenersPerSession: 0,
+            },
+            sessionTrend: [],
+            donationTrend: [],
+            topSongs: [],
+            topSessions: [],
+            granularity: normalizedGranularity,
+            from: fromDate.toISOString(),
+            to: toDate.toISOString(),
+            days: Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / 86_400_000)),
+        };
+    }
+
+    const bucketExpr = (field) => {
+        if (normalizedGranularity === "weekly") {
+            return { $dateTrunc: { date: field, unit: "week", startOfWeek: "monday", timezone: "UTC" } };
+        }
+        return { $dateTrunc: { date: field, unit: granularityMap[normalizedGranularity], timezone: "UTC" } };
+    };
+    const bucketIso = {
+        $dateToString: { format: "%Y-%m-%dT%H:%M:%SZ", date: "$_id", timezone: "UTC" },
+    };
+
+    const roomId = new mongoose.Types.ObjectId(room._id);
+
+    const [sessionTrend, summaryAgg, donationTrend, topSongs, topSessions] = await Promise.all([
+        Room.aggregate([
+            { $match: { _id: roomId } },
+            { $unwind: "$sessions" },
+            { $match: { "sessions.startedAt": { $gte: fromDate, $lte: toDate } } },
+            {
+                $group: {
+                    _id: bucketExpr("$sessions.startedAt"),
+                    sessions: { $sum: 1 },
+                    listeners: { $sum: { $ifNull: ["$sessions.listenerCount", 0] } },
+                    minutesListened: { $sum: { $ifNull: ["$sessions.minutesListened", 0] } },
+                    coinsEarned: { $sum: { $ifNull: ["$sessions.coinsEarned", 0] } },
+                },
+            },
+            { $sort: { _id: 1 } },
+            { $project: { _id: 0, date: bucketIso, sessions: 1, listeners: 1, minutesListened: 1, coinsEarned: 1 } },
+        ]),
+        Room.aggregate([
+            { $match: { _id: roomId } },
+            { $unwind: "$sessions" },
+            { $match: { "sessions.startedAt": { $gte: fromDate, $lte: toDate } } },
+            {
+                $group: {
+                    _id: null,
+                    sessions: { $sum: 1 },
+                    listeners: { $sum: { $ifNull: ["$sessions.listenerCount", 0] } },
+                    minutesListened: { $sum: { $ifNull: ["$sessions.minutesListened", 0] } },
+                    coinsEarned: { $sum: { $ifNull: ["$sessions.coinsEarned", 0] } },
+                    peakListeners: { $max: { $ifNull: ["$sessions.listenerCount", 0] } },
+                },
+            },
+        ]),
+        Transaction.aggregate([
+            { $match: { roomId, type: "donation", status: "completed", createdAt: { $gte: fromDate, $lte: toDate } } },
+            { $group: { _id: bucketExpr("$createdAt"), amount: { $sum: "$amount" }, count: { $sum: 1 } } },
+            { $sort: { _id: 1 } },
+            { $project: { _id: 0, date: bucketIso, amount: 1, count: 1 } },
+        ]),
+        SongPlay.aggregate([
+            { $match: { roomId, startedAt: { $gte: fromDate, $lte: toDate } } },
+            {
+                $group: {
+                    _id: "$songId",
+                    plays: { $sum: 1 },
+                    streams: { $sum: { $ifNull: ["$streamListeners", 0] } },
+                    skips: { $sum: { $cond: ["$wasSkipped", 1, 0] } },
+                },
+            },
+            { $sort: { streams: -1 } },
+            { $limit: 10 },
+            {
+                $lookup: {
+                    from: "songs",
+                    localField: "_id",
+                    foreignField: "_id",
+                    as: "song",
+                },
+            },
+            { $unwind: { path: "$song", preserveNullAndEmptyArrays: true } },
+            {
+                $project: {
+                    _id: 0,
+                    songId: "$_id",
+                    title: { $ifNull: ["$song.title", "Unknown title"] },
+                    artist: { $ifNull: ["$song.artist", "Unknown artist"] },
+                    plays: 1,
+                    streams: 1,
+                    skips: 1,
+                    skipRate: {
+                        $cond: [{ $gt: ["$plays", 0] }, { $round: [{ $multiply: [{ $divide: ["$skips", "$plays"] }, 100] }, 0] }, 0],
+                    },
+                },
+            },
+        ]),
+        Room.aggregate([
+            { $match: { _id: roomId } },
+            { $unwind: "$sessions" },
+            { $match: { "sessions.startedAt": { $gte: fromDate, $lte: toDate } } },
+            { $sort: { "sessions.listenerCount": -1, "sessions.coinsEarned": -1 } },
+            { $limit: 10 },
+            {
+                $project: {
+                    _id: 0,
+                    startedAt: "$sessions.startedAt",
+                    endedAt: "$sessions.endedAt",
+                    listenerCount: { $ifNull: ["$sessions.listenerCount", 0] },
+                    minutesListened: { $ifNull: ["$sessions.minutesListened", 0] },
+                    coinsEarned: { $ifNull: ["$sessions.coinsEarned", 0] },
+                },
+            },
+        ]),
+    ]);
+
+    const summary = summaryAgg[0] ?? {
+        sessions: 0,
+        listeners: 0,
+        minutesListened: 0,
+        coinsEarned: 0,
+        peakListeners: 0,
+    };
+    const days = Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / 86_400_000));
+
+    return {
+        room: {
+            _id: room._id,
+            title: room.title,
+            status: room.status,
+            favoriteCount: room.favoriteCount,
+            streamGoal: room.streamGoal,
+            streamGoalCurrent: room.streamGoalCurrent,
+            lifetime: {
+                totalSessions: room.stats?.totalSessions ?? 0,
+                totalListeners: room.stats?.totalListeners ?? 0,
+                totalMinutesListened: room.stats?.totalMinutesListened ?? 0,
+                totalCoinsEarned: room.stats?.totalCoinsEarned ?? 0,
+                totalDonors: room.stats?.totalDonors ?? 0,
+                peakListeners: room.stats?.peakListeners ?? 0,
+            },
+        },
+        summary: {
+            sessions: summary.sessions,
+            listeners: summary.listeners,
+            minutesListened: summary.minutesListened,
+            coinsEarned: summary.coinsEarned,
+            peakListeners: summary.peakListeners,
+            avgListenersPerSession: summary.sessions > 0 ? Number((summary.listeners / summary.sessions).toFixed(1)) : 0,
+        },
+        sessionTrend,
+        donationTrend,
+        topSongs,
+        topSessions,
+        granularity: normalizedGranularity,
+        from: fromDate.toISOString(),
+        to: toDate.toISOString(),
+        days,
+    };
+};

@@ -1,4 +1,5 @@
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { randomUUID } from 'crypto';
+import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { SubscriptionPlan } from '../models/subscriptionPlan.model.js';
 import { TopupPackage } from '../models/topupPackage.model.js';
@@ -165,6 +166,48 @@ export const updateUserSubscription = async (req, res, next) => {
 
 // ── Songs ─────────────────────────────────────────────────────────────────────
 
+const MAX_SONG_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+const SONG_UPLOAD_INTENT_TTL_SECONDS = 15 * 60; // 15 minutes
+const ALLOWED_AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.webm']);
+const MIME_TO_EXTENSION = {
+    'audio/mpeg': '.mp3',
+    'audio/mp3': '.mp3',
+    'audio/wav': '.wav',
+    'audio/x-wav': '.wav',
+    'audio/ogg': '.ogg',
+    'audio/mp4': '.m4a',
+    'audio/x-m4a': '.m4a',
+    'audio/aac': '.aac',
+    'audio/flac': '.flac',
+    'audio/webm': '.webm',
+};
+
+const getRequesterClerkId = (req) => (req.devBypass ? req.devClerkId : req.auth()?.userId);
+const normalizeSongText = (value, maxLen) => String(value ?? '').trim().slice(0, maxLen);
+const extractExt = (filename) => {
+    const dotIndex = String(filename ?? '').lastIndexOf('.');
+    if (dotIndex < 0) return '';
+    return String(filename).slice(dotIndex).toLowerCase();
+};
+const buildSafeSongKey = (filename, contentType) => {
+    const ext = extractExt(filename) || MIME_TO_EXTENSION[String(contentType ?? '').toLowerCase()] || '';
+    if (!ALLOWED_AUDIO_EXTENSIONS.has(ext)) return null;
+    const base = String(filename ?? '')
+        .replace(/\.[^./\\]+$/, '')
+        .replace(/[^a-zA-Z0-9_-]/g, '-')
+        .replace(/-+/g, '-')
+        .slice(0, 48) || 'track';
+    return `songs/${Date.now()}-${randomUUID()}-${base}${ext}`;
+};
+const isSafeHttpUrl = (value) => {
+    try {
+        const u = new URL(String(value ?? ''));
+        return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch {
+        return false;
+    }
+};
+
 export const getSongs = async (req, res, next) => {
     try {
         const songs = await Song.find().sort({ createdAt: -1 }).limit(100);
@@ -174,30 +217,127 @@ export const getSongs = async (req, res, next) => {
 
 export const getSongUploadUrl = async (req, res, next) => {
     try {
-        const { filename, contentType } = req.body;
-        if (!filename || !contentType) {
-            return res.status(400).json({ message: 'filename and contentType required' });
+        const filename = String(req.body?.filename ?? '').trim();
+        const contentType = String(req.body?.contentType ?? '').trim().toLowerCase();
+        const sizeBytes = Number(req.body?.sizeBytes);
+        if (!filename || !contentType || !Number.isFinite(sizeBytes)) {
+            return res.status(400).json({ message: 'filename, contentType and sizeBytes are required' });
+        }
+        if (!contentType.startsWith('audio/')) {
+            return res.status(400).json({ message: 'Only audio uploads are allowed' });
+        }
+        if (sizeBytes <= 0 || sizeBytes > MAX_SONG_UPLOAD_BYTES) {
+            return res.status(400).json({ message: `Audio file must be <= ${Math.round(MAX_SONG_UPLOAD_BYTES / (1024 * 1024))}MB` });
         }
 
-        const s3Key = `songs/${Date.now()}-${filename.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
+        const s3Key = buildSafeSongKey(filename, contentType);
+        if (!s3Key) {
+            return res.status(400).json({ message: 'Unsupported audio format. Use mp3, wav, ogg, m4a, aac, flac, or webm.' });
+        }
+
         const command = new PutObjectCommand({
             Bucket: s3Config.bucket,
             Key: s3Key,
             ContentType: contentType,
         });
-
         const url = await getSignedUrl(s3Config.client, command, { expiresIn: 300 });
-        res.json({ success: true, data: { url, s3Key } });
+
+        const uploadToken = randomUUID();
+        const intentKey = `song-upload-intent:${uploadToken}`;
+        const requesterClerkId = getRequesterClerkId(req) ?? null;
+        await redis.set(intentKey, JSON.stringify({
+            s3Key,
+            contentType,
+            sizeBytes,
+            clerkId: requesterClerkId,
+        }), 'EX', SONG_UPLOAD_INTENT_TTL_SECONDS);
+
+        res.json({
+            success: true,
+            data: {
+                url,
+                s3Key,
+                uploadToken,
+                maxSizeBytes: MAX_SONG_UPLOAD_BYTES,
+            },
+        });
     } catch (e) { next(e); }
 };
 
 export const createSong = async (req, res, next) => {
     try {
-        const { title, artist, imageUrl, s3Key, duration } = req.body;
-        if (!title || !artist || !imageUrl || !s3Key || !duration) {
+        const title = normalizeSongText(req.body?.title, 160);
+        const artist = normalizeSongText(req.body?.artist, 160);
+        const imageUrl = String(req.body?.imageUrl ?? '').trim();
+        const s3Key = String(req.body?.s3Key ?? '').trim();
+        const uploadToken = String(req.body?.uploadToken ?? '').trim();
+        const duration = Number(req.body?.duration);
+
+        if (!title || !artist || !imageUrl || !s3Key || !uploadToken || !Number.isFinite(duration)) {
             return res.status(400).json({ message: 'All fields are required' });
         }
-        const song = await Song.create({ title, artist, imageUrl, s3Key, duration });
+        if (!isSafeHttpUrl(imageUrl)) {
+            return res.status(400).json({ message: 'Invalid cover image URL' });
+        }
+        if (!s3Key.startsWith('songs/') || !/^[a-zA-Z0-9/_\-.]+$/.test(s3Key)) {
+            return res.status(400).json({ message: 'Invalid audio key' });
+        }
+        if (duration <= 0 || duration > 4 * 60 * 60) {
+            return res.status(400).json({ message: 'Duration must be between 1 second and 4 hours' });
+        }
+
+        const intentKey = `song-upload-intent:${uploadToken}`;
+        const intentRaw = await redis.get(intentKey);
+        if (!intentRaw) {
+            return res.status(400).json({ message: 'Upload session expired. Please upload again.' });
+        }
+
+        let intent = null;
+        try {
+            intent = JSON.parse(intentRaw);
+        } catch {
+            await redis.del(intentKey);
+            return res.status(400).json({ message: 'Invalid upload session. Please upload again.' });
+        }
+
+        if (intent?.s3Key !== s3Key) {
+            return res.status(400).json({ message: 'Upload key mismatch. Please upload again.' });
+        }
+        if (!String(intent?.contentType ?? '').startsWith('audio/')) {
+            return res.status(400).json({ message: 'Invalid upload content type' });
+        }
+        const requesterClerkId = getRequesterClerkId(req);
+        if (intent?.clerkId && requesterClerkId && intent.clerkId !== requesterClerkId) {
+            return res.status(403).json({ message: 'Upload token does not belong to current user' });
+        }
+
+        let head;
+        try {
+            head = await s3Config.client.send(new HeadObjectCommand({ Bucket: s3Config.bucket, Key: s3Key }));
+        } catch {
+            return res.status(400).json({ message: 'Uploaded audio file not found. Please re-upload.' });
+        }
+
+        const uploadedType = String(head?.ContentType ?? '').toLowerCase();
+        const uploadedSize = Number(head?.ContentLength ?? 0);
+        if (!uploadedType.startsWith('audio/')) {
+            return res.status(400).json({ message: 'Uploaded file is not a valid audio file' });
+        }
+        if (!Number.isFinite(uploadedSize) || uploadedSize <= 0 || uploadedSize > MAX_SONG_UPLOAD_BYTES) {
+            return res.status(400).json({ message: 'Uploaded file size is invalid' });
+        }
+        if (Number.isFinite(intent?.sizeBytes) && Number(intent.sizeBytes) !== uploadedSize) {
+            return res.status(400).json({ message: 'Uploaded file size mismatch. Please upload again.' });
+        }
+
+        const song = await Song.create({
+            title,
+            artist,
+            imageUrl,
+            s3Key,
+            duration: Math.round(duration),
+        });
+        await redis.del(intentKey);
         res.status(201).json({ success: true, data: song });
     } catch (e) { next(e); }
 };
@@ -407,52 +547,166 @@ export const getStats = async (req, res, next) => {
 
 export const getSongAnalytics = async (req, res, next) => {
     try {
-        const days  = Math.min(parseInt(req.query.days ?? '30', 10), 90);
-        const since = new Date(Date.now() - days * 86_400_000);
+        const parseDateInput = (value) => {
+            if (!value) return null;
+            const parsed = new Date(String(value));
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+        };
+        const granularityMap = {
+            hourly: 'hour',
+            daily: 'day',
+            weekly: 'week',
+            monthly: 'month',
+        };
+        const granularityInput = String(req.query.granularity ?? 'daily').toLowerCase();
+        const granularity = Object.keys(granularityMap).includes(granularityInput) ? granularityInput : 'daily';
+        const fallbackDays = Math.max(1, Math.min(parseInt(String(req.query.days ?? '30'), 10) || 30, 90));
 
-        const [playsPerDay, topSongs, skipRates, geoBreakdown] = await Promise.all([
+        const now = new Date();
+        const from = parseDateInput(req.query.from) ?? new Date(now.getTime() - fallbackDays * 86_400_000);
+        const to = parseDateInput(req.query.to) ?? now;
+        if (from >= to) return res.status(400).json({ message: 'Invalid time range: "from" must be before "to"' });
+        if (to.getTime() - from.getTime() > 366 * 86_400_000) {
+            return res.status(400).json({ message: 'Maximum supported range is 366 days' });
+        }
 
-            // Daily play count from SongPlay (room-level, one per transition)
+        const bucketExpr = (field) => {
+            if (granularity === 'weekly') {
+                return { $dateTrunc: { date: field, unit: 'week', startOfWeek: 'monday', timezone: 'UTC' } };
+            }
+            return { $dateTrunc: { date: field, unit: granularityMap[granularity], timezone: 'UTC' } };
+        };
+        const bucketIso = {
+            $dateToString: { format: '%Y-%m-%dT%H:%M:%SZ', date: '$_id', timezone: 'UTC' },
+        };
+        const fromDay = from.toISOString().slice(0, 10);
+        const toDay = to.toISOString().slice(0, 10);
+
+        const [playsPerPeriod, topSongRollups, fallbackTopSongs, geoBreakdown, summaryAgg, activeSongCountAgg] = await Promise.all([
             SongPlay.aggregate([
-                { $match: { startedAt: { $gte: since } } },
-                { $group: {
-                    _id:    { $dateToString: { format: '%m/%d', date: '$startedAt' } },
-                    plays:  { $sum: 1 },
-                    streams: { $sum: '$streamListeners' },
-                }},
+                { $match: { startedAt: { $gte: from, $lte: to } } },
+                {
+                    $group: {
+                        _id: bucketExpr('$startedAt'),
+                        plays: { $sum: 1 },
+                        streams: { $sum: { $ifNull: ['$streamListeners', 0] } },
+                        skips: { $sum: { $cond: ['$wasSkipped', 1, 0] } },
+                    },
+                },
                 { $sort: { _id: 1 } },
-                { $project: { _id: 0, date: '$_id', plays: 1, streams: 1 } },
+                { $project: { _id: 0, date: bucketIso, plays: 1, streams: 1, skips: 1 } },
             ]),
-
-            // Top 10 songs by total streamCount (uses denormalized counter — O(1))
+            SongDailyStat.aggregate([
+                { $match: { date: { $gte: fromDay, $lte: toDay } } },
+                {
+                    $group: {
+                        _id: '$songId',
+                        streams: { $sum: '$streams' },
+                        plays: { $sum: '$plays' },
+                        skips: { $sum: '$skips' },
+                        listeners: { $sum: '$listeners' },
+                    },
+                },
+                { $sort: { streams: -1 } },
+                { $limit: 10 },
+                {
+                    $lookup: {
+                        from: 'songs',
+                        localField: '_id',
+                        foreignField: '_id',
+                        as: 'song',
+                    },
+                },
+                { $unwind: { path: '$song', preserveNullAndEmptyArrays: true } },
+                {
+                    $project: {
+                        _id: 0,
+                        songId: '$_id',
+                        title: { $ifNull: ['$song.title', 'Unknown title'] },
+                        artist: { $ifNull: ['$song.artist', 'Unknown artist'] },
+                        streams: 1,
+                        plays: 1,
+                        skips: 1,
+                        listeners: 1,
+                    },
+                },
+            ]),
             Song.find({ streamCount: { $gt: 0 } })
                 .sort({ streamCount: -1 })
                 .limit(10)
-                .select('title artist streamCount uniquePlays skipCount')
+                .select('_id title artist streamCount uniquePlays skipCount')
                 .lean(),
-
-            // Skip rate per song (skips / uniquePlays) — only songs with >= 3 plays
-            Song.find({ uniquePlays: { $gte: 3 } })
-                .sort({ skipCount: -1 })
-                .limit(10)
-                .select('title artist uniquePlays skipCount')
-                .lean()
-                .then(songs => songs.map(s => ({
-                    title:    s.title,
-                    artist:   s.artist,
-                    skipRate: Math.round((s.skipCount / s.uniquePlays) * 100),
-                }))),
-
-            // Geo breakdown of streams (from ListenEvent, last N days)
             ListenEvent.aggregate([
-                { $match: { playedAt: { $gte: since }, countedStream: true, country: { $ne: null } } },
+                { $match: { playedAt: { $gte: from, $lte: to }, countedStream: true, country: { $ne: null } } },
                 { $group: { _id: '$country', streams: { $sum: 1 } } },
                 { $sort: { streams: -1 } },
                 { $limit: 10 },
                 { $project: { _id: 0, country: '$_id', streams: 1 } },
             ]),
+            SongPlay.aggregate([
+                { $match: { startedAt: { $gte: from, $lte: to } } },
+                {
+                    $group: {
+                        _id: null,
+                        plays: { $sum: 1 },
+                        streams: { $sum: { $ifNull: ['$streamListeners', 0] } },
+                        skips: { $sum: { $cond: ['$wasSkipped', 1, 0] } },
+                    },
+                },
+            ]),
+            SongPlay.aggregate([
+                { $match: { startedAt: { $gte: from, $lte: to } } },
+                { $group: { _id: '$songId' } },
+                { $count: 'count' },
+            ]),
         ]);
 
-        res.json({ success: true, data: { playsPerDay, topSongs, skipRates, geoBreakdown, days } });
+        const topSongs = (topSongRollups.length > 0 ? topSongRollups : fallbackTopSongs.map((s) => ({
+            songId: s._id,
+            title: s.title,
+            artist: s.artist,
+            streams: s.streamCount,
+            plays: s.uniquePlays,
+            skips: s.skipCount,
+            listeners: s.uniquePlays,
+        }))).map((song) => ({
+            ...song,
+            skipRate: song.plays > 0 ? Math.round((song.skips / song.plays) * 100) : 0,
+        }));
+
+        const skipRates = topSongs
+            .filter(song => song.plays >= 3)
+            .sort((a, b) => b.skipRate - a.skipRate)
+            .slice(0, 10)
+            .map(song => ({
+                title: song.title,
+                artist: song.artist,
+                plays: song.plays,
+                skipRate: song.skipRate,
+            }));
+
+        const summary = {
+            plays: summaryAgg[0]?.plays ?? 0,
+            streams: summaryAgg[0]?.streams ?? 0,
+            skippedPlays: summaryAgg[0]?.skips ?? 0,
+            activeSongs: activeSongCountAgg[0]?.count ?? 0,
+        };
+        const days = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86_400_000));
+
+        res.json({
+            success: true,
+            data: {
+                playsPerPeriod,
+                playsPerDay: playsPerPeriod, // backward-compatible key
+                topSongs,
+                skipRates,
+                geoBreakdown,
+                summary,
+                granularity,
+                from: from.toISOString(),
+                to: to.toISOString(),
+                days,
+            },
+        });
     } catch (e) { next(e); }
 };

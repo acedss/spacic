@@ -64,6 +64,41 @@ export interface RoomInfo {
     listenerCount?: number;
 }
 
+export interface CreatorRoomAnalytics {
+    room: {
+        _id: string;
+        title: string;
+        status: 'offline' | 'live';
+        favoriteCount: number;
+        streamGoal: number;
+        streamGoalCurrent: number;
+        lifetime: {
+            totalSessions: number;
+            totalListeners: number;
+            totalMinutesListened: number;
+            totalCoinsEarned: number;
+            totalDonors: number;
+            peakListeners: number;
+        };
+    } | null;
+    summary: {
+        sessions: number;
+        listeners: number;
+        minutesListened: number;
+        coinsEarned: number;
+        peakListeners: number;
+        avgListenersPerSession: number;
+    };
+    sessionTrend: { date: string; sessions: number; listeners: number; minutesListened: number; coinsEarned: number }[];
+    donationTrend: { date: string; amount: number; count: number }[];
+    topSongs: { songId: string; title: string; artist: string; plays: number; streams: number; skips: number; skipRate: number }[];
+    topSessions: { startedAt: string; endedAt: string | null; listenerCount: number; minutesListened: number; coinsEarned: number }[];
+    granularity: 'hourly' | 'daily' | 'weekly' | 'monthly';
+    from: string;
+    to: string;
+    days: number;
+}
+
 export interface Transaction {
     _id: string;
     type: 'topup' | 'donation' | 'goal_payout';

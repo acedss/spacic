@@ -166,6 +166,16 @@ export const getCreatorStats = async (req, res, next) => {
     }
 };
 
+export const getCreatorRoomAnalytics = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const analytics = await roomService.getCreatorRoomAnalytics(clerkId, req.query);
+        res.json({ success: true, data: analytics });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const updateQueueWhileLive = async (req, res, next) => {
     try {
         const clerkId = getClerkId(req);

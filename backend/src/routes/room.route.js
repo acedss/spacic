@@ -10,6 +10,7 @@ router.get("/public", roomController.getPublicRooms);
 // Static paths — must be before /:roomId so they aren't swallowed as params
 router.get("/me/room",          protectRoute, roomController.getMyRoom);
 router.get("/me/creator-stats", protectRoute, roomController.getCreatorStats);
+router.get("/me/creator-analytics", protectRoute, roomController.getCreatorRoomAnalytics);
 router.get("/me/favorites",     protectRoute, roomController.getFavoriteRooms);
 
 // Room by ID (works for both offline and live)

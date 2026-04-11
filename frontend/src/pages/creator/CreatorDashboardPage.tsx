@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Radio, Users, Clock, Gem, Heart, Save, Loader2, ExternalLink, Search, Check, Plus } from 'lucide-react';
-import { getMyRoom, upsertRoom, goLive, goOffline, getSongs } from '@/lib/roomService';
-import type { RoomInfo, RoomSession, Song } from '@/types/types';
+import {
+    Area, AreaChart, Bar, BarChart, CartesianGrid, Cell,
+    Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts';
+import { getMyRoom, upsertRoom, goLive, goOffline, getSongs, getCreatorRoomAnalytics } from '@/lib/roomService';
+import type { CreatorRoomAnalytics, RoomInfo, RoomSession, Song } from '@/types/types';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -22,6 +26,36 @@ const toHours = (minutes: number) => {
     const m = minutes % 60;
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
+
+type AnalyticsGranularity = 'hourly' | 'daily' | 'weekly' | 'monthly';
+
+const CHART_AXIS = { fontSize: 10, fill: '#71717a' };
+const CHART_GRID = '#27272a';
+const CHART_TOOLTIP = { backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: 8, fontSize: 12 };
+const CHART_COLORS = ['#a78bfa', '#34d399', '#f59e0b', '#60a5fa', '#f472b6', '#22d3ee', '#fb7185', '#a3e635'];
+
+const toDateTimeInputValue = (date: Date) => {
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+};
+const toDate = (value: string) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+const fmtDateShort = (value: string) => {
+    const d = toDate(value);
+    return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : value;
+};
+const fmtDateLong = (value: string) => {
+    const d = toDate(value);
+    return d ? d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : value;
+};
+const sortByDateAsc = <T extends { date: string }>(arr: T[]) =>
+    [...arr].sort((a, b) => {
+        const aT = toDate(a.date)?.getTime() ?? 0;
+        const bT = toDate(b.date)?.getTime() ?? 0;
+        return aT - bT;
+    });
 
 // ── Stats strip ───────────────────────────────────────────────────────────
 
@@ -46,6 +80,13 @@ const StatsStrip = ({ room }: { room: RoomInfo }) => {
         </div>
     );
 };
+
+const ChartShell = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <p className="text-xs text-zinc-400 font-medium mb-3">{title}</p>
+        {children}
+    </div>
+);
 
 // ── Apple Music-style song selector ─────────────────────────────────────
 
@@ -231,6 +272,20 @@ const CreatorDashboardPage = () => {
     const [isPublic, setIsPublic] = useState(true);
     const [streamGoal, setStreamGoal] = useState('');
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [analytics, setAnalytics] = useState<CreatorRoomAnalytics | null>(null);
+    const [analyticsLoading, setAnalyticsLoading] = useState(true);
+    const [initialRange] = useState(() => {
+        const to = new Date();
+        const from = new Date(to.getTime() - 30 * 86_400_000);
+        return { from: toDateTimeInputValue(from), to: toDateTimeInputValue(to) };
+    });
+    const [analyticsGranularity, setAnalyticsGranularity] = useState<AnalyticsGranularity>('daily');
+    const [analyticsFrom, setAnalyticsFrom] = useState(initialRange.from);
+    const [analyticsTo, setAnalyticsTo] = useState(initialRange.to);
+    const [appliedAnalyticsGranularity, setAppliedAnalyticsGranularity] = useState<AnalyticsGranularity>('daily');
+    const [appliedAnalyticsFrom, setAppliedAnalyticsFrom] = useState(initialRange.from);
+    const [appliedAnalyticsTo, setAppliedAnalyticsTo] = useState(initialRange.to);
+    const [analyticsRefreshTick, setAnalyticsRefreshTick] = useState(0);
 
     useEffect(() => {
         Promise.all([getMyRoom(), getSongs(true)])
@@ -249,6 +304,45 @@ const CreatorDashboardPage = () => {
             })
             .catch(() => { setError('Failed to load room data'); setSongsLoading(false); });
     }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        setAnalyticsLoading(true);
+        const loadAnalytics = async () => {
+            const fromIso = toDate(appliedAnalyticsFrom)?.toISOString();
+            const toIso = toDate(appliedAnalyticsTo)?.toISOString();
+            try {
+                const data = await getCreatorRoomAnalytics({
+                    granularity: appliedAnalyticsGranularity,
+                    from: fromIso,
+                    to: toIso,
+                });
+                if (!cancelled) setAnalytics(data);
+            } catch {
+                if (!cancelled) toast.error('Failed to load room analytics');
+            } finally {
+                if (!cancelled) setAnalyticsLoading(false);
+            }
+        };
+        void loadAnalytics();
+        return () => { cancelled = true; };
+    }, [appliedAnalyticsGranularity, appliedAnalyticsFrom, appliedAnalyticsTo, analyticsRefreshTick]);
+
+    const applyAnalyticsRange = () => {
+        const fromDate = toDate(analyticsFrom);
+        const toDateValue = toDate(analyticsTo);
+        if (!fromDate || !toDateValue) {
+            toast.error('Invalid date range');
+            return;
+        }
+        if (fromDate >= toDateValue) {
+            toast.error('From time must be before To time');
+            return;
+        }
+        setAppliedAnalyticsGranularity(analyticsGranularity);
+        setAppliedAnalyticsFrom(analyticsFrom);
+        setAppliedAnalyticsTo(analyticsTo);
+    };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -289,6 +383,7 @@ const CreatorDashboardPage = () => {
             await goOffline(room._id);
             const refreshed = await getMyRoom();
             setRoom(refreshed);
+            setAnalyticsRefreshTick(t => t + 1);
             toast.success('Room is now offline');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to go offline');
@@ -320,9 +415,21 @@ const CreatorDashboardPage = () => {
 
     const isLive  = room?.status === 'live';
     const hasRoom = !!room;
+    const sessionTrend = sortByDateAsc(analytics?.sessionTrend ?? []);
+    const donationTrend = sortByDateAsc(analytics?.donationTrend ?? []);
+    const topSongs = analytics?.topSongs ?? [];
+    const topSessions = analytics?.topSessions ?? [];
+    const summary = analytics?.summary ?? {
+        sessions: 0,
+        listeners: 0,
+        minutesListened: 0,
+        coinsEarned: 0,
+        peakListeners: 0,
+        avgListenersPerSession: 0,
+    };
 
     return (
-        <div className="max-w-2xl mx-auto py-10 px-4 space-y-8">
+        <div className="max-w-6xl mx-auto py-10 px-4 space-y-8">
 
             {/* Header */}
             <div className="flex items-center justify-between">
@@ -371,8 +478,226 @@ const CreatorDashboardPage = () => {
             {/* Lifetime stats */}
             {hasRoom && <StatsStrip room={room} />}
 
+            {/* Room analytics */}
+            {hasRoom && (
+                <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:p-5 space-y-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Room Analytics</h2>
+                            <p className="text-xs text-zinc-500 mt-1">
+                                Track this room by time range and granularity.
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <select
+                                value={analyticsGranularity}
+                                onChange={e => setAnalyticsGranularity(e.target.value as AnalyticsGranularity)}
+                                className="h-9 rounded-lg border border-white/10 bg-white/5 px-2.5 text-xs text-zinc-300"
+                            >
+                                <option value="hourly">Hourly</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                            </select>
+                            <Input
+                                type="datetime-local"
+                                value={analyticsFrom}
+                                onChange={e => setAnalyticsFrom(e.target.value)}
+                                className="h-9 w-[178px] bg-white/5 border-white/10 text-xs text-zinc-300"
+                            />
+                            <Input
+                                type="datetime-local"
+                                value={analyticsTo}
+                                onChange={e => setAnalyticsTo(e.target.value)}
+                                className="h-9 w-[178px] bg-white/5 border-white/10 text-xs text-zinc-300"
+                            />
+                            <button
+                                type="button"
+                                onClick={applyAnalyticsRange}
+                                className="h-9 px-3 rounded-lg border border-white/10 text-xs text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                                Apply
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setAnalyticsRefreshTick(t => t + 1)}
+                                className="h-9 px-3 rounded-lg border border-white/10 text-xs text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <p className="text-xs text-zinc-600">
+                        Showing {analytics?.granularity ?? appliedAnalyticsGranularity} from {fmtDateLong(analytics?.from ?? toDate(appliedAnalyticsFrom)?.toISOString() ?? '')} to {fmtDateLong(analytics?.to ?? toDate(appliedAnalyticsTo)?.toISOString() ?? '')}
+                    </p>
+
+                    <div className="grid grid-cols-2 lg:grid-cols-6 border border-white/10 rounded-xl overflow-hidden divide-x divide-y lg:divide-y-0 divide-white/10">
+                        <div className="px-4 py-3">
+                            <p className="text-[11px] text-zinc-500">Sessions</p>
+                            <p className="text-lg font-semibold text-white">{summary.sessions.toLocaleString()}</p>
+                        </div>
+                        <div className="px-4 py-3">
+                            <p className="text-[11px] text-zinc-500">Listeners</p>
+                            <p className="text-lg font-semibold text-violet-300">{summary.listeners.toLocaleString()}</p>
+                        </div>
+                        <div className="px-4 py-3">
+                            <p className="text-[11px] text-zinc-500">Avg listeners/session</p>
+                            <p className="text-lg font-semibold text-emerald-300">{summary.avgListenersPerSession.toLocaleString()}</p>
+                        </div>
+                        <div className="px-4 py-3">
+                            <p className="text-[11px] text-zinc-500">Listen time</p>
+                            <p className="text-lg font-semibold text-sky-300">{toHours(summary.minutesListened)}</p>
+                        </div>
+                        <div className="px-4 py-3">
+                            <p className="text-[11px] text-zinc-500">Coins earned</p>
+                            <p className="text-lg font-semibold text-yellow-300">{summary.coinsEarned.toLocaleString()}</p>
+                        </div>
+                        <div className="px-4 py-3">
+                            <p className="text-[11px] text-zinc-500">Peak listeners</p>
+                            <p className="text-lg font-semibold text-pink-300">{summary.peakListeners.toLocaleString()}</p>
+                        </div>
+                    </div>
+
+                    {analyticsLoading ? (
+                        <div className="flex items-center gap-2 text-zinc-400 py-5"><Loader2 className="size-4 animate-spin" /> Loading analytics…</div>
+                    ) : (
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                            <ChartShell title="Session trend (sessions vs listeners)">
+                                {sessionTrend.length === 0 ? (
+                                    <div className="h-48 flex items-center justify-center text-xs text-zinc-600">No data in this range</div>
+                                ) : (
+                                    <ResponsiveContainer width="100%" height={220}>
+                                        <AreaChart data={sessionTrend}>
+                                            <defs>
+                                                <linearGradient id="creatorSessions" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.3} />
+                                                    <stop offset="95%" stopColor="#a78bfa" stopOpacity={0} />
+                                                </linearGradient>
+                                                <linearGradient id="creatorListeners" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#34d399" stopOpacity={0.3} />
+                                                    <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                                            <XAxis dataKey="date" tick={CHART_AXIS} tickFormatter={fmtDateShort} interval="preserveStartEnd" />
+                                            <YAxis yAxisId="sessions" tick={CHART_AXIS} allowDecimals={false} />
+                                            <YAxis yAxisId="listeners" orientation="right" tick={CHART_AXIS} allowDecimals={false} />
+                                            <Tooltip contentStyle={CHART_TOOLTIP} labelFormatter={(value) => fmtDateLong(String(value))} />
+                                            <Legend wrapperStyle={{ color: '#71717a', fontSize: 11 }} />
+                                            <Area yAxisId="sessions" type="monotone" dataKey="sessions" name="Sessions" stroke="#a78bfa" fill="url(#creatorSessions)" strokeWidth={2} dot={false} />
+                                            <Area yAxisId="listeners" type="monotone" dataKey="listeners" name="Listeners" stroke="#34d399" fill="url(#creatorListeners)" strokeWidth={2} dot={false} />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                )}
+                            </ChartShell>
+
+                            <ChartShell title="Donation trend">
+                                {donationTrend.length === 0 ? (
+                                    <div className="h-48 flex items-center justify-center text-xs text-zinc-600">No donations in this range</div>
+                                ) : (
+                                    <ResponsiveContainer width="100%" height={220}>
+                                        <BarChart data={donationTrend}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} vertical={false} />
+                                            <XAxis dataKey="date" tick={CHART_AXIS} tickFormatter={fmtDateShort} interval="preserveStartEnd" />
+                                            <YAxis tick={CHART_AXIS} />
+                                            <Tooltip
+                                                contentStyle={CHART_TOOLTIP}
+                                                labelFormatter={(value) => fmtDateLong(String(value))}
+                                                formatter={(value, _name, payload) => {
+                                                    const row = payload?.payload as { count: number };
+                                                    return [`${Number(value).toLocaleString()} coins · ${row.count} donations`, 'Donations'];
+                                                }}
+                                            />
+                                            <Bar dataKey="amount" name="Donations" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                )}
+                            </ChartShell>
+
+                            <ChartShell title="Top songs in this room">
+                                {topSongs.length === 0 ? (
+                                    <div className="h-48 flex items-center justify-center text-xs text-zinc-600">No song plays in this range</div>
+                                ) : (
+                                    <ResponsiveContainer width="100%" height={Math.max(180, Math.min(10, topSongs.length) * 30)}>
+                                        <BarChart data={topSongs.slice(0, 10)} layout="vertical">
+                                            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} horizontal={false} />
+                                            <XAxis type="number" tick={CHART_AXIS} allowDecimals={false} />
+                                            <YAxis
+                                                type="category"
+                                                dataKey="title"
+                                                width={130}
+                                                tick={{ ...CHART_AXIS, fontSize: 11 }}
+                                                tickFormatter={(value) => String(value).length > 20 ? `${String(value).slice(0, 20)}…` : String(value)}
+                                            />
+                                            <Tooltip
+                                                contentStyle={CHART_TOOLTIP}
+                                                formatter={(value, _name, payload) => {
+                                                    const row = payload?.payload as CreatorRoomAnalytics['topSongs'][number];
+                                                    return [`${Number(value).toLocaleString()} streams · ${row.plays} plays · ${row.skipRate}% skips`, row.artist];
+                                                }}
+                                            />
+                                            <Bar dataKey="streams" fill="#60a5fa" radius={[0, 4, 4, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                )}
+                            </ChartShell>
+
+                            <ChartShell title="Top sessions">
+                                {topSessions.length === 0 ? (
+                                    <div className="h-48 flex items-center justify-center text-xs text-zinc-600">No sessions in this range</div>
+                                ) : (
+                                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                                        {topSessions.map((session, i) => (
+                                            <div key={`${session.startedAt}-${i}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <p className="text-xs text-zinc-400">{fmtDateLong(session.startedAt)}</p>
+                                                    <p className="text-xs text-zinc-600">{session.endedAt ? fmtDateLong(session.endedAt) : 'Live'}</p>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-2 mt-2 text-center">
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-white">{session.listenerCount}</p>
+                                                        <p className="text-[10px] text-zinc-500">listeners</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-emerald-300">{toHours(session.minutesListened)}</p>
+                                                        <p className="text-[10px] text-zinc-500">listened</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-yellow-300">{session.coinsEarned.toLocaleString()}</p>
+                                                        <p className="text-[10px] text-zinc-500">coins</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </ChartShell>
+
+                            <ChartShell title="Song stream share">
+                                {topSongs.length === 0 ? (
+                                    <div className="h-48 flex items-center justify-center text-xs text-zinc-600">No stream-share data</div>
+                                ) : (
+                                    <ResponsiveContainer width="100%" height={220}>
+                                        <PieChart>
+                                            <Pie data={topSongs.slice(0, 8)} dataKey="streams" nameKey="title" outerRadius={78} innerRadius={42} paddingAngle={2}>
+                                                {topSongs.slice(0, 8).map((entry, idx) => (
+                                                    <Cell key={`${entry.songId}-${idx}`} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip contentStyle={CHART_TOOLTIP} formatter={(value) => [Number(value).toLocaleString(), 'Streams']} />
+                                            <Legend wrapperStyle={{ color: '#71717a', fontSize: 11 }} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                )}
+                            </ChartShell>
+                        </div>
+                    )}
+                </section>
+            )}
+
             {/* Room setup form */}
-            <form onSubmit={handleSave} className="space-y-5">
+            <form onSubmit={handleSave} className="space-y-5 max-w-2xl">
                 <div className="border-t border-white/5 pt-6">
                     <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4">
                         {hasRoom ? 'Room Settings' : 'Create Your Channel'}

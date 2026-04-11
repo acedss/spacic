@@ -1,5 +1,5 @@
 import { axiosInstance } from '@/lib/axios';
-import type { RoomInfo, Song, CreateRoomPayload } from '@/types/types';
+import type { RoomInfo, Song, CreateRoomPayload, CreatorRoomAnalytics } from '@/types/types';
 
 export const getSongs = async (metaOnly = false): Promise<Song[]> => {
     const { data } = await axiosInstance.get('/songs', metaOnly ? { params: { meta: '1' } } : undefined);
@@ -16,6 +16,15 @@ export const upsertRoom = async (payload: CreateRoomPayload): Promise<RoomInfo> 
 export const getMyRoom = async (): Promise<RoomInfo | null> => {
     const { data } = await axiosInstance.get('/rooms/me/room');
     return data.data;
+};
+
+export const getCreatorRoomAnalytics = async (params?: {
+    from?: string;
+    to?: string;
+    granularity?: 'hourly' | 'daily' | 'weekly' | 'monthly';
+}) => {
+    const { data } = await axiosInstance.get('/rooms/me/creator-analytics', { params });
+    return data.data as CreatorRoomAnalytics;
 };
 
 export const goLive = async (roomId: string): Promise<RoomInfo> => {

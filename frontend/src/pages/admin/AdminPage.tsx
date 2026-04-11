@@ -1,6 +1,7 @@
 import { useEffect, useState, createContext, useContext } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { axiosInstance } from '@/lib/axios';
+import axios from 'axios';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -120,6 +121,19 @@ interface Song {
     imageUrl: string; s3Key: string; duration: number;
 }
 
+interface SongAnalytics {
+    playsPerPeriod: { date: string; plays: number; streams: number; skips: number }[];
+    playsPerDay?: { date: string; plays: number; streams: number; skips: number }[];
+    topSongs: { songId: string; title: string; artist: string; streams: number; plays: number; skips: number; listeners: number; skipRate: number }[];
+    skipRates: { title: string; artist: string; plays: number; skipRate: number }[];
+    geoBreakdown: { country: string; streams: number }[];
+    summary: { plays: number; streams: number; skippedPlays: number; activeSongs: number };
+    granularity: AnalyticsGranularity;
+    from: string;
+    to: string;
+    days: number;
+}
+
 interface TopupPkg {
     _id: string; packageId: string; name: string;
     priceUsd: number; credits: number; bonusPercent: number;
@@ -170,6 +184,17 @@ const toDateTimeInputValue = (date: Date) => {
 const fmtDateTimeInput = (value: string) => {
     const d = toDate(value);
     return d ? d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : value;
+};
+const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+const getAxiosErrorMessage = (error: unknown, fallback: string) => {
+    if (axios.isAxiosError<{ message?: string }>(error)) {
+        return error.response?.data?.message ?? fallback;
+    }
+    return fallback;
 };
 
 // ── Overview section ──────────────────────────────────────────────────────────
@@ -1283,9 +1308,28 @@ const UsersSection = () => {
 // ── Songs section ─────────────────────────────────────────────────────────────
 
 const SongsSection = () => {
+    const MAX_AUDIO_UPLOAD_BYTES = 25 * 1024 * 1024;
+    const ALLOWED_AUDIO_MIME_TYPES = new Set([
+        'audio/mpeg',
+        'audio/mp3',
+        'audio/wav',
+        'audio/x-wav',
+        'audio/ogg',
+        'audio/mp4',
+        'audio/x-m4a',
+        'audio/aac',
+        'audio/flac',
+        'audio/webm',
+    ]);
+
     const [songs, setSongs]       = useState<Song[]>([]);
     const [loading, setLoading]   = useState(true);
     const [uploading, setUploading] = useState(false);
+    const [uploadStage, setUploadStage] = useState<'idle' | 'requesting' | 'uploading' | 'finalizing'>('idle');
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [songAnalytics, setSongAnalytics] = useState<SongAnalytics | null>(null);
+    const [songAnalyticsLoading, setSongAnalyticsLoading] = useState(true);
+    const [songAnalyticsRefreshTick, setSongAnalyticsRefreshTick] = useState(0);
     const { data: an, loading: anLoading } = useAnalytics();
 
     const [form, setForm] = useState({
@@ -1299,48 +1343,130 @@ const SongsSection = () => {
             .finally(() => setLoading(false));
     }, []);
 
+    useEffect(() => {
+        if (!an?.from || !an?.to) return;
+        let canceled = false;
+        const loadSongAnalytics = async () => {
+            setSongAnalyticsLoading(true);
+            try {
+                const { data } = await axiosInstance.get('/admin/analytics/songs', {
+                    params: {
+                        from: an.from,
+                        to: an.to,
+                        granularity: an.granularity,
+                    },
+                });
+                if (!canceled) setSongAnalytics(data.data);
+            } catch (error) {
+                if (!canceled) toast.error(getAxiosErrorMessage(error, 'Failed to load song analytics'));
+            } finally {
+                if (!canceled) setSongAnalyticsLoading(false);
+            }
+        };
+        void loadSongAnalytics();
+        return () => { canceled = true; };
+    }, [an?.from, an?.to, an?.granularity, songAnalyticsRefreshTick]);
+
+    const validateUploadForm = () => {
+        const title = form.title.trim();
+        const artist = form.artist.trim();
+        const imageUrl = form.imageUrl.trim();
+        const file = form.audioFile;
+
+        if (!title || !artist || !imageUrl || !file) return 'All fields are required';
+        if (title.length < 2 || artist.length < 2) return 'Title and artist must be at least 2 characters';
+        if (!/^https?:\/\//i.test(imageUrl)) return 'Cover image URL must start with http:// or https://';
+        if (!ALLOWED_AUDIO_MIME_TYPES.has(file.type.toLowerCase())) {
+            return 'Unsupported audio format. Use mp3, wav, ogg, m4a, aac, flac, or webm.';
+        }
+        if (file.size <= 0 || file.size > MAX_AUDIO_UPLOAD_BYTES) {
+            return `Audio file must be <= ${Math.round(MAX_AUDIO_UPLOAD_BYTES / (1024 * 1024))}MB`;
+        }
+        return null;
+    };
+
+    const readAudioDuration = async (file: File) => new Promise<number>((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(file);
+        const audio = document.createElement('audio');
+        const cleanup = () => {
+            URL.revokeObjectURL(objectUrl);
+            audio.removeAttribute('src');
+            audio.load();
+        };
+        audio.preload = 'metadata';
+        audio.onloadedmetadata = () => {
+            const duration = Math.round(audio.duration);
+            cleanup();
+            if (!Number.isFinite(duration) || duration <= 0) {
+                reject(new Error('Invalid audio duration'));
+                return;
+            }
+            resolve(duration);
+        };
+        audio.onerror = () => {
+            cleanup();
+            reject(new Error('Unable to read audio metadata'));
+        };
+        audio.src = objectUrl;
+    });
+
     const handleUpload = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!form.audioFile || !form.title || !form.artist || !form.imageUrl) {
-            toast.error('All fields required');
+        const validationError = validateUploadForm();
+        if (validationError) {
+            toast.error(validationError);
             return;
         }
 
         setUploading(true);
+        setUploadStage('requesting');
+        setUploadProgress(0);
         try {
-            // 1. Get presigned PUT URL
+            const file = form.audioFile as File;
+
+            // 1. Request one-time secure upload intent + pre-signed URL
             const { data: urlData } = await axiosInstance.post('/admin/songs/upload-url', {
-                filename: form.audioFile.name,
-                contentType: form.audioFile.type,
+                filename: file.name,
+                contentType: file.type,
+                sizeBytes: file.size,
             });
-            const { url, s3Key } = urlData.data;
+            const { url, s3Key, uploadToken } = urlData.data;
 
-            // 2. Upload directly to S3
-            await fetch(url, {
-                method: 'PUT',
-                body: form.audioFile,
-                headers: { 'Content-Type': form.audioFile.type },
+            // 2. Upload file directly to S3 with progress feedback
+            setUploadStage('uploading');
+            await axios.put(url, file, {
+                headers: { 'Content-Type': file.type },
+                onUploadProgress: (event) => {
+                    if (!event.total) return;
+                    setUploadProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+                },
             });
+            setUploadProgress(100);
 
-            // 3. Extract duration via hidden audio element
-            const duration = await new Promise<number>((resolve) => {
-                const audio = new Audio(URL.createObjectURL(form.audioFile!));
-                audio.addEventListener('loadedmetadata', () => resolve(Math.round(audio.duration)));
-            });
+            // 3. Extract duration from uploaded file metadata
+            const duration = await readAudioDuration(file);
 
-            // 4. Save to DB
+            // 4. Finalize song creation in DB (server verifies upload token + S3 object)
+            setUploadStage('finalizing');
             const { data: songData } = await axiosInstance.post('/admin/songs', {
-                title: form.title, artist: form.artist,
-                imageUrl: form.imageUrl, s3Key, duration,
+                title: form.title.trim(),
+                artist: form.artist.trim(),
+                imageUrl: form.imageUrl.trim(),
+                s3Key,
+                duration,
+                uploadToken,
             });
 
             setSongs(s => [songData.data, ...s]);
             setForm({ title: '', artist: '', imageUrl: '', audioFile: null });
+            setSongAnalyticsRefreshTick(t => t + 1);
             toast.success(`"${form.title}" uploaded`);
-        } catch (e: any) {
-            toast.error(e?.response?.data?.message ?? 'Upload failed');
+        } catch (error) {
+            toast.error(getAxiosErrorMessage(error, 'Upload failed'));
         } finally {
             setUploading(false);
+            setUploadStage('idle');
+            setUploadProgress(0);
         }
     };
 
@@ -1349,52 +1475,206 @@ const SongsSection = () => {
         try {
             await axiosInstance.delete(`/admin/songs/${id}`);
             setSongs(s => s.filter(x => x._id !== id));
+            setSongAnalyticsRefreshTick(t => t + 1);
             toast.success('Song deleted');
-        } catch { toast.error('Delete failed'); }
+        } catch (error) {
+            toast.error(getAxiosErrorMessage(error, 'Delete failed'));
+        }
     };
+
+    const uploadStageLabel = {
+        idle: 'Idle',
+        requesting: 'Securing upload session',
+        uploading: 'Uploading to storage',
+        finalizing: 'Finalizing song metadata',
+    }[uploadStage];
+
+    const playsPerPeriod = sortByDateAsc(songAnalytics?.playsPerPeriod ?? songAnalytics?.playsPerDay ?? []);
+    const topSongs = songAnalytics?.topSongs ?? [];
+    const skipRates = songAnalytics?.skipRates ?? [];
+    const geoBreakdown = songAnalytics?.geoBreakdown ?? [];
+    const summary = songAnalytics?.summary ?? { plays: 0, streams: 0, skippedPlays: 0, activeSongs: 0 };
+    const avgStreamsPerPlay = summary.plays > 0 ? (summary.streams / summary.plays).toFixed(2) : '0.00';
+    const overallSkipRate = summary.plays > 0 ? ((summary.skippedPlays / summary.plays) * 100).toFixed(1) : '0.0';
 
     return (
         <div className="space-y-6">
             <h2 className="text-lg font-semibold text-white">Songs</h2>
 
-            {/* Top artists chart */}
             {!anLoading && an && (
-                <ChartCard title="Top artists by song count">
-                    {an.topArtists.length === 0 ? <EmptyChart /> : (
-                        <ResponsiveContainer width="100%" height={Math.max(120, an.topArtists.length * 28)}>
-                            <BarChart data={an.topArtists} layout="vertical" barCategoryGap="30%">
-                                <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} horizontal={false} />
-                                <XAxis type="number" tick={AXIS_STYLE} allowDecimals={false} />
-                                <YAxis type="category" dataKey="artist" tick={{ ...AXIS_STYLE, fontSize: 11 }} width={90} />
-                                <Tooltip contentStyle={TIP_STYLE} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                                <Bar dataKey="songs" name="Songs" fill={CHART_COLORS.revenue} radius={[0, 4, 4, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-5 border border-white/10 rounded-xl overflow-hidden divide-x divide-y md:divide-y-0 divide-white/10">
+                        <div className="px-4 py-4 flex flex-col gap-1">
+                            <span className="text-[11px] text-zinc-500">Song plays</span>
+                            <span className="text-xl font-semibold text-white">{summary.plays.toLocaleString()}</span>
+                        </div>
+                        <div className="px-4 py-4 flex flex-col gap-1">
+                            <span className="text-[11px] text-zinc-500">Streams</span>
+                            <span className="text-xl font-semibold text-violet-300">{summary.streams.toLocaleString()}</span>
+                        </div>
+                        <div className="px-4 py-4 flex flex-col gap-1">
+                            <span className="text-[11px] text-zinc-500">Avg streams/play</span>
+                            <span className="text-xl font-semibold text-emerald-300">{avgStreamsPerPlay}</span>
+                        </div>
+                        <div className="px-4 py-4 flex flex-col gap-1">
+                            <span className="text-[11px] text-zinc-500">Skip rate</span>
+                            <span className="text-xl font-semibold text-amber-300">{overallSkipRate}%</span>
+                        </div>
+                        <div className="px-4 py-4 flex flex-col gap-1">
+                            <span className="text-[11px] text-zinc-500">Active songs</span>
+                            <span className="text-xl font-semibold text-sky-300">{summary.activeSongs.toLocaleString()}</span>
+                        </div>
+                    </div>
+
+                    <p className="text-xs text-zinc-600">
+                        Song analytics range: {songAnalytics ? `${fmtDateTimeInput(songAnalytics.from)} → ${fmtDateTimeInput(songAnalytics.to)} (${songAnalytics.granularity})` : `${fmtDateTimeInput(an.from)} → ${fmtDateTimeInput(an.to)} (${an.granularity})`}
+                    </p>
+
+                    {songAnalyticsLoading ? (
+                        <div className="flex items-center gap-2 text-zinc-400"><Loader className="size-4 animate-spin" /> Loading song analytics...</div>
+                    ) : (
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                            <ChartCard title="Playback trend (plays vs streams)">
+                                {playsPerPeriod.length === 0 ? <EmptyChart /> : (
+                                    <ResponsiveContainer width="100%" height={220}>
+                                        <AreaChart data={playsPerPeriod}>
+                                            <defs>
+                                                <linearGradient id="songPlays" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor={CHART_COLORS.signups} stopOpacity={0.3} />
+                                                    <stop offset="95%" stopColor={CHART_COLORS.signups} stopOpacity={0} />
+                                                </linearGradient>
+                                                <linearGradient id="songStreams" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor={CHART_COLORS.revenue} stopOpacity={0.3} />
+                                                    <stop offset="95%" stopColor={CHART_COLORS.revenue} stopOpacity={0} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+                                            <XAxis dataKey="date" tick={AXIS_STYLE} tickFormatter={fmtDateShort} interval="preserveStartEnd" />
+                                            <YAxis yAxisId="plays" tick={AXIS_STYLE} allowDecimals={false} />
+                                            <YAxis yAxisId="streams" orientation="right" tick={AXIS_STYLE} allowDecimals={false} />
+                                            <Tooltip
+                                                contentStyle={TIP_STYLE}
+                                                labelFormatter={value => fmtDateLong(String(value))}
+                                            />
+                                            <Legend wrapperStyle={{ color: '#71717a', fontSize: 11 }} />
+                                            <Area yAxisId="plays" type="monotone" dataKey="plays" name="Plays" stroke={CHART_COLORS.signups} fill="url(#songPlays)" strokeWidth={2} dot={false} />
+                                            <Area yAxisId="streams" type="monotone" dataKey="streams" name="Streams" stroke={CHART_COLORS.revenue} fill="url(#songStreams)" strokeWidth={2} dot={false} />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                )}
+                            </ChartCard>
+
+                            <ChartCard title="Top streamed songs">
+                                {topSongs.length === 0 ? <EmptyChart /> : (
+                                    <ResponsiveContainer width="100%" height={Math.max(180, Math.min(10, topSongs.length) * 30)}>
+                                        <BarChart data={topSongs.slice(0, 10)} layout="vertical" barCategoryGap="26%">
+                                            <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} horizontal={false} />
+                                            <XAxis type="number" tick={AXIS_STYLE} allowDecimals={false} />
+                                            <YAxis
+                                                type="category"
+                                                dataKey="title"
+                                                tick={{ ...AXIS_STYLE, fontSize: 11 }}
+                                                width={130}
+                                                tickFormatter={(value) => String(value).length > 22 ? `${String(value).slice(0, 22)}…` : String(value)}
+                                            />
+                                            <Tooltip
+                                                contentStyle={TIP_STYLE}
+                                                formatter={(value, name, payload) => {
+                                                    if (name === 'streams') {
+                                                        const song = payload?.payload as SongAnalytics['topSongs'][number];
+                                                        return [`${Number(value).toLocaleString()} streams · ${song.plays.toLocaleString()} plays`, `${song.artist}`];
+                                                    }
+                                                    return [value, name];
+                                                }}
+                                            />
+                                            <Bar dataKey="streams" name="streams" fill={CHART_COLORS.revenue} radius={[0, 4, 4, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                )}
+                            </ChartCard>
+
+                            <ChartCard title="Skip rate by song">
+                                {skipRates.length === 0 ? <EmptyChart /> : (
+                                    <ResponsiveContainer width="100%" height={220}>
+                                        <BarChart data={skipRates.slice(0, 10)} barCategoryGap="30%">
+                                            <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+                                            <XAxis dataKey="title" tick={AXIS_STYLE} tickFormatter={(value) => String(value).length > 16 ? `${String(value).slice(0, 16)}…` : String(value)} />
+                                            <YAxis tick={AXIS_STYLE} tickFormatter={(value) => `${value}%`} />
+                                            <Tooltip
+                                                contentStyle={TIP_STYLE}
+                                                formatter={(value, _name, payload) => {
+                                                    const row = payload?.payload as SongAnalytics['skipRates'][number];
+                                                    return [`${Number(value)}%`, `${row.artist} · ${row.plays} plays`];
+                                                }}
+                                            />
+                                            <Bar dataKey="skipRate" name="Skip rate" fill={CHART_COLORS.donations} radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                )}
+                            </ChartCard>
+
+                            <ChartCard title="Streams by country">
+                                {geoBreakdown.length === 0 ? <EmptyChart /> : (
+                                    <ResponsiveContainer width="100%" height={220}>
+                                        <PieChart>
+                                            <Pie data={geoBreakdown} dataKey="streams" nameKey="country" outerRadius={76} innerRadius={44} paddingAngle={2}>
+                                                {geoBreakdown.map((entry, idx) => (
+                                                    <Cell key={`${entry.country}-${idx}`} fill={['#a78bfa', '#34d399', '#f59e0b', '#60a5fa', '#f472b6', '#22d3ee', '#fb7185', '#a3e635'][idx % 8]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip contentStyle={TIP_STYLE} formatter={(value) => [Number(value).toLocaleString(), 'Streams']} />
+                                            <Legend wrapperStyle={{ color: '#71717a', fontSize: 11 }} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                )}
+                            </ChartCard>
+                        </div>
                     )}
-                </ChartCard>
+
+                    <ChartCard title="Top artists by song count">
+                        {an.topArtists.length === 0 ? <EmptyChart /> : (
+                            <ResponsiveContainer width="100%" height={Math.max(120, an.topArtists.length * 28)}>
+                                <BarChart data={an.topArtists} layout="vertical" barCategoryGap="30%">
+                                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} horizontal={false} />
+                                    <XAxis type="number" tick={AXIS_STYLE} allowDecimals={false} />
+                                    <YAxis type="category" dataKey="artist" tick={{ ...AXIS_STYLE, fontSize: 11 }} width={90} />
+                                    <Tooltip contentStyle={TIP_STYLE} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                                    <Bar dataKey="songs" name="Songs" fill={CHART_COLORS.revenue} radius={[0, 4, 4, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        )}
+                    </ChartCard>
+                </div>
             )}
 
             {/* Upload form */}
             <form onSubmit={handleUpload} className="rounded-xl border border-white/10 bg-white/5 p-5 space-y-4">
-                <p className="text-sm font-medium text-zinc-300">Upload Song</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-zinc-300">Upload Song</p>
+                    <span className="text-[11px] text-zinc-500">Secure flow: intent → upload → finalize</span>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <Input
                         placeholder="Title"
                         value={form.title}
                         onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                        disabled={uploading}
                         className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600"
                     />
                     <Input
                         placeholder="Artist"
                         value={form.artist}
                         onChange={e => setForm(f => ({ ...f, artist: e.target.value }))}
+                        disabled={uploading}
                         className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600"
                     />
                 </div>
                 <Input
+                    type="url"
                     placeholder="Cover image URL"
                     value={form.imageUrl}
                     onChange={e => setForm(f => ({ ...f, imageUrl: e.target.value }))}
+                    disabled={uploading}
                     className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600"
                 />
                 <div className="flex items-center gap-3">
@@ -1403,21 +1683,41 @@ const SongsSection = () => {
                         form.audioFile
                             ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
                             : 'border-white/10 text-zinc-400 bg-white/5 hover:bg-white/10',
+                        uploading && 'opacity-70 pointer-events-none',
                     )}>
                         <Upload className="size-4" />
                         {form.audioFile ? form.audioFile.name : 'Choose audio file'}
                         <input
                             type="file"
-                            accept="audio/*"
+                            accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/ogg,audio/mp4,audio/x-m4a,audio/aac,audio/flac,audio/webm"
                             className="hidden"
+                            disabled={uploading}
                             onChange={e => setForm(f => ({ ...f, audioFile: e.target.files?.[0] ?? null }))}
                         />
                     </label>
                     <Button type="submit" disabled={uploading} className="bg-emerald-600 hover:bg-emerald-500 text-white gap-2">
                         {uploading ? <Loader className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                        {uploading ? 'Uploading…' : 'Upload'}
+                        {uploading ? uploadStageLabel : 'Upload'}
                     </Button>
                 </div>
+                {form.audioFile && (
+                    <div className="text-xs text-zinc-500">
+                        {form.audioFile.type} · {formatBytes(form.audioFile.size)}
+                    </div>
+                )}
+                {uploading && (
+                    <div className="space-y-2">
+                        <div className="h-2 w-full rounded bg-white/10 overflow-hidden">
+                            <div
+                                className="h-full bg-emerald-500 transition-all duration-200"
+                                style={{ width: `${uploadProgress}%` }}
+                            />
+                        </div>
+                        <p className="text-xs text-zinc-500">
+                            {uploadStage === 'uploading' ? `${uploadStageLabel} (${uploadProgress}%)` : uploadStageLabel}
+                        </p>
+                    </div>
+                )}
             </form>
 
             {/* Song list */}
