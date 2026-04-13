@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { PlatformConfig, getConfig } from '../models/platformConfig.model.js';
 import { SubscriptionPlan } from '../models/subscriptionPlan.model.js';
 import { TopupPackage } from '../models/topupPackage.model.js';
 import { User } from '../models/user.model.js';
@@ -750,5 +751,36 @@ export const getSongAnalytics = async (req, res, next) => {
                 days,
             },
         });
+    } catch (e) { next(e); }
+};
+
+// ── Platform Config ───────────────────────────────────────────────────────────
+
+export const getPlatformConfig = async (req, res, next) => {
+    try {
+        const config = await getConfig();
+        res.json({ success: true, data: config });
+    } catch (e) { next(e); }
+};
+
+export const updatePlatformConfig = async (req, res, next) => {
+    try {
+        const allowed = ['withdrawFeePercent', 'minWithdrawWinPoints', 'winPointsToUsdCents'];
+        const update = {};
+        for (const key of allowed) {
+            if (req.body[key] !== undefined) {
+                const val = Number(req.body[key]);
+                if (!Number.isFinite(val) || val < 0) {
+                    return res.status(400).json({ message: `Invalid value for ${key}` });
+                }
+                update[key] = val;
+            }
+        }
+        const config = await PlatformConfig.findOneAndUpdate(
+            { key: 'global' },
+            { $set: update },
+            { new: true, upsert: true }
+        );
+        res.json({ success: true, data: config });
     } catch (e) { next(e); }
 };

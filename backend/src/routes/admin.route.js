@@ -38,6 +38,10 @@ router.get('/stats',            admin.getStats);
 router.get('/analytics',        admin.getAnalytics);
 router.get('/analytics/songs',  admin.getSongAnalytics);
 
+// Platform config (fee %, withdrawal limits, exchange rate)
+router.get('/config',           admin.getPlatformConfig);
+router.patch('/config',         admin.updatePlatformConfig);
+
 // RecSys monitoring
 router.get('/recsys/status',    recsys.getRecSysStatus);
 router.post('/recsys/train',    recsys.triggerTraining);

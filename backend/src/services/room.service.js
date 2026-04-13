@@ -421,16 +421,23 @@ export const goOfflineInternal = async (roomId) => {
         recordSongTransition(roomId, currentSong, startTimeUnix, false).catch(() => {});
     }
 
-    // 1. Payout any remaining escrow (partial goal) to creator
+    // 1. Payout any remaining escrow (partial goal) to creator as winPoints
+    // Coins from listeners are already deducted from their balance — we credit creator winPoints
     if (room.escrow > 0) {
         const session = await mongoose.startSession();
         await session.withTransaction(async () => {
-            await User.findByIdAndUpdate(room.creatorId, { $inc: { balance: room.escrow } }, { session });
+            await User.findByIdAndUpdate(room.creatorId, {
+                $inc: {
+                    winPoints: room.escrow,
+                    'creatorStats.totalWinPointsEarned': room.escrow,
+                },
+            }, { session });
             await Transaction.create([{
                 userId: room.creatorId,
-                type:   "goal_payout",
+                type:   'goal_payout',
+                currency: 'winPoints',
                 amount: room.escrow,
-                status: "completed",
+                status: 'completed',
                 roomId,
             }], { session });
         });
@@ -513,12 +520,12 @@ export const goOfflineInternal = async (roomId) => {
     });
 
     // 7. Accumulate into creator's lifetime stats on User doc
+    // Note: totalWinPointsEarned already updated in step 1 (escrow payout)
     await User.findByIdAndUpdate(room.creatorId, {
         $inc: {
             "creatorStats.totalRoomsHosted":     1,
             "creatorStats.totalStreams":          listenerStats.totalListeners,
             "creatorStats.totalMinutesListened":  minutesListened,
-            "creatorStats.totalCoinsEarned":      coinsEarned,
             "creatorStats.totalUniqueDonors":     totalDonors,
         },
         $set: { "creatorStats.lastLiveAt": offlineAt },

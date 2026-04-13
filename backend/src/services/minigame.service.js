@@ -1,6 +1,7 @@
-import { Minigame } from "../models/minigame.model.js";
-import { Room }     from "../models/room.model.js";
-import { User }     from "../models/user.model.js";
+import { Minigame }     from "../models/minigame.model.js";
+import { Room }         from "../models/room.model.js";
+import { User }         from "../models/user.model.js";
+import { Transaction }  from "../models/transaction.model.js";
 
 const resolveUser = async (clerkId) => {
     const user = await User.findOne({ clerkId }).select('_id');
@@ -29,8 +30,22 @@ export const createMinigame = async (clerkId, roomId, data) => {
     const { type, title, trigger, durationSeconds, coinReward, config } = data;
     if (!type || !title?.trim()) throw Object.assign(new Error('type and title are required'), { statusCode: 400 });
 
+    const reward = Math.max(0, Math.floor(coinReward ?? 0));
     const resolvedTrigger = trigger ?? { type: 'manual', songIndex: null };
     const status = resolvedTrigger.type !== 'manual' ? 'scheduled' : 'draft';
+
+    // Deduct prize coins from creator balance upfront — held in escrow until game ends
+    if (reward > 0) {
+        const creator = await User.findById(user._id).select('balance');
+        if (!creator || creator.balance < reward) {
+            throw Object.assign(new Error(`Insufficient balance — need ${reward} coins to fund this game`), { statusCode: 402 });
+        }
+        await User.updateOne({ _id: user._id }, { $inc: { balance: -reward } });
+        await Transaction.create({
+            userId: user._id, type: 'minigame_debit', currency: 'coins',
+            amount: reward, status: 'completed',
+        });
+    }
 
     return Minigame.create({
         roomId,
@@ -39,7 +54,7 @@ export const createMinigame = async (clerkId, roomId, data) => {
         title: title.trim(),
         trigger: resolvedTrigger,
         durationSeconds: durationSeconds ?? 30,
-        coinReward: coinReward ?? 0,
+        coinReward: reward,
         config: config ?? {},
         status,
     });
@@ -122,4 +137,33 @@ export const completeGame = async (minigameId) => {
         { $set: { status: 'completed', completedAt: new Date() } },
         { new: true }
     );
+};
+
+// Called after completeGame to resolve prize money:
+// - If there's a winner → award coinReward as winPoints to winner
+// - If no winner → refund coinReward back to creator's coins
+export const settleGamePrize = async (game) => {
+    if (!game || game.coinReward <= 0) return;
+
+    if (game.winner?.userId) {
+        // Award winner with winPoints (not coins — prevents circular cash-out)
+        await User.updateOne(
+            { _id: game.winner.userId },
+            { $inc: { winPoints: game.coinReward, 'activityStats.gamesPlayed': 1 } }
+        );
+        await Transaction.create({
+            userId: game.winner.userId, type: 'minigame_win', currency: 'winPoints',
+            amount: game.coinReward, status: 'completed',
+        });
+    } else {
+        // No winner — refund coins back to creator
+        await User.updateOne(
+            { _id: game.creatorId },
+            { $inc: { balance: game.coinReward } }
+        );
+        await Transaction.create({
+            userId: game.creatorId, type: 'minigame_refund', currency: 'coins',
+            amount: game.coinReward, status: 'completed',
+        });
+    }
 };

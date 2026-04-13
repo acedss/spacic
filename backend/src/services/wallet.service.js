@@ -8,6 +8,7 @@ import { Room } from "../models/room.model.js";
 import { Transaction } from "../models/transaction.model.js";
 import { TopupPackage } from "../models/topupPackage.model.js";
 import { redis } from "../lib/redis.js";
+import { getConfig } from "../models/platformConfig.model.js";
 
 // ── Top-up packages (DB-driven, Redis-cached) ─────────────────────────────────
 // DB fields:  packageId, name, priceUsd (cents), credits, bonusPercent
@@ -299,10 +300,10 @@ export const donateToRoom = async (clerkId, roomId, amount, idempotencyKey) => {
     let result;
 
     await session.withTransaction(async () => {
-        // 1. Deduct donor balance (fails atomically if insufficient)
+        // 1. Deduct donor balance + track activity stat
         const donor = await User.findOneAndUpdate(
             { clerkId, balance: { $gte: amount } },
-            { $inc: { balance: -amount } },
+            { $inc: { balance: -amount, 'activityStats.donationsMade': 1 } },
             { new: true, session }
         );
         if (!donor) throw new Error("Insufficient balance");
@@ -319,6 +320,7 @@ export const donateToRoom = async (clerkId, roomId, amount, idempotencyKey) => {
         await Transaction.create([{
             userId:          donor._id,
             type:            "donation",
+            currency:        "coins",
             amount,
             status:          "completed",
             roomId,
@@ -344,10 +346,11 @@ export const donateToRoom = async (clerkId, roomId, amount, idempotencyKey) => {
             );
 
             await Transaction.create([{
-                userId:  room.creatorId,
-                type:    "goal_payout",
-                amount:  payoutAmount,
-                status:  "completed",
+                userId:   room.creatorId,
+                type:     "goal_payout",
+                currency: "winPoints",
+                amount:   payoutAmount,
+                status:   "completed",
                 roomId,
             }], { session });
 
@@ -367,3 +370,153 @@ export const donateToRoom = async (clerkId, roomId, amount, idempotencyKey) => {
     session.endSession();
     return result;
 };
+
+// ── Stripe Connect ────────────────────────────────────────────────────────────
+
+export const getConnectStatus = async (clerkId) => {
+    const user = await User.findOne({ clerkId })
+        .select('winPoints stripeConnectAccountId stripeConnectStatus activityStats');
+    if (!user) throw Object.assign(new Error('User not found'), { statusCode: 404 });
+
+    const config = await getConfig();
+    return {
+        winPoints:              user.winPoints,
+        stripeConnectStatus:    user.stripeConnectStatus,
+        hasConnectAccount:      !!user.stripeConnectAccountId,
+        minWithdrawWinPoints:   config.minWithdrawWinPoints,
+        winPointsToUsdCents:    config.winPointsToUsdCents,
+        withdrawFeePercent:     config.withdrawFeePercent,
+        activityStats:          user.activityStats,
+    };
+};
+
+export const onboardConnect = async (clerkId, requestOrigin) => {
+    const user = await User.findOne({ clerkId }).select('_id stripeConnectAccountId stripeConnectStatus');
+    if (!user) throw Object.assign(new Error('User not found'), { statusCode: 404 });
+
+    let accountId = user.stripeConnectAccountId;
+
+    // Create a fresh Express account if none exists
+    if (!accountId) {
+        const account = await stripe.accounts.create({ type: 'express' });
+        accountId = account.id;
+        await User.findByIdAndUpdate(user._id, {
+            stripeConnectAccountId: accountId,
+            stripeConnectStatus:    'pending',
+        });
+    }
+
+    const baseUrl = requestOrigin || 'http://localhost:5173';
+    const accountLink = await stripe.accountLinks.create({
+        account:     accountId,
+        refresh_url: `${baseUrl}/wallet?connect=refresh`,
+        return_url:  `${baseUrl}/wallet?connect=return`,
+        type:        'account_onboarding',
+    });
+
+    return { url: accountLink.url };
+};
+
+export const handleConnectReturn = async (clerkId) => {
+    const user = await User.findOne({ clerkId }).select('_id stripeConnectAccountId');
+    if (!user || !user.stripeConnectAccountId) {
+        throw Object.assign(new Error('No Connect account found'), { statusCode: 404 });
+    }
+
+    const account = await stripe.accounts.retrieve(user.stripeConnectAccountId);
+    const status = account.charges_enabled ? 'active' : 'pending';
+
+    await User.findByIdAndUpdate(user._id, { stripeConnectStatus: status });
+    return { stripeConnectStatus: status };
+};
+
+// ── Withdrawal ────────────────────────────────────────────────────────────────
+
+export const withdrawWinPoints = async (clerkId, amount) => {
+    if (!Number.isInteger(amount) || amount <= 0) {
+        throw Object.assign(new Error('Invalid withdrawal amount'), { statusCode: 400 });
+    }
+
+    const config = await getConfig();
+
+    if (amount < config.minWithdrawWinPoints) {
+        throw Object.assign(
+            new Error(`Minimum withdrawal is ${config.minWithdrawWinPoints} WinPoints ($${(config.minWithdrawWinPoints * config.winPointsToUsdCents / 100).toFixed(2)})`),
+            { statusCode: 400 }
+        );
+    }
+
+    const user = await User.findOne({ clerkId })
+        .select('_id winPoints stripeConnectAccountId stripeConnectStatus');
+    if (!user) throw Object.assign(new Error('User not found'), { statusCode: 404 });
+    if (user.winPoints < amount) {
+        throw Object.assign(new Error('Insufficient WinPoints'), { statusCode: 402 });
+    }
+    if (user.stripeConnectStatus !== 'active') {
+        throw Object.assign(new Error('Connect your Stripe account before withdrawing'), { statusCode: 400 });
+    }
+
+    const grossUsdCents   = amount * config.winPointsToUsdCents;
+    const feeUsdCents     = Math.round(grossUsdCents * config.withdrawFeePercent / 100);
+    const netUsdCents     = grossUsdCents - feeUsdCents;
+
+    if (netUsdCents < 100) {
+        throw Object.assign(new Error('Net payout would be less than $1.00 after fees'), { statusCode: 400 });
+    }
+
+    // Atomic: deduct winPoints first, then transfer
+    const session = await mongoose.startSession();
+    let transferId;
+    await session.withTransaction(async () => {
+        const updated = await User.findOneAndUpdate(
+            { _id: user._id, winPoints: { $gte: amount } },
+            { $inc: { winPoints: -amount, 'activityStats.totalWithdrawn': amount } },
+            { new: true, session }
+        );
+        if (!updated) throw new Error('Insufficient WinPoints (concurrent request)');
+
+        // Stripe transfer to connected account
+        const transfer = await stripe.transfers.create({
+            amount:      netUsdCents,
+            currency:    'usd',
+            destination: user.stripeConnectAccountId,
+            description: `Spacic WinPoints withdrawal — ${amount} wp`,
+        });
+        transferId = transfer.id;
+
+        // Record user withdrawal
+        await Transaction.create([{
+            userId:   user._id,
+            type:     'withdrawal',
+            currency: 'winPoints',
+            amount,
+            status:   'completed',
+        }], { session });
+
+        // Record platform fee revenue
+        await Transaction.create([{
+            userId:   user._id,
+            type:     'withdrawal_fee',
+            currency: 'usd_cents',
+            amount:   feeUsdCents,
+            status:   'completed',
+        }], { session });
+
+        // Accumulate platform fee revenue on config
+        await user.constructor.db.model('PlatformConfig').findOneAndUpdate(
+            { key: 'global' },
+            { $inc: { totalWithdrawalRevenueUsdCents: feeUsdCents } },
+            { session }
+        );
+    });
+    session.endSession();
+
+    return {
+        winPointsWithdrawn: amount,
+        grossUsd: (grossUsdCents / 100).toFixed(2),
+        feeUsd:   (feeUsdCents   / 100).toFixed(2),
+        netUsd:   (netUsdCents   / 100).toFixed(2),
+        transferId,
+    };
+};
+

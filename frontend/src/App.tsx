@@ -21,8 +21,6 @@ export default function App() {
       <Routes>
         <Route path="/auth-callback" element={<AuthCallbackPage />} />
         <Route path="/admin" element={<AdminPage />} />
-        {/* Creator Live page — full screen, outside MainLayout sidebar */}
-        <Route path="/studio/live" element={<ProtectedRoute><CreatorLivePage /></ProtectedRoute>} />
         <Route element={<MainLayout />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/rooms/:roomId" element={<ProtectedRoute><RoomPage /></ProtectedRoute>} />
@@ -30,6 +28,8 @@ export default function App() {
           <Route path="/subscription" element={<ProtectedRoute><SubscriptionPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/studio" element={<ProtectedRoute><StudioPage /></ProtectedRoute>} />
+          {/* Creator Live — inside MainLayout so left sidebar + playback footer stay visible */}
+          <Route path="/studio/live" element={<ProtectedRoute><CreatorLivePage /></ProtectedRoute>} />
           {/* Keep /creator working — redirect to /studio */}
           <Route path="/creator" element={<Navigate to="/studio" replace />} />
           <Route path="/friends" element={<ProtectedRoute><FriendsPage /></ProtectedRoute>} />
