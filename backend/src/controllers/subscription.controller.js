@@ -14,9 +14,11 @@ export const getPlans = async (req, res, next) => {
 
 export const subscribe = async (req, res, next) => {
     try {
-        const { slug, billingCycle = 'monthly' } = req.body;
+        const slug = String(req.body?.slug ?? '').trim().toLowerCase();
+        const billingCycle = String(req.body?.billingCycle ?? 'monthly').trim().toLowerCase();
+        const requestOrigin = req.get('origin') || req.get('referer') || null;
         const result = await subscriptionService.createSubscribeSession(
-            getClerkId(req), slug, billingCycle
+            getClerkId(req), slug, billingCycle, requestOrigin
         );
         res.json({ success: true, data: result });
     } catch (error) {

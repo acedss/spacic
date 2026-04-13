@@ -16,6 +16,8 @@ import roomRoutes from './routes/room.route.js';
 import walletRoutes from './routes/wallet.route.js';
 import subscriptionRoutes from './routes/subscription.route.js';
 import friendRoutes from './routes/friend.route.js';
+import playlistRoutes from './routes/playlist.route.js';
+import minigameRoutes from './routes/minigame.route.js';
 import { handleWebhook } from './controllers/wallet.controller.js';
 import { handleClerkWebhook } from './controllers/auth.controller.js';
 
@@ -131,6 +133,8 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/friends', friendRoutes);
+app.use('/api/playlists', playlistRoutes);
+app.use('/api/minigames', minigameRoutes);
 
 //  Error handler
 app.use((error, req, res, next) => {
