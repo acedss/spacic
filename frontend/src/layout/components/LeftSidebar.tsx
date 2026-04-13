@@ -30,6 +30,7 @@ const navItems = [
     { to: '/friends', icon: UserPlus, label: 'Friends' },
     { to: '/favorites', icon: Heart, label: 'Favorites' },
     { to: '/goal', icon: Target, label: 'Album Goals' },
+    { to: '/studio', icon: Radio, label: 'Creator Studio' },
     { to: '/wallet', icon: Wallet, label: 'Wallet', isWallet: true },
     { to: '/subscription', icon: Crown, label: 'Subscription' },
     { to: '/profile', icon: User, label: 'Profile' },

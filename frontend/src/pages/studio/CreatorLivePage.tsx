@@ -292,7 +292,7 @@ const CreatorLivePage = () => {
                     <div className="space-y-1">
                         <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Up next</p>
                         {room.playlist.slice(room.playback.currentSongIndex + 1, room.playback.currentSongIndex + 8).map((song, i) => (
-                            <div key={song._id} className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 transition-colors group">
+                            <div key={`upcoming-${room.playback.currentSongIndex + 1 + i}-${song._id}`} className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 transition-colors group">
                                 <span className="text-[10px] text-zinc-600 w-4 text-right flex-shrink-0">{room.playback.currentSongIndex + 1 + i + 1}</span>
                                 <img src={song.imageUrl} alt={song.title} className="size-8 rounded-md object-cover flex-shrink-0" />
                                 <div className="flex-1 min-w-0">
