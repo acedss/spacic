@@ -19,6 +19,15 @@ services:
             - web_gateway
         restart: always
 
+    spacic-recsys:
+        build: ./recsys
+        container_name: spacic-recsys
+        env_file: ./recsys/.env
+        # Not exposed externally — only reachable by spacic-be inside web_gateway
+        networks:
+            - web_gateway
+        restart: always
+
 networks:
     web_gateway:
         external: true

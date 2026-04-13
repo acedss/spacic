@@ -1,6 +1,5 @@
 import { randomUUID } from 'crypto';
 import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { SubscriptionPlan } from '../models/subscriptionPlan.model.js';
 import { TopupPackage } from '../models/topupPackage.model.js';
 import { User } from '../models/user.model.js';
@@ -215,6 +214,57 @@ export const getSongs = async (req, res, next) => {
     } catch (e) { next(e); }
 };
 
+export const uploadSongFile = async (req, res, next) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: 'Audio file is required' });
+        }
+
+        const contentType = String(req.file.mimetype ?? '').trim().toLowerCase();
+        const sizeBytes = Number(req.file.size);
+
+        if (!contentType.startsWith('audio/')) {
+            return res.status(400).json({ message: 'Only audio uploads are allowed' });
+        }
+        if (sizeBytes <= 0 || sizeBytes > MAX_SONG_UPLOAD_BYTES) {
+            return res.status(400).json({ message: `Audio file must be <= ${Math.round(MAX_SONG_UPLOAD_BYTES / (1024 * 1024))}MB` });
+        }
+
+        const s3Key = buildSafeSongKey(req.file.originalname, contentType);
+        if (!s3Key) {
+            return res.status(400).json({ message: 'Unsupported audio format. Use mp3, wav, ogg, m4a, aac, flac, or webm.' });
+        }
+
+        const command = new PutObjectCommand({
+            Bucket: s3Config.bucket,
+            Key: s3Key,
+            Body: req.file.buffer,
+            ContentType: contentType,
+        });
+        await s3Config.client.send(command);
+
+        const uploadToken = randomUUID();
+        const intentKey = `song-upload-intent:${uploadToken}`;
+        const requesterClerkId = getRequesterClerkId(req) ?? null;
+        await redis.set(intentKey, JSON.stringify({
+            s3Key,
+            contentType,
+            sizeBytes,
+            clerkId: requesterClerkId,
+        }), 'EX', SONG_UPLOAD_INTENT_TTL_SECONDS);
+
+        res.json({
+            success: true,
+            data: {
+                s3Key,
+                uploadToken,
+                maxSizeBytes: MAX_SONG_UPLOAD_BYTES,
+            },
+        });
+    } catch (e) { next(e); }
+};
+
+// Legacy endpoint — kept for backwards compatibility but not used by new frontend
 export const getSongUploadUrl = async (req, res, next) => {
     try {
         const filename = String(req.body?.filename ?? '').trim();
@@ -235,13 +285,6 @@ export const getSongUploadUrl = async (req, res, next) => {
             return res.status(400).json({ message: 'Unsupported audio format. Use mp3, wav, ogg, m4a, aac, flac, or webm.' });
         }
 
-        const command = new PutObjectCommand({
-            Bucket: s3Config.bucket,
-            Key: s3Key,
-            ContentType: contentType,
-        });
-        const url = await getSignedUrl(s3Config.client, command, { expiresIn: 300 });
-
         const uploadToken = randomUUID();
         const intentKey = `song-upload-intent:${uploadToken}`;
         const requesterClerkId = getRequesterClerkId(req) ?? null;
@@ -255,7 +298,6 @@ export const getSongUploadUrl = async (req, res, next) => {
         res.json({
             success: true,
             data: {
-                url,
                 s3Key,
                 uploadToken,
                 maxSizeBytes: MAX_SONG_UPLOAD_BYTES,

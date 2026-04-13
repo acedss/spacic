@@ -1,0 +1,13 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+motor==3.5.1               # async MongoDB driver
+redis[asyncio]==5.0.8      # async Redis client
+implicit==0.7.2            # ALS collaborative filtering
+scipy==1.13.1
+numpy==1.26.4
+pydantic==2.8.2
+pydantic-settings==2.4.0
+apscheduler==3.10.4        # lightweight Airflow alternative (replaces Airflow for MVP)
+bson==0.5.10
+mlflow==2.16.0             # model tracking + versioning
+python-dotenv==1.0.1
