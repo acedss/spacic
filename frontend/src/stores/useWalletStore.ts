@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { create } from 'zustand';
 import type { Transaction, TopupPackage } from '@/types/types';
 import { axiosInstance } from '@/lib/axios';
@@ -86,8 +87,12 @@ export const useWalletStore = create<WalletStore>((set, get) => ({
             const { data } = await axiosInstance.post('/wallet/topup', { packageId });
             // Redirect to Stripe hosted checkout page
             window.location.href = data.data.url;
-        } catch {
-            toast.error('Failed to start checkout');
+        } catch (error) {
+            const message = axios.isAxiosError<{ message?: string }>(error)
+                ? (error.response?.data?.message ?? 'Failed to start checkout')
+                : 'Failed to start checkout';
+            toast.error(message);
+        } finally {
             set({ topupLoading: false });
         }
     },

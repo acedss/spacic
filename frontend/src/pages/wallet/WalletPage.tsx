@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
-    Wallet, TrendingUp, ArrowUpRight, Heart, Loader,
-    Zap, Crown, Sparkles, ChevronRight, Star, ChevronDown, Trophy,
+    Wallet, TrendingUp, ArrowUpRight, Loader,
+    Zap, Crown, Star, ChevronRight, ChevronDown,
 } from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { toast } from 'sonner';
@@ -11,95 +11,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { TopupPackage, Transaction } from '@/types/types';
+import { PackageCard } from './components/PackageCard';
+import { TransactionRow } from './components/TransactionRow';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const toCoins = (credits: number) => `${credits.toLocaleString()} coins`;
-
-const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
 const TIER_CONFIG = {
-    FREE:    { label: 'Free',    icon: Zap,    color: 'text-zinc-400',   bg: 'bg-zinc-400/10' },
-    PREMIUM: { label: 'Premium', icon: Star,   color: 'text-purple-400', bg: 'bg-purple-400/10' },
-    CREATOR: { label: 'Creator', icon: Crown,  color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
+    FREE:    { label: 'Free',    icon: Zap,   color: 'text-zinc-400',   bg: 'bg-zinc-400/10'   },
+    PREMIUM: { label: 'Premium', icon: Star,  color: 'text-purple-400', bg: 'bg-purple-400/10' },
+    CREATOR: { label: 'Creator', icon: Crown, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
 } as const;
-
-// ── Package card ──────────────────────────────────────────────────────────────
-
-const PackageCard = ({ pkg, onSelect, loading }: {
-    pkg: TopupPackage;
-    onSelect: () => void;
-    loading: boolean;
-}) => (
-    <button
-        onClick={onSelect}
-        disabled={loading}
-        className={cn(
-            'relative flex flex-col gap-3 p-5 rounded-2xl border transition-all text-left group',
-            'bg-white/5 border-white/10 hover:bg-white/10 hover:border-purple-500/40 hover:shadow-lg hover:shadow-purple-500/5',
-            loading && 'opacity-50 cursor-not-allowed',
-            pkg.isFeatured && 'border-purple-500/40 bg-purple-500/5',
-        )}
-    >
-        {pkg.isFeatured && (
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                <span className="flex items-center gap-1 bg-purple-500 text-white text-[10px] font-bold px-3 py-1 rounded-full whitespace-nowrap shadow-lg shadow-purple-500/30">
-                    <Sparkles className="size-2.5" />
-                    Most Popular
-                </span>
-            </div>
-        )}
-
-        {pkg.bonus && !pkg.isFeatured && (
-            <span className="absolute top-3 right-3 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
-                {pkg.bonus}
-            </span>
-        )}
-
-        {pkg.isFeatured && pkg.bonus && (
-            <span className="absolute top-3 right-3 bg-purple-500/20 text-purple-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-purple-500/30">
-                {pkg.bonus}
-            </span>
-        )}
-
-        <span className="text-2xl font-bold text-white mt-1">
-            ${(pkg.priceInCents / 100).toFixed(2)}
-        </span>
-        <div>
-            <p className="text-sm font-medium text-white/80">{pkg.credits.toLocaleString()} coins</p>
-            <p className="text-xs text-zinc-500 mt-0.5">{pkg.label}</p>
-        </div>
-    </button>
-);
-
-// ── Transaction row ───────────────────────────────────────────────────────────
-
-const TX_META = {
-    topup:       { bg: 'bg-emerald-500/15', icon: ArrowUpRight, iconColor: 'text-emerald-400', amountColor: 'text-emerald-400', sign: '+', label: () => 'Wallet Top-up' },
-    donation:    { bg: 'bg-pink-500/15',    icon: Heart,         iconColor: 'text-pink-400',    amountColor: 'text-pink-400',    sign: '−', label: (tx: Transaction) => `Donated to "${tx.roomId?.title ?? 'a room'}"` },
-    goal_payout: { bg: 'bg-yellow-500/15',  icon: Trophy,        iconColor: 'text-yellow-400',  amountColor: 'text-yellow-400',  sign: '+', label: (tx: Transaction) => `Goal payout from "${tx.roomId?.title ?? 'a room'}"` },
-} as const;
-
-const TransactionRow = ({ tx }: { tx: Transaction }) => {
-    const meta = TX_META[tx.type] ?? TX_META.topup;
-    const Icon = meta.icon;
-    return (
-        <div className="flex items-center gap-3 py-3.5 border-b border-white/5 last:border-0">
-            <div className={cn('size-9 rounded-xl flex items-center justify-center flex-shrink-0', meta.bg)}>
-                <Icon className={cn('size-4', meta.iconColor)} />
-            </div>
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white/90 truncate">{meta.label(tx)}</p>
-                <p className="text-xs text-zinc-500">{formatDate(tx.createdAt)}</p>
-            </div>
-            <span className={cn('text-sm font-semibold tabular-nums flex-shrink-0', meta.amountColor)}>
-                {meta.sign}{toCoins(tx.amount)}
-            </span>
-        </div>
-    );
-};
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -150,7 +71,6 @@ const WalletPage = () => {
             {/* ── Balance card ──────────────────────────────────────────── */}
             <div className="relative overflow-hidden rounded-2xl border border-white/10 p-6
                             bg-gradient-to-br from-purple-600/20 via-indigo-600/10 to-pink-600/10">
-                {/* Glow */}
                 <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-transparent pointer-events-none" />
 
                 <div className="relative flex items-start justify-between gap-4">
@@ -171,7 +91,6 @@ const WalletPage = () => {
                             </>
                         )}
 
-                        {/* Tier badge */}
                         <div className="flex items-center gap-3 mt-4">
                             <Badge className={cn('gap-1.5 text-xs font-semibold', tier.bg, tier.color, 'border-0 hover:opacity-100')}>
                                 <TierIcon className="size-3" />
@@ -248,7 +167,6 @@ const WalletPage = () => {
                         <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Recent Activity</h2>
                     </div>
 
-                    {/* Filter tabs */}
                     {transactions.length > 0 && (
                         <Tabs value={txFilter} onValueChange={(v) => setTxFilter(v as TxFilter)}>
                             <TabsList className="bg-white/5 border border-white/5 h-8">

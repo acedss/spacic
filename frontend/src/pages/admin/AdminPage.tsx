@@ -1,4 +1,4 @@
-import { useEffect, useState, createContext, useContext } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { axiosInstance } from '@/lib/axios';
 import axios from 'axios';
@@ -17,85 +17,8 @@ import {
     AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-
-// ── Analytics context (fetched once, shared across all sections) ──────────────
-
-type AnalyticsGranularity = 'hourly' | 'daily' | 'weekly' | 'monthly';
-
-interface AnalyticsData {
-    dailyRevenue:   { date: string; revenue: number; txns: number }[];
-    dailySignups:   { date: string; count: number }[];
-    topArtists:     { artist: string; songs: number }[];
-    tierDist:       { tier: string; count: number }[];
-    donationsByDay: { date: string; amount: number; count: number }[];
-    roomDailySessions: { date: string; sessions: number; listeners: number; minutesListened: number; coinsEarned: number }[];
-    topRooms: { roomId: string; title: string; status: 'live' | 'offline'; favoriteCount: number; sessions: number; listeners: number; minutesListened: number; coinsEarned: number; avgListeners: number }[];
-    roomSummary: {
-        totalRooms: number;
-        liveRooms: number;
-        sessions: number;
-        listeners: number;
-        minutesListened: number;
-        coinsEarned: number;
-    };
-    granularity: AnalyticsGranularity;
-    from: string;
-    to: string;
-    days: number;
-}
-
-interface AnalyticsCtxValue {
-    data: AnalyticsData | null;
-    loading: boolean;
-    granularity: AnalyticsGranularity;
-    setGranularity: (value: AnalyticsGranularity) => void;
-    from: string;
-    setFrom: (value: string) => void;
-    to: string;
-    setTo: (value: string) => void;
-    applyRange: () => void;
-    refresh: () => void;
-}
-
-const AnalyticsCtx = createContext<AnalyticsCtxValue>({
-    data: null,
-    loading: true,
-    granularity: 'daily',
-    setGranularity: () => {},
-    from: '',
-    setFrom: () => {},
-    to: '',
-    setTo: () => {},
-    applyRange: () => {},
-    refresh: () => {},
-});
-const useAnalytics = () => useContext(AnalyticsCtx);
-
-// ── Chart shared styles ───────────────────────────────────────────────────────
-
-const CHART_COLORS = {
-    revenue:   '#a78bfa',
-    signups:   '#34d399',
-    donations: '#f59e0b',
-    FREE:      '#52525b',
-    PREMIUM:   '#a78bfa',
-    CREATOR:   '#fbbf24',
-};
-
-const AXIS_STYLE   = { fontSize: 10, fill: '#52525b' };
-const GRID_STROKE  = '#27272a';
-const TIP_STYLE    = { backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: 8, fontSize: 12 };
-
-const ChartCard = ({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) => (
-    <div className={cn('rounded-xl border border-white/10 bg-white/5 p-4', className)}>
-        <p className="text-xs font-medium text-zinc-400 mb-4">{title}</p>
-        {children}
-    </div>
-);
-
-const EmptyChart = () => (
-    <div className="h-40 flex items-center justify-center text-xs text-zinc-600">No data yet</div>
-);
+import { AnalyticsCtx, useAnalytics, type AnalyticsGranularity, type AnalyticsData } from './components/AnalyticsContext';
+import { ChartCard, EmptyChart, CHART_COLORS, AXIS_STYLE, GRID_STROKE, TIP_STYLE } from './components/ChartCard';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

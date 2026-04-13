@@ -15,6 +15,9 @@ import { redis } from "../lib/redis.js";
 
 const PACKAGES_CACHE_KEY = "packages:active";
 const PACKAGES_TTL_S = 300; // 5 minutes
+const DEFAULT_FRONTEND_URL = "http://localhost:5173";
+
+const err = (msg, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
 
 const toClientShape = (doc) => ({
     id:           doc.packageId,
@@ -37,22 +40,45 @@ export const getActivePackages = async () => {
 
 const getPackage = async (packageId) => {
     const doc = await TopupPackage.findOne({ packageId, isActive: true }).lean();
-    if (!doc) throw new Error("Invalid package");
+    if (!doc) throw err("Invalid package", 400);
     return doc;
 };
   
 // ── Create Stripe Checkout Session ───────────────────────────────────────────
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const isLocalHost = (hostname) => hostname === "localhost" || hostname === "127.0.0.1";
+const normalizeOrigin = (raw) => {
+    if (!raw) return null;
+    const input = String(raw).trim();
+    if (!input) return null;
+    const withProtocol = /^https?:\/\//i.test(input)
+        ? input
+        : isLocalHost(input.split(":")[0]) ? `http://${input}` : `https://${input}`;
+    try {
+        const parsed = new URL(withProtocol);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+        if (parsed.protocol === "http:" && !isLocalHost(parsed.hostname)) return null;
+        return parsed.origin;
+    } catch {
+        return null;
+    }
+};
+const resolveCheckoutOrigin = (requestOrigin) =>
+    normalizeOrigin(process.env.FRONTEND_URL)
+    || normalizeOrigin(requestOrigin)
+    || DEFAULT_FRONTEND_URL;
 
-export const createTopupSession = async (clerkId, packageId) => {
-    const origin = FRONTEND_URL;
-    if (!stripe) throw new Error("Stripe is not configured");
+export const createTopupSession = async (clerkId, packageId, requestOrigin) => {
+    if (!stripe) throw err("Stripe is not configured", 500);
+    if (!packageId || typeof packageId !== "string") throw err("packageId is required", 400);
+    const normalizedPackageId = packageId.trim();
+    if (!normalizedPackageId) throw err("packageId is required", 400);
+    const origin = resolveCheckoutOrigin(requestOrigin);
 
     const user = await User.findOne({ clerkId });
-    if (!user) throw new Error("User not found");
+    if (!user) throw err("User not found", 404);
 
-    const pkg = await getPackage(packageId);
+    const pkg = await getPackage(normalizedPackageId);
     const bonusLabel = pkg.bonusPercent > 0 ? ` (+${pkg.bonusPercent}% bonus)` : "";
 
     // Create a pending transaction first — links Stripe session to our DB record
@@ -63,28 +89,40 @@ export const createTopupSession = async (clerkId, packageId) => {
         status: "pending",
     });
 
-    const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        mode: "payment",
-        line_items: [{
-            price_data: {
-                currency: "usd",
-                unit_amount: pkg.priceUsd,
-                product_data: {
-                    name: `Spacic ${pkg.name} Pack`,
-                    description: `${pkg.credits.toLocaleString()} credits${bonusLabel}`,
+    let session;
+    try {
+        session = await stripe.checkout.sessions.create({
+            payment_method_types: ["card"],
+            mode: "payment",
+            line_items: [{
+                price_data: {
+                    currency: "usd",
+                    unit_amount: pkg.priceUsd,
+                    product_data: {
+                        name: `Spacic ${pkg.name} Pack`,
+                        description: `${pkg.credits.toLocaleString()} credits${bonusLabel}`,
+                    },
                 },
+                quantity: 1,
+            }],
+            metadata: {
+                transactionId: transaction._id.toString(),
+                userId: user._id.toString(),
+                credits: pkg.credits.toString(),
             },
-            quantity: 1,
-        }],
-        metadata: {
-            transactionId: transaction._id.toString(),
-            userId: user._id.toString(),
-            credits: pkg.credits.toString(),
-        },
-        success_url: `${origin}/wallet?topup=success`,
-        cancel_url: `${origin}/wallet?topup=cancelled`,
-    });
+            success_url: `${origin}/wallet?topup=success`,
+            cancel_url: `${origin}/wallet?topup=cancelled`,
+        });
+    } catch (error) {
+        // Stripe returns 400 for malformed success/cancel URLs; surface a clear message.
+        if (error?.type === "StripeInvalidRequestError") {
+            const msg = String(error.message || "");
+            if (msg.includes("success_url") || msg.includes("cancel_url")) {
+                throw err("Invalid checkout return URL. Set FRONTEND_URL to a valid http(s) origin.", 400);
+            }
+        }
+        throw error;
+    }
 
     // Attach the Stripe session ID to our transaction record
     await Transaction.findByIdAndUpdate(transaction._id, { stripeSessionId: session.id });
