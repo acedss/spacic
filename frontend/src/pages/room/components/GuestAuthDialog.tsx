@@ -1,9 +1,8 @@
 // GuestAuthDialog — shown to unauthed visitors on room pages
-// Prompts sign-in/sign-up + optional payment setup, dismissible
-import { useState } from 'react'
+// Prompts sign-in/sign-up, dismissible
 import { useClerk } from '@clerk/clerk-react'
 import { useLocation } from 'react-router-dom'
-import { Radio, CreditCard, SkipForward, X } from 'lucide-react'
+import { Radio, SkipForward } from 'lucide-react'
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -15,12 +14,9 @@ interface Props {
     roomTitle?:   string
 }
 
-type Step = 'auth' | 'payment'
-
 export const GuestAuthDialog = ({ open, onOpenChange, roomTitle }: Props) => {
     const { openSignIn, openSignUp } = useClerk()
     const location = useLocation()
-    const [step, setStep] = useState<Step>('auth')
 
     const handleSignIn = () => {
         onOpenChange(false)
@@ -43,76 +39,45 @@ export const GuestAuthDialog = ({ open, onOpenChange, roomTitle }: Props) => {
                         </div>
                     </div>
                     <DialogTitle className="text-center text-white text-lg">
-                        {step === 'auth' ? 'Join the room' : 'Add a payment method'}
+                        Join the room
                     </DialogTitle>
                 </DialogHeader>
 
-                {step === 'auth' ? (
-                    <div className="space-y-4 pt-1">
-                        {roomTitle && (
-                            <p className="text-center text-zinc-400 text-sm">
-                                Sign in to listen live, chat, and support <span className="text-white font-medium">{roomTitle}</span>
-                            </p>
-                        )}
-
-                        <div className="space-y-2">
-                            <Button
-                                onClick={handleSignUp}
-                                className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold"
-                            >
-                                Create free account
-                            </Button>
-                            <Button
-                                onClick={handleSignIn}
-                                variant="ghost"
-                                className="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10"
-                            >
-                                Sign in
-                            </Button>
-                        </div>
-
-                        <button
-                            onClick={() => onOpenChange(false)}
-                            className="flex items-center justify-center gap-1.5 w-full text-xs text-zinc-500 hover:text-zinc-300 transition-colors py-1"
-                        >
-                            <SkipForward className="size-3" />
-                            Continue as guest (read-only)
-                        </button>
-
-                        <p className="text-center text-[11px] text-zinc-700">
-                            Free forever · No credit card required to sign up
-                        </p>
-                    </div>
-                ) : (
-                    // Payment step — shown after sign-up redirect
-                    <div className="space-y-4 pt-1">
+                <div className="space-y-4 pt-1">
+                    {roomTitle && (
                         <p className="text-center text-zinc-400 text-sm">
-                            Add a card to donate coins to creators and unlock minigame prizes.
+                            Sign in to listen live, chat, and support <span className="text-white font-medium">{roomTitle}</span>
                         </p>
+                    )}
 
-                        <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
-                            <div className="flex items-center gap-2 text-sm text-zinc-300">
-                                <CreditCard className="size-4 text-violet-400" />
-                                <span>Secure payments via Stripe</span>
-                            </div>
-                            <p className="text-xs text-zinc-600">You won't be charged until you choose a coin pack.</p>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Button className="w-full bg-violet-600 hover:bg-violet-500 text-white">
-                                Set up payment
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                onClick={() => onOpenChange(false)}
-                                className="w-full text-zinc-400"
-                            >
-                                <X className="size-3.5 mr-1" />
-                                Skip for now
-                            </Button>
-                        </div>
+                    <div className="space-y-2">
+                        <Button
+                            onClick={handleSignUp}
+                            className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold"
+                        >
+                            Create free account
+                        </Button>
+                        <Button
+                            onClick={handleSignIn}
+                            variant="ghost"
+                            className="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10"
+                        >
+                            Sign in
+                        </Button>
                     </div>
-                )}
+
+                    <button
+                        onClick={() => onOpenChange(false)}
+                        className="flex items-center justify-center gap-1.5 w-full text-xs text-zinc-500 hover:text-zinc-300 transition-colors py-1"
+                    >
+                        <SkipForward className="size-3" />
+                        Continue as guest (read-only)
+                    </button>
+
+                    <p className="text-center text-[11px] text-zinc-700">
+                        Free forever · No credit card required to sign up
+                    </p>
+                </div>
             </DialogContent>
         </Dialog>
     )

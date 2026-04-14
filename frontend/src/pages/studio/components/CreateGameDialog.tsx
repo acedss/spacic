@@ -8,10 +8,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
 import { createMinigame } from '@/lib/minigameService'
+import { cn } from '@/lib/utils'
 import type { Minigame, MinigameType } from '@/types/types'
 import { toast } from 'sonner'
 
@@ -93,18 +91,22 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
                     {/* Type */}
                     <div className="space-y-1.5">
                         <Label className="text-xs text-zinc-400">Game type</Label>
-                        <Select value={type} onValueChange={v => setType(v as MinigameType)}>
-                            <SelectTrigger className="bg-white/5 border-white/10 text-white h-9">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="bg-zinc-900 border-white/10">
-                                {GAME_TYPES.map(t => (
-                                    <SelectItem key={t.value} value={t.value} className="text-white focus:bg-white/10">
-                                        {t.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <div className="grid grid-cols-2 gap-2">
+                            {GAME_TYPES.map(t => (
+                                <button
+                                    key={t.value}
+                                    onClick={() => setType(t.value)}
+                                    className={cn(
+                                        'px-3 py-2 rounded-lg text-xs font-medium transition',
+                                        type === t.value
+                                            ? 'bg-violet-600 text-white border border-violet-500'
+                                            : 'bg-white/5 text-zinc-300 border border-white/10 hover:bg-white/10',
+                                    )}
+                                >
+                                    {t.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     {/* Title */}
@@ -151,16 +153,15 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                             <Label className="text-xs text-zinc-400">Duration</Label>
-                            <Select value={String(durationSeconds)} onValueChange={v => setDuration(Number(v))}>
-                                <SelectTrigger className="bg-white/5 border-white/10 text-white h-9">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent className="bg-zinc-900 border-white/10">
-                                    {DURATION_OPTIONS.map(d => (
-                                        <SelectItem key={d} value={String(d)} className="text-white focus:bg-white/10">{d}s</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <select
+                                value={durationSeconds}
+                                onChange={e => setDuration(Number(e.target.value))}
+                                className="w-full px-3 py-2 h-9 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-violet-500"
+                            >
+                                {DURATION_OPTIONS.map(d => (
+                                    <option key={d} value={d}>{d}s</option>
+                                ))}
+                            </select>
                         </div>
 
                         <div className="space-y-1.5">
@@ -168,18 +169,18 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
                                 Prize (coins)
                                 {rewardTooHigh && <span className="ml-1 text-red-400">low balance</span>}
                             </Label>
-                            <Select value={String(coinReward)} onValueChange={v => setCoinReward(Number(v))}>
-                                <SelectTrigger className={`bg-white/5 border-white/10 text-white h-9 ${rewardTooHigh ? 'border-red-500/50' : ''}`}>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent className="bg-zinc-900 border-white/10">
-                                    {REWARD_OPTIONS.map(r => (
-                                        <SelectItem key={r} value={String(r)} className="text-white focus:bg-white/10">
-                                            {r === 0 ? 'No prize' : `${r} 🪙`}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <select
+                                value={coinReward}
+                                onChange={e => setCoinReward(Number(e.target.value))}
+                                className={cn(
+                                    'w-full px-3 py-2 h-9 bg-white/5 border rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-violet-500',
+                                    rewardTooHigh ? 'border-red-500/50' : 'border-white/10'
+                                )}
+                            >
+                                {REWARD_OPTIONS.map(r => (
+                                    <option key={r} value={r}>{r === 0 ? 'No prize' : `${r} 🪙`}</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
 

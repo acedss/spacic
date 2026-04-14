@@ -25,8 +25,7 @@ export const CreatorSpeakingOverlay = ({ creatorName = 'Creator' }: Props) => {
     useEffect(() => {
         if (creatorAudio.state !== 'done' || creatorAudio.chunks.length === 0) return
 
-        const chunks   = [...creatorAudio.chunks]
-        const mimeType = creatorAudio.mimeType
+        const chunks = [...creatorAudio.chunks]
         clearCreatorAudio()
 
         ;(async () => {

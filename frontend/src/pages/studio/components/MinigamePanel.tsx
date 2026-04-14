@@ -2,10 +2,8 @@
 import { useState } from 'react'
 import { Play, Gamepad2, Plus, Trophy } from 'lucide-react'
 import { CreateGameDialog } from './CreateGameDialog'
-import { createMinigame } from '@/lib/minigameService'
 import type { Minigame, ActiveGame } from '@/types/types'
 import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
 
 const GAME_TYPE_LABELS: Record<string, string> = {
     song_guesser: 'Song Guesser',

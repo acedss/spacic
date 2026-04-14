@@ -40,7 +40,7 @@ export const CreatorMicButton = ({ socket, roomId, disabled }: Props) => {
         if (countdownRef.current) clearInterval(countdownRef.current)
     }, [])
 
-    const finishRecording = useCallback(async (recorder: MediaRecorder, stream: MediaStream) => {
+    const finishRecording = useCallback(async (stream: MediaStream) => {
         clearTimers()
         setMicState('sending')
         stream.getTracks().forEach(t => t.stop())
@@ -94,7 +94,7 @@ export const CreatorMicButton = ({ socket, roomId, disabled }: Props) => {
             if (e.data.size > 0) chunksRef.current.push(e.data)
         }
 
-        recorder.onstop = () => finishRecording(recorder, stream)
+        recorder.onstop = () => finishRecording(stream)
 
         recorder.start(200) // 200ms timeslices
         setMicState('recording')
