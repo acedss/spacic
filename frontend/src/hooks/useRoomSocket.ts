@@ -200,10 +200,8 @@ export const useRoomSocket = (roomId: string) => {
                 serverTimestamp,
             );
 
-            // Don't force playback changes if listener is locally paused
-            if (!listenerLocalPaused) {
-                playerStore.setPlaying(isPlaying);
-            }
+            // Always update server playback state (listeners' local pause only blocks audio element, not state)
+            playerStore.setPlaying(isPlaying);
             if (startTimeUnix !== undefined) playerStore.setStartTimeUnix(startTimeUnix ?? null);
             if (pausedAtMs !== undefined) playerStore.setPausedAtMs(pausedAtMs ?? null);
             if (listenerCount !== undefined) roomStore.setListenerCount(listenerCount);

@@ -88,8 +88,9 @@ const AudioPlayer = () => {
             onPlay={() => {
                 // Clear local pause flag when listener resumes
                 setListenerLocalPaused(false);
-                // Seek to current server position to sync
+                // Seek to current server position to sync (mark as programmatic)
                 if (audioRef.current && !isCreator) {
+                    skipNextSeekEmitRef.current = true;
                     audioRef.current.currentTime = currentTimeMs / 1000;
                 }
                 // Creators notify socket of resume
