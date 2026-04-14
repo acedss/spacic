@@ -191,6 +191,7 @@ export const useRoomSocket = (roomId: string) => {
             listenerCount?: number;
         }) => {
             syncInProgressRef.current = true;
+            const { listenerLocalPaused } = usePlayerStore.getState();
 
             const positionMs = computePositionFromSync(
                 isPlaying,
@@ -199,7 +200,10 @@ export const useRoomSocket = (roomId: string) => {
                 serverTimestamp,
             );
 
-            playerStore.setPlaying(isPlaying);
+            // Don't force playback changes if listener is locally paused
+            if (!listenerLocalPaused) {
+                playerStore.setPlaying(isPlaying);
+            }
             if (startTimeUnix !== undefined) playerStore.setStartTimeUnix(startTimeUnix ?? null);
             if (pausedAtMs !== undefined) playerStore.setPausedAtMs(pausedAtMs ?? null);
             if (listenerCount !== undefined) roomStore.setListenerCount(listenerCount);
@@ -210,7 +214,8 @@ export const useRoomSocket = (roomId: string) => {
             // Force-seek audio element directly — bypasses the store→effect→onTimeUpdate race.
             // Without this, onTimeUpdate overwrites currentTimeMs with the OLD position
             // before the useEffect sync correction can fire.
-            if (audioRef.current) {
+            // But skip if listener has locally paused (let them stay at their pause position)
+            if (audioRef.current && !listenerLocalPaused) {
                 audioRef.current.currentTime = positionMs / 1000;
             }
             setTimeout(() => {
@@ -234,6 +239,10 @@ export const useRoomSocket = (roomId: string) => {
             listenerCount?: number;
         }) => {
             if (listenerCount !== undefined) roomStore.setListenerCount(listenerCount);
+            const { listenerLocalPaused } = usePlayerStore.getState();
+
+            // Skip drift correction if listener is locally paused
+            if (listenerLocalPaused) return;
 
             const expectedMs = computePositionFromSync(isPlaying, startTimeUnix, pausedAtMs, serverTimestamp);
             const liveTimeMs = audioRef.current ? audioRef.current.currentTime * 1000 : usePlayerStore.getState().currentTimeMs;

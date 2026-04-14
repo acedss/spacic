@@ -8,8 +8,8 @@ const AudioPlayer = () => {
     const songEndedCallbackRef = useSongEndedCallbackRef();
     const timeUpdateCallbackRef = useTimeUpdateCallbackRef();
     const playStateCallbackRef = usePlayStateCallbackRef();
-    const { room } = useRoomStore();
-    const { currentSongIndex, currentTimeMs, isPlaying, isSynced, setCurrentTimeMs } = usePlayerStore();
+    const { room, isCreator } = useRoomStore();
+    const { currentSongIndex, currentTimeMs, isPlaying, isSynced, listenerLocalPaused, setCurrentTimeMs, setListenerLocalPaused } = usePlayerStore();
 
     // Tracks programmatic seeks (sync correction, song load, drift fix) so
     // onSeeked doesn't re-broadcast them back as room:seek events.
@@ -30,16 +30,18 @@ const AudioPlayer = () => {
         //   - URL refresh: preserves live position
         //   - Initial join: server-computed offset from room:joined
         audioRef.current.currentTime = currentTimeMs / 1000;
-        if (isPlaying) audioRef.current.play().catch(() => { });
+        // Don't auto-play here — let the play/pause effect handle it
+        // (prevents race where we play stale position before sync completes)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentSong?._id, currentSong?.audioUrl]);
 
-    // Play / pause driven by store
+    // Play / pause driven by store (but not if listener has locally paused)
     useEffect(() => {
         if (!audioRef.current) return;
+        if (listenerLocalPaused) return; // Listener has paused — don't force resume
         if (isPlaying) audioRef.current.play().catch(() => { });
         else audioRef.current.pause();
-    }, [audioRef, isPlaying]);
+    }, [audioRef, isPlaying, listenerLocalPaused]);
 
     // Sync correction: isSynced pulses false → seek → back to true
     useEffect(() => {
@@ -84,12 +86,24 @@ const AudioPlayer = () => {
                 timeUpdateCallbackRef.current?.(ms, true);
             }}
             onPlay={() => {
-                // Notify useRoomSocket that creator resumed playback
-                playStateCallbackRef.current?.(true);
+                // Clear local pause flag when listener resumes
+                setListenerLocalPaused(false);
+                // Seek to current server position to sync
+                if (audioRef.current && !isCreator) {
+                    audioRef.current.currentTime = currentTimeMs / 1000;
+                }
+                // Creators notify socket of resume
+                if (isCreator) {
+                    playStateCallbackRef.current?.(true);
+                }
             }}
             onPause={() => {
-                // Notify useRoomSocket that creator paused playback
-                playStateCallbackRef.current?.(false);
+                // Creators emit pause to server; listeners just set local flag
+                if (isCreator) {
+                    playStateCallbackRef.current?.(false);
+                } else {
+                    setListenerLocalPaused(true);
+                }
             }}
             onEnded={() => {
                 songEndedCallbackRef.current?.();

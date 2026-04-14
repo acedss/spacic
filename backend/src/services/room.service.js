@@ -183,10 +183,11 @@ export const updateQueueWhileLive = async (clerkId, roomId, { playlistIds, strea
 
     if (Object.keys(update).length === 0) return { success: true }; // nothing to do
 
-    await Room.findByIdAndUpdate(roomId, update);
+    const updatedRoom = await Room.findByIdAndUpdate(roomId, update, { new: true }).lean();
+    const io = getIo();
 
-    // Only re-cache and notify clients if the playlist actually changed
-    if (updatingPlaylist) {
+    // Notify clients if the playlist changed
+    if (updatingPlaylist && io) {
         const songs = await Song.find({ _id: { $in: playlistIds } }).select('_id title artist duration imageUrl s3Key albumId').lean();
         const ordered = playlistIds.map(id => songs.find(s => s._id.toString() === id)).filter(Boolean);
         const mappedPlaylist = ordered.map(s => ({
@@ -200,11 +201,17 @@ export const updateQueueWhileLive = async (clerkId, roomId, { playlistIds, strea
         }));
 
         await socketManager.cacheRoomPlaylist(roomId, mappedPlaylist);
+        io.to(roomId).emit('room:playlist_updated', { playlist: mappedPlaylist });
+    }
 
-        const io = getIo();
-        if (io) {
-            io.to(roomId).emit('room:playlist_updated', { playlist: mappedPlaylist });
-        }
+    // Notify clients if goal changed (whether or not playlist also changed)
+    if (streamGoal !== undefined && io) {
+        io.to(roomId).emit('room:goal_updated', {
+            roomId,
+            streamGoal: updatedRoom.streamGoal,
+            streamGoalCurrent: updatedRoom.streamGoalCurrent,
+            donor: null,  // Goal-only update via creator edit, not a donation
+        });
     }
 
     return { success: true };

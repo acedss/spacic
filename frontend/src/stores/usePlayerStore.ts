@@ -8,6 +8,8 @@ interface PlayerStore {
     // Time-based sync anchor — mirrors server's startTimeUnix
     startTimeUnix: number | null;
     pausedAtMs: number | null;
+    // Listener-only: local pause flag (prevents sync checkpoints from resuming)
+    listenerLocalPaused: boolean;
 
     setCurrentSongIndex: (idx: number) => void;
     setCurrentTimeMs: (ms: number) => void;
@@ -15,6 +17,7 @@ interface PlayerStore {
     setSynced: (synced: boolean) => void;
     setStartTimeUnix: (ts: number | null) => void;
     setPausedAtMs: (ms: number | null) => void;
+    setListenerLocalPaused: (paused: boolean) => void;
     reset: () => void;
 }
 
@@ -25,6 +28,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     isSynced: true,
     startTimeUnix: null,
     pausedAtMs: null,
+    listenerLocalPaused: false,
 
     setCurrentSongIndex: (currentSongIndex) => set({ currentSongIndex }),
     setCurrentTimeMs: (currentTimeMs) => set({ currentTimeMs }),
@@ -32,6 +36,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     setSynced: (isSynced) => set({ isSynced }),
     setStartTimeUnix: (startTimeUnix) => set({ startTimeUnix }),
     setPausedAtMs: (pausedAtMs) => set({ pausedAtMs }),
+    setListenerLocalPaused: (listenerLocalPaused) => set({ listenerLocalPaused }),
     reset: () => set({
         currentSongIndex: 0,
         currentTimeMs: 0,
@@ -39,5 +44,6 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
         isSynced: true,
         startTimeUnix: null,
         pausedAtMs: null,
+        listenerLocalPaused: false,
     }),
 }));

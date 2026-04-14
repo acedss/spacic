@@ -52,9 +52,12 @@ const normalizeOrigin = (raw) => {
     if (!raw) return null;
     const input = String(raw).trim();
     if (!input) return null;
-    const withProtocol = /^https?:\/\//i.test(input)
-        ? input
-        : isLocalHost(input.split(":")[0]) ? `http://${input}` : `https://${input}`;
+    // Handle comma-separated list (take first origin)
+    const firstUrl = input.split(',')[0].trim();
+    if (!firstUrl) return null;
+    const withProtocol = /^https?:\/\//i.test(firstUrl)
+        ? firstUrl
+        : isLocalHost(firstUrl.split(":")[0]) ? `http://${firstUrl}` : `https://${firstUrl}`;
     try {
         const parsed = new URL(withProtocol);
         if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
