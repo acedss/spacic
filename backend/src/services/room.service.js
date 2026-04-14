@@ -173,35 +173,38 @@ export const updateQueueWhileLive = async (clerkId, roomId, { playlistIds, strea
     if (!room) throw new Error('Room not found');
     if (room.creatorId.toString() !== user._id.toString()) throw new Error('Only the creator can update the queue');
     if (room.status !== 'live') throw new Error('Room is not live');
-    if (!playlistIds || playlistIds.length === 0) throw new Error('Playlist must have at least one song');
 
-    // Fetch full song docs for the new playlist (needed for Redis cache)
-    const songs = await Song.find({ _id: { $in: playlistIds } }).select('_id title artist duration imageUrl s3Key albumId').lean();
-    // Preserve the order the creator specified
-    const ordered = playlistIds.map(id => songs.find(s => s._id.toString() === id)).filter(Boolean);
+    // playlistIds is optional — omit to do a goal-only update
+    const updatingPlaylist = Array.isArray(playlistIds) && playlistIds.length > 0;
 
-    const update = { playlist: playlistIds };
+    const update = {};
+    if (updatingPlaylist) update.playlist = playlistIds;
     if (streamGoal !== undefined) update.streamGoal = Math.max(0, Math.floor(streamGoal));
+
+    if (Object.keys(update).length === 0) return { success: true }; // nothing to do
 
     await Room.findByIdAndUpdate(roomId, update);
 
-    const mappedPlaylist = ordered.map(s => ({
-        _id: s._id.toString(),
-        title: s.title,
-        artist: s.artist,
-        duration: s.duration,
-        imageUrl: s.imageUrl ?? '',
-        s3Key: s.s3Key,
-        albumId: s.albumId?.toString() ?? null,
-    }));
+    // Only re-cache and notify clients if the playlist actually changed
+    if (updatingPlaylist) {
+        const songs = await Song.find({ _id: { $in: playlistIds } }).select('_id title artist duration imageUrl s3Key albumId').lean();
+        const ordered = playlistIds.map(id => songs.find(s => s._id.toString() === id)).filter(Boolean);
+        const mappedPlaylist = ordered.map(s => ({
+            _id: s._id.toString(),
+            title: s.title,
+            artist: s.artist,
+            duration: s.duration,
+            imageUrl: s.imageUrl ?? '',
+            s3Key: s.s3Key,
+            albumId: s.albumId?.toString() ?? null,
+        }));
 
-    // Re-cache in Redis so getNextSong picks up the new playlist immediately
-    await socketManager.cacheRoomPlaylist(roomId, mappedPlaylist);
+        await socketManager.cacheRoomPlaylist(roomId, mappedPlaylist);
 
-    // Notify all clients in the room — frontend RoomStore updates playlist reactively
-    const io = getIo();
-    if (io) {
-        io.to(roomId).emit('room:playlist_updated', { playlist: mappedPlaylist });
+        const io = getIo();
+        if (io) {
+            io.to(roomId).emit('room:playlist_updated', { playlist: mappedPlaylist });
+        }
     }
 
     return { success: true };
@@ -272,14 +275,19 @@ export const getMyRoom = async (clerkId) => {
 
 // ───── List Public Live Rooms ─────────────────────────────────────────────
 
-export const getPublicRooms = async ({ sort = "listener_count", limit = 50, offset = 0, search = "" }) => {
-    const query = { status: "live", isPublic: true };
+export const getPublicRooms = async ({ sort = "listener_count", limit = 50, offset = 0, search = "", status = "" }) => {
+    const query = { isPublic: true };
+    // Default: show live rooms first, but allow all-status browse and explicit filtering
+    if (status === "live" || status === "offline") query.status = status;
     if (search) query.title = { $regex: search, $options: "i" };
+
+    // For default sort (listener_count / newest), live rooms come first via DB sort trick
+    const dbSort = sort === "newest" ? { createdAt: -1 } : { status: 1, createdAt: -1 }; // 'live' < 'offline' alphabetically
 
     const rooms = await Room.find(query)
         .populate("creatorId", "fullName imageUrl")
         .populate({ path: "playlist", select: "title artist imageUrl duration", options: { limit: 1 } })
-        .sort({ createdAt: -1 })
+        .sort(dbSort)
         .skip(offset)
         .limit(Math.min(limit, 100));
 
@@ -291,9 +299,16 @@ export const getPublicRooms = async ({ sort = "listener_count", limit = 50, offs
         };
     }));
 
-    if (sort === "listener_count") {
-        enriched.sort((a, b) => b.listenerCount - a.listenerCount);
+    if (sort === "listener_count" || sort === "listeners") {
+        // Live rooms first, then by listener count desc
+        enriched.sort((a, b) => {
+            if (a.status === b.status) return b.listenerCount - a.listenerCount;
+            return a.status === "live" ? -1 : 1;
+        });
+    } else if (sort === "donations") {
+        enriched.sort((a, b) => b.streamGoalCurrent - a.streamGoalCurrent);
     }
+    // "newest" is already handled by dbSort above
 
     const total = await Room.countDocuments(query);
     return { data: enriched, total, limit, offset };

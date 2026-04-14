@@ -15,38 +15,38 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 
 interface RoomSessionContextValue {
     activeRoomId: string | null;
-    joinRoom: (roomId: string) => void;
-    leaveRoom: () => void;
-    sendChat: (message: string) => void;
-    skipSong: () => void;
-    donate: (amount: number) => void;
-    updateGoal: (newGoal: number) => void;
+    joinRoom:     (roomId: string) => void;
+    leaveRoom:    () => void;
+    sendChat:     (message: string) => void;
+    skipSong:     () => void;
+    donate:       (amount: number) => void;
+    updateGoal:   (newGoal: number) => void;
+    submitAnswer: (minigameId: string, answer: string) => void;
 }
 
 const RoomSessionContext = createContext<RoomSessionContextValue | null>(null);
 
 export const RoomSessionProvider = ({ children }: { children: React.ReactNode }) => {
     const { activeRoomId, setActiveRoomId } = useActiveRoomStore();
-    const roomStore = useRoomStore();
+    const roomStore   = useRoomStore();
     const playerStore = usePlayerStore();
 
-    // Socket connection lives here — persists as long as this provider is mounted.
-    // When activeRoomId is null or empty, the hook is a no-op (early return guard).
-    const { sendChat, skipSong, leaveRoom: socketLeave, donate, updateGoal } = useRoomSocket(activeRoomId ?? '');
+    const { sendChat, skipSong, leaveRoom: socketLeave, donate, updateGoal, submitAnswer } =
+        useRoomSocket(activeRoomId ?? '');
 
     const joinRoom = useCallback((roomId: string) => {
         setActiveRoomId(roomId);
     }, [setActiveRoomId]);
 
     const leaveRoom = useCallback(() => {
-        socketLeave();           // emits room:leave + disconnects socket
-        setActiveRoomId(null);   // clears activeRoomId → hook becomes no-op
-        roomStore.reset();       // wipe room UI state
-        playerStore.reset();     // stop playback
+        socketLeave();
+        setActiveRoomId(null);
+        roomStore.reset();
+        playerStore.reset();
     }, [socketLeave, setActiveRoomId, roomStore, playerStore]);
 
     return (
-        <RoomSessionContext.Provider value={{ activeRoomId, joinRoom, leaveRoom, sendChat, skipSong, donate, updateGoal }}>
+        <RoomSessionContext.Provider value={{ activeRoomId, joinRoom, leaveRoom, sendChat, skipSong, donate, updateGoal, submitAnswer }}>
             {children}
         </RoomSessionContext.Provider>
     );

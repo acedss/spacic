@@ -251,7 +251,7 @@ export const handleWebhook = async (rawBody, signature) => {
 const PAGE_SIZE = 20;
 
 export const getWallet = async (clerkId, cursor = null) => {
-    const user = await User.findOne({ clerkId }).select("balance fullName userTier");
+    const user = await User.findOne({ clerkId }).select("balance winPoints fullName userTier activityStats stripeConnectStatus");
     if (!user) throw new Error("User not found");
 
     const query = { userId: user._id, status: "completed" };
@@ -268,7 +268,16 @@ export const getWallet = async (clerkId, cursor = null) => {
     const transactions = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
     const nextCursor = hasMore ? transactions[transactions.length - 1]._id.toString() : null;
 
-    return { balance: user.balance, userTier: user.userTier, transactions, nextCursor, hasMore };
+    return {
+        balance: user.balance,
+        winPoints: user.winPoints ?? 0,
+        userTier: user.userTier,
+        stripeConnectStatus: user.stripeConnectStatus ?? null,
+        activityStats: user.activityStats ?? {},
+        transactions,
+        nextCursor,
+        hasMore,
+    };
 };
 
 // ── Donate to Room ────────────────────────────────────────────────────────────

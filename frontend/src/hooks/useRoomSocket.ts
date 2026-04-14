@@ -6,6 +6,8 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { useAudioRef, useSongEndedCallbackRef, useTimeUpdateCallbackRef, usePlayStateCallbackRef } from '@/providers/AudioProvider';
 import { useAuthStore } from '@/stores/useAuthStore';
+import type { ActiveGame } from '@/types/types';
+import { toast } from 'sonner';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin;
 
@@ -64,6 +66,10 @@ export const useRoomSocket = (roomId: string) => {
 
     const updateGoal = useCallback((newGoal: number) => {
         emit('room:update_goal', { roomId, newGoal });
+    }, [roomId, emit]);
+
+    const submitAnswer = useCallback((minigameId: string, answer: string) => {
+        emit('room:game_answer', { roomId, minigameId, answer });
     }, [roomId, emit]);
 
     useEffect(() => {
@@ -347,6 +353,54 @@ export const useRoomSocket = (roomId: string) => {
             // Nothing to override here — this event is just a trigger for UI celebrations.
         });
 
+        // ── Minigames (listeners + creator) ──────────────────────────────────
+        socket.on('room:game_start', (game: ActiveGame & { roomId?: string }) => {
+            const { isCreator } = useRoomStore.getState();
+            if (isCreator) return; // creator handles this in CreatorLivePage directly
+            roomStore.setActiveGame(game);
+            const secs = Math.ceil((new Date(game.endsAt).getTime() - Date.now()) / 1000);
+            roomStore.setGameSecondsLeft(Math.max(0, secs));
+            // Countdown ticker for listener UI
+            const tick = setInterval(() => {
+                const cur = useRoomStore.getState().gameSecondsLeft;
+                if (cur <= 1) { clearInterval(tick); roomStore.setGameSecondsLeft(0); }
+                else roomStore.setGameSecondsLeft(cur - 1);
+            }, 1000);
+        });
+
+        socket.on('room:game_result', ({ winner }: { winner: { username: string; answer: string } | null; participantCount: number }) => {
+            const { isCreator } = useRoomStore.getState();
+            if (isCreator) return; // creator handles this in CreatorLivePage
+            roomStore.setActiveGame(null);
+            roomStore.setGameSecondsLeft(0);
+            if (winner) toast.success(`🏆 ${winner.username} won with "${winner.answer}"!`);
+            else        toast.info('Game ended — no winner this round');
+        });
+
+        socket.on('room:game_progress', ({ participantCount }: { participantCount: number }) => {
+            // Listener-side: just a count update, no visual needed
+            void participantCount;
+        });
+
+        // ── Creator mic audio relay (listeners only) ──────────────────────────
+        socket.on('room:creator_speaking', () => {
+            const { isCreator } = useRoomStore.getState();
+            if (isCreator) return; // creator is the sender
+            roomStore.setCreatorAudioReceiving();
+        });
+
+        socket.on('room:audio_chunk', ({ chunk, mimeType }: { chunk: string; mimeType?: string }) => {
+            const { isCreator } = useRoomStore.getState();
+            if (isCreator) return;
+            roomStore.addCreatorAudioChunk(chunk, mimeType);
+        });
+
+        socket.on('room:creator_done', () => {
+            const { isCreator } = useRoomStore.getState();
+            if (isCreator) return;
+            roomStore.setCreatorAudioDone();
+        });
+
         socket.on('room:error', ({ message }: { message: string }) => {
             console.error('[Socket] << RECV room:error |', message);
             roomStore.setError(message);
@@ -373,5 +427,5 @@ export const useRoomSocket = (roomId: string) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, userId]);
 
-    return { sendChat, skipSong, leaveRoom, donate, updateGoal };
+    return { sendChat, skipSong, leaveRoom, donate, updateGoal, submitAnswer };
 };

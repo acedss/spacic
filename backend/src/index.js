@@ -77,10 +77,10 @@ const realIp = (req) => {
     return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
 };
 
-// Global: 200 req / 15 min per IP
+// Global: 200 req / 15 min per IP (relaxed to 1000 in dev — React Strict Mode + multi-component mounts exhaust 200 quickly)
 app.use('/api/', rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 200,
+    limit: process.env.NODE_ENV === 'development' ? 1000 : 200,
     keyGenerator: realIp,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
