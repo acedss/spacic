@@ -202,6 +202,10 @@ export const useRoomSocket = (roomId: string) => {
 
             // Always update server playback state (listeners' local pause only blocks audio element, not state)
             playerStore.setPlaying(isPlaying);
+            // Clear local pause flag when creator resumes (auto-resume listeners)
+            if (isPlaying) {
+                playerStore.setListenerLocalPaused(false);
+            }
             if (startTimeUnix !== undefined) playerStore.setStartTimeUnix(startTimeUnix ?? null);
             if (pausedAtMs !== undefined) playerStore.setPausedAtMs(pausedAtMs ?? null);
             if (listenerCount !== undefined) roomStore.setListenerCount(listenerCount);
@@ -238,6 +242,11 @@ export const useRoomSocket = (roomId: string) => {
         }) => {
             if (listenerCount !== undefined) roomStore.setListenerCount(listenerCount);
             const { listenerLocalPaused } = usePlayerStore.getState();
+
+            // Clear local pause flag if server is playing (listener should resume)
+            if (isPlaying && listenerLocalPaused) {
+                usePlayerStore.getState().setListenerLocalPaused(false);
+            }
 
             // Skip drift correction if listener is locally paused
             if (listenerLocalPaused) return;

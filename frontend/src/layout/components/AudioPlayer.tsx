@@ -14,6 +14,8 @@ const AudioPlayer = () => {
     // Tracks programmatic seeks (sync correction, song load, drift fix) so
     // onSeeked doesn't re-broadcast them back as room:seek events.
     const skipNextSeekEmitRef = useRef(false);
+    // Tracks programmatic pause (from play effect) so onPause doesn't set listenerLocalPaused
+    const programmaticPauseRef = useRef(false);
     const prevSongIdRef = useRef<string | null>(null);
 
     const currentSong = room?.playlist?.[currentSongIndex];
@@ -35,12 +37,20 @@ const AudioPlayer = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentSong?._id, currentSong?.audioUrl]);
 
-    // Play / pause driven by store (but not if listener has locally paused)
+    // Play / pause driven by store (but respect listener's local pause state)
     useEffect(() => {
         if (!audioRef.current) return;
-        if (listenerLocalPaused) return; // Listener has paused — don't force resume
-        if (isPlaying) audioRef.current.play().catch(() => { });
-        else audioRef.current.pause();
+        // Skip server play/pause commands if listener has locally paused
+        if (listenerLocalPaused) return;
+        if (isPlaying) {
+            audioRef.current.play().catch((err) => {
+                console.warn('[AudioPlayer] play() failed:', err.message);
+            });
+        } else {
+            // Mark as programmatic so onPause doesn't set listenerLocalPaused
+            programmaticPauseRef.current = true;
+            audioRef.current.pause();
+        }
     }, [audioRef, isPlaying, listenerLocalPaused]);
 
     // Sync correction: isSynced pulses false → seek → back to true
@@ -99,10 +109,16 @@ const AudioPlayer = () => {
                 }
             }}
             onPause={() => {
+                // Skip if pause was programmatic (from play effect sync)
+                if (programmaticPauseRef.current) {
+                    programmaticPauseRef.current = false;
+                    return;
+                }
                 // Creators emit pause to server; listeners just set local flag
                 if (isCreator) {
                     playStateCallbackRef.current?.(false);
                 } else {
+                    // User-initiated pause (from audio control)
                     setListenerLocalPaused(true);
                 }
             }}
