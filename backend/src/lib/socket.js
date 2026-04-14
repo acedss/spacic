@@ -497,43 +497,6 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
-        socket.on('room:pause', async ({ roomId }) => {
-            try {
-                const userSession = await socketManager.getUserBySocketId(socket.id);
-                let roomSession   = await socketManager.getRoomById(roomId);
-                if (!roomSession) roomSession = await recoverSessionFromDB(roomId);
-                if (!userSession) return socket.emit('room:error', { message: 'Session expired.' });
-                if (!roomSession) return socket.emit('room:error', { message: 'Room session not found.' });
-                if (!canControlRoom(userSession, roomSession)) return;
-                if (!roomSession.isPlaying) return;
-                const pausedAtMs = await socketManager.computeCurrentPositionMs(roomId);
-                await socketManager.updateRoomPlaybackState(roomId, { isPlaying: false, pausedAtMs });
-                io.to(roomId).emit('room:sync', { roomId, isPlaying: false, pausedAtMs, serverTimestamp: Date.now() });
-            } catch (error) {
-                console.error(`[Server] room:pause ERROR:`, error);
-                socket.emit('room:error', { message: 'Failed to process pause.' });
-            }
-        });
-
-        socket.on('room:resume', async ({ roomId }) => {
-            try {
-                const userSession = await socketManager.getUserBySocketId(socket.id);
-                let roomSession   = await socketManager.getRoomById(roomId);
-                if (!roomSession) roomSession = await recoverSessionFromDB(roomId);
-                if (!userSession) return socket.emit('room:error', { message: 'Session expired.' });
-                if (!roomSession) return socket.emit('room:error', { message: 'Room session not found.' });
-                if (!canControlRoom(userSession, roomSession)) return;
-                if (roomSession.isPlaying) return;
-                const pausedAtMs    = roomSession.pausedAtMs ?? 0;
-                const startTimeUnix = Date.now() - pausedAtMs;
-                await socketManager.updateRoomPlaybackState(roomId, { startTimeUnix, isPlaying: true, pausedAtMs: null });
-                io.to(roomId).emit('room:sync', { roomId, startTimeUnix, isPlaying: true, pausedAtMs: null, serverTimestamp: Date.now() });
-            } catch (error) {
-                console.error(`[Server] room:resume ERROR:`, error);
-                socket.emit('room:error', { message: 'Failed to process resume.' });
-            }
-        });
-
         socket.on('room:song_ended', async ({ roomId, currentSongIndex }) => {
             try {
                 const lastAdvance = songEndedDebounce.get(roomId);

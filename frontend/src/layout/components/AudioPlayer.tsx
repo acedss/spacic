@@ -96,17 +96,18 @@ const AudioPlayer = () => {
                 timeUpdateCallbackRef.current?.(ms, true);
             }}
             onPlay={() => {
-                // Clear local pause flag when listener resumes
+                // Clear local pause flag when user resumes
                 setListenerLocalPaused(false);
                 // Seek to current server position to sync (mark as programmatic)
                 if (audioRef.current && !isCreator) {
                     skipNextSeekEmitRef.current = true;
                     audioRef.current.currentTime = currentTimeMs / 1000;
                 }
-                // Creators notify socket of resume
+                // Creators notify socket when starting a song (resume broadcasts startTimeUnix)
                 if (isCreator) {
                     playStateCallbackRef.current?.(true);
                 }
+                // Listeners: pause is local only, no broadcast
             }}
             onPause={() => {
                 // Skip if pause was programmatic (from play effect sync)
@@ -114,13 +115,8 @@ const AudioPlayer = () => {
                     programmaticPauseRef.current = false;
                     return;
                 }
-                // Creators emit pause to server; listeners just set local flag
-                if (isCreator) {
-                    playStateCallbackRef.current?.(false);
-                } else {
-                    // User-initiated pause (from audio control)
-                    setListenerLocalPaused(true);
-                }
+                // All pause is local — creators' pause doesn't broadcast, listeners' pause doesn't broadcast
+                setListenerLocalPaused(true);
             }}
             onEnded={() => {
                 songEndedCallbackRef.current?.();

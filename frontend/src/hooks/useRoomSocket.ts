@@ -103,15 +103,18 @@ export const useRoomSocket = (roomId: string) => {
             socket.emit('room:seek', { roomId, seekPositionMs: currentTimeMs });
         };
 
-        // Play/pause callback — creator's audio element fires onPlay/onPause
+        // Play callback — creator notifies room when they start playing a song
+        // (pause is local only, doesn't broadcast)
         playStateCallbackRef.current = (isPlaying: boolean) => {
             const { isCreator } = useRoomStore.getState();
             const { isAdmin: adminNow } = useAuthStore.getState();
             if (!isCreator && !adminNow) return;
             // Don't re-emit when triggered by incoming room:sync
             if (syncInProgressRef.current) return;
-            const event = isPlaying ? 'room:resume' : 'room:pause';
-            socket.emit(event, { roomId });
+            // Only emit when creator plays (pause is local)
+            if (isPlaying) {
+                socket.emit('room:resume', { roomId });
+            }
         };
 
         socket.on('connect', () => {
@@ -200,12 +203,8 @@ export const useRoomSocket = (roomId: string) => {
                 serverTimestamp,
             );
 
-            // Always update server playback state (listeners' local pause only blocks audio element, not state)
+            // Update playback state from server
             playerStore.setPlaying(isPlaying);
-            // Clear local pause flag when creator resumes (auto-resume listeners)
-            if (isPlaying) {
-                playerStore.setListenerLocalPaused(false);
-            }
             if (startTimeUnix !== undefined) playerStore.setStartTimeUnix(startTimeUnix ?? null);
             if (pausedAtMs !== undefined) playerStore.setPausedAtMs(pausedAtMs ?? null);
             if (listenerCount !== undefined) roomStore.setListenerCount(listenerCount);
@@ -243,12 +242,7 @@ export const useRoomSocket = (roomId: string) => {
             if (listenerCount !== undefined) roomStore.setListenerCount(listenerCount);
             const { listenerLocalPaused } = usePlayerStore.getState();
 
-            // Clear local pause flag if server is playing (listener should resume)
-            if (isPlaying && listenerLocalPaused) {
-                usePlayerStore.getState().setListenerLocalPaused(false);
-            }
-
-            // Skip drift correction if listener is locally paused
+            // Skip drift correction if listener is locally paused (they're in control)
             if (listenerLocalPaused) return;
 
             const expectedMs = computePositionFromSync(isPlaying, startTimeUnix, pausedAtMs, serverTimestamp);
