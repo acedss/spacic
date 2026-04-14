@@ -53,12 +53,34 @@ const userSchema = new mongoose.Schema({
         match: [/^[a-z0-9_]{3,20}$/, 'Username must be 3-20 lowercase letters, numbers, or underscores'],
     },
 
-    // Lifetime creator stats — accumulated across all rooms on close
+    // ── Win Points ────────────────────────────────────────────────────────────
+    // Earned-only currency: minigame prizes + creator stream payouts.
+    // Cannot be purchased. Withdrawable to fiat once minimums are met.
+    winPoints: { type: Number, default: 0, min: 0 },
+
+    // ── Stripe Connect (creator payouts) ──────────────────────────────────────
+    stripeConnectAccountId: { type: String, default: null },
+    stripeConnectStatus: {
+        type: String,
+        enum: [null, 'pending', 'active', 'restricted'],
+        default: null,
+    },
+
+    // ── Activity stats (used for withdrawal eligibility gate) ────────────────
+    // Both listeners and creators accumulate these.
+    activityStats: {
+        roomsJoined:    { type: Number, default: 0 }, // total room:join events
+        gamesPlayed:    { type: Number, default: 0 }, // minigame participations
+        donationsMade:  { type: Number, default: 0 }, // coin donations sent
+        totalWithdrawn: { type: Number, default: 0 }, // lifetime winPoints withdrawn
+    },
+
+    // ── Lifetime creator stats — accumulated across all rooms on close ────────
     creatorStats: {
         totalRoomsHosted:      { type: Number, default: 0 },
         totalStreams:          { type: Number, default: 0 }, // unique listener joins
         totalMinutesListened:  { type: Number, default: 0 }, // sum of all listener durations
-        totalCoinsEarned:      { type: Number, default: 0 }, // goal_payout coins received
+        totalWinPointsEarned:  { type: Number, default: 0 }, // stream goal payouts → winPoints
         totalUniqueDonors:     { type: Number, default: 0 }, // approximate (union across rooms)
         lastLiveAt:            { type: Date,   default: null },
     },

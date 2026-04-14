@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { axiosInstance } from '@/lib/axios';
@@ -13,13 +13,18 @@ import { ChatPanel } from './components/ChatPanel';
 import { PlaylistPanel } from './components/PlaylistPanel';
 import { DisconnectCountdown } from './components/DisconnectCountdown';
 import { DonationPanel } from './components/DonationPanel';
+import { GuestAuthDialog } from './components/GuestAuthDialog';
+import { CreatorSpeakingOverlay } from './components/CreatorSpeakingOverlay';
+import { ListenerGamePanel } from './components/ListenerGamePanel';
 import type { RoomInfo } from '@/types/types';
 
 export const RoomPage = () => {
     const { roomId } = useParams<{ roomId: string }>();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const { userId } = useAuth();
+    const { userId, isSignedIn, isLoaded } = useAuth();
+
+    const [guestDialogOpen, setGuestDialogOpen] = useState(false);
 
     const roomStore = useRoomStore();
     const playerStore = usePlayerStore();
@@ -34,12 +39,17 @@ export const RoomPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId]);
 
+    // Show guest dialog once auth is resolved and user is not signed in
+    useEffect(() => {
+        if (isLoaded && !isSignedIn) setGuestDialogOpen(true);
+    }, [isLoaded, isSignedIn]);
+
     useEffect(() => {
         if (!roomId) return;
 
         // Skip re-fetch only if already connected AND live — never reuse stale offline state
         if (roomStore.room?._id === roomId && roomStore.room?.status === 'live') {
-            joinRoom(roomId);
+            if (isSignedIn) joinRoom(roomId);
             return;
         }
 
@@ -50,8 +60,8 @@ export const RoomPage = () => {
                 const creatorClerkId = (room.creatorId as unknown as { clerkId: string })?.clerkId ?? room.creatorId;
                 roomStore.setIsCreator(creatorClerkId === userId);
                 playerStore.setCurrentSongIndex(room.playback?.currentSongIndex ?? 0);
-                // Only connect socket for live rooms
-                if (room.status === 'live') joinRoom(roomId);
+                // Only connect socket for live rooms + signed-in users
+                if (room.status === 'live' && isSignedIn) joinRoom(roomId);
             })
             .catch((err) => roomStore.setError(err.message))
             .finally(() => roomStore.setLoading(false));
@@ -59,7 +69,7 @@ export const RoomPage = () => {
         // No reset on unmount — socket and state persist for background listening.
         // Stores are only reset via explicit leaveRoom().
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [roomId]);
+    }, [roomId, isSignedIn]);
 
     const handleGoOffline = useCallback(async () => {
         if (!roomId) return;
@@ -101,15 +111,28 @@ export const RoomPage = () => {
     return (
         <div className="flex flex-col md:flex-row md:h-full gap-4 p-4 min-h-0 relative">
             {/* Leave button */}
-            <Button
-                onClick={handleLeave}
-                variant="ghost"
-                size="sm"
-                className="absolute top-4 right-4 z-10 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-lg text-xs text-zinc-300"
-            >
-                <LogOut className="size-3.5" />
-                Leave
-            </Button>
+            {isSignedIn && (
+                <Button
+                    onClick={handleLeave}
+                    variant="ghost"
+                    size="sm"
+                    className="absolute top-4 right-4 z-10 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-lg text-xs text-zinc-300"
+                >
+                    <LogOut className="size-3.5" />
+                    Leave
+                </Button>
+            )}
+
+            {/* Guest join button (top-right, only for unauthed) */}
+            {!isSignedIn && (
+                <Button
+                    onClick={() => setGuestDialogOpen(true)}
+                    size="sm"
+                    className="absolute top-4 right-4 z-10 bg-violet-600 hover:bg-violet-500 text-white text-xs"
+                >
+                    Join to listen
+                </Button>
+            )}
 
             {/* Left: Player */}
             <div className="w-full md:w-72 flex-shrink-0">
@@ -129,6 +152,23 @@ export const RoomPage = () => {
             {roomStore.creatorDisconnectCountdown !== null && (
                 <DisconnectCountdown countdown={roomStore.creatorDisconnectCountdown} />
             )}
+
+            {/* Creator voice broadcast overlay — all signed-in listeners */}
+            {isSignedIn && !roomStore.isCreator && (
+                <CreatorSpeakingOverlay creatorName={roomStore.room?.title} />
+            )}
+
+            {/* Listener minigame panel — floats above player when a game is active */}
+            {isSignedIn && !roomStore.isCreator && (
+                <ListenerGamePanel />
+            )}
+
+            {/* Guest sign-up prompt */}
+            <GuestAuthDialog
+                open={guestDialogOpen}
+                onOpenChange={setGuestDialogOpen}
+                roomTitle={roomStore.room?.title}
+            />
         </div>
     );
 };

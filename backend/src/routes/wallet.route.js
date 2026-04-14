@@ -10,8 +10,16 @@ const router = Router();
 // All other wallet routes require auth
 router.use(protectRoute);
 
-router.get("/packages", walletController.getPackages);
-router.get("/", walletController.getWallet);
-router.post("/topup", walletController.createTopupSession);
+router.get("/packages",         walletController.getPackages);
+router.get("/",                 walletController.getWallet);
+router.post("/topup",           walletController.createTopupSession);
+
+// Stripe Connect (creator payouts)
+router.get("/connect/status",   walletController.getConnectStatus);
+router.post("/connect/onboard", walletController.onboardConnect);
+router.get("/connect/return",   walletController.handleConnectReturn);
+
+// WinPoints withdrawal
+router.post("/withdraw",        walletController.withdrawWinPoints);
 
 export default router;

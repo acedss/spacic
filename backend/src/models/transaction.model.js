@@ -8,12 +8,32 @@ const transactionSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ["topup", "donation", "goal_payout"],
+        // topup          — listener buys coins with real money
+        // donation       — listener sends coins to creator in a room
+        // goal_payout    — stream goal completion → creator receives winPoints
+        // minigame_debit — creator funds a game (coins deducted)
+        // minigame_win   — winner receives winPoints
+        // minigame_refund— no winner → coins returned to creator
+        // creator_earning— generic creator winPoints credit
+        // withdrawal     — winPoints → fiat via Stripe transfer
+        // withdrawal_fee — platform cut on withdrawal (revenue tracking)
+        enum: [
+            'topup', 'donation', 'goal_payout',
+            'minigame_debit', 'minigame_win', 'minigame_refund',
+            'creator_earning', 'withdrawal', 'withdrawal_fee',
+        ],
         required: true,
     },
+    // amount is coins for coin types, winPoints for winPoint types
     amount: {
         type: Number,
-        required: true, // in credits (1 credit = $0.01)
+        required: true,
+    },
+    // Currency discriminator — makes queries and display unambiguous
+    currency: {
+        type: String,
+        enum: ['coins', 'winPoints', 'usd_cents'],
+        required: true,
     },
     status: {
         type: String,
