@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { LeftSidebar } from "./components/LeftSidebar";
 import { FriendsActivity } from "./components/FriendsActivity";
 import { PlaybackControls } from "./components/PlaybackControls";
@@ -12,6 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
 const MainLayout = () => {
+    const location = useLocation();
+    // Studio pages get full width — no FriendsActivity sidebar distracting the creator
+    const hideRightSidebar = location.pathname.startsWith('/studio');
+
     const [isMobile, setIsMobile] = useState(false);
     const [isSidebarHovered, setIsSidebarHovered] = useState(false);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -80,8 +84,8 @@ const MainLayout = () => {
                     <Outlet />
                 </main>
 
-                {/* RIGHT SIDEBAR — desktop only */}
-                {!isMobile && (
+                {/* RIGHT SIDEBAR — desktop only, hidden on studio pages */}
+                {!isMobile && !hideRightSidebar && (
                     <aside className='w-72 shrink-0 liquid-glass rounded-2xl ml-4 overflow-hidden'>
                         <FriendsActivity />
                     </aside>

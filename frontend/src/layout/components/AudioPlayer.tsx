@@ -7,12 +7,14 @@ const AudioPlayer = () => {
     const audioRef = useAudioRef();
     const songEndedCallbackRef = useSongEndedCallbackRef();
     const playStateCallbackRef = usePlayStateCallbackRef();
-    const { room } = useRoomStore();
-    const { currentSongIndex, currentTimeMs, isPlaying, isSynced, setCurrentTimeMs } = usePlayerStore();
+    const { room, isCreator } = useRoomStore();
+    const { currentSongIndex, currentTimeMs, isPlaying, isSynced, listenerLocalPaused, setCurrentTimeMs, setListenerLocalPaused } = usePlayerStore();
 
     // Tracks programmatic seeks (sync correction, song load, drift fix) so
     // onSeeked doesn't re-broadcast them back as room:seek events.
     const skipNextSeekEmitRef = useRef(false);
+    // Tracks programmatic pause (from play effect) so onPause doesn't set listenerLocalPaused
+    const programmaticPauseRef = useRef(false);
     const prevSongIdRef = useRef<string | null>(null);
 
     const currentSong = room?.playlist?.[currentSongIndex];
@@ -29,16 +31,26 @@ const AudioPlayer = () => {
         //   - URL refresh: preserves live position
         //   - Initial join: server-computed offset from room:joined
         audioRef.current.currentTime = currentTimeMs / 1000;
-        if (isPlaying) audioRef.current.play().catch(() => { });
+        // Don't auto-play here — let the play/pause effect handle it
+        // (prevents race where we play stale position before sync completes)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentSong?._id, currentSong?.audioUrl]);
 
-    // Play / pause driven by store
+    // Play / pause driven by store (but respect listener's local pause state)
     useEffect(() => {
         if (!audioRef.current) return;
-        if (isPlaying) audioRef.current.play().catch(() => { });
-        else audioRef.current.pause();
-    }, [audioRef, isPlaying]);
+        // Skip server play/pause commands if listener has locally paused
+        if (listenerLocalPaused) return;
+        if (isPlaying) {
+            audioRef.current.play().catch((err) => {
+                console.warn('[AudioPlayer] play() failed:', err.message);
+            });
+        } else {
+            // Mark as programmatic so onPause doesn't set listenerLocalPaused
+            programmaticPauseRef.current = true;
+            audioRef.current.pause();
+        }
+    }, [audioRef, isPlaying, listenerLocalPaused]);
 
     // Sync correction: isSynced pulses false → seek → back to true
     useEffect(() => {
@@ -72,12 +84,27 @@ const AudioPlayer = () => {
                 skipNextSeekEmitRef.current = false;
             }}
             onPlay={() => {
-                // Notify useRoomSocket that creator resumed playback
-                playStateCallbackRef.current?.(true);
+                // Clear local pause flag when user resumes
+                setListenerLocalPaused(false);
+                // Seek to current server position to sync (mark as programmatic)
+                if (audioRef.current && !isCreator) {
+                    skipNextSeekEmitRef.current = true;
+                    audioRef.current.currentTime = currentTimeMs / 1000;
+                }
+                // Creators notify socket when starting a song (resume broadcasts startTimeUnix)
+                if (isCreator) {
+                    playStateCallbackRef.current?.(true);
+                }
+                // Listeners: pause is local only, no broadcast
             }}
             onPause={() => {
-                // Notify useRoomSocket that creator paused playback
-                playStateCallbackRef.current?.(false);
+                // Skip if pause was programmatic (from play effect sync)
+                if (programmaticPauseRef.current) {
+                    programmaticPauseRef.current = false;
+                    return;
+                }
+                // All pause is local — creators' pause doesn't broadcast, listeners' pause doesn't broadcast
+                setListenerLocalPaused(true);
             }}
             onEnded={() => {
                 songEndedCallbackRef.current?.();

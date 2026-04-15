@@ -48,6 +48,7 @@ export const getPublicRooms = async (params?: {
     limit?: number;
     offset?: number;
     search?: string;
+    status?: string;
 }) => {
     const { data } = await axiosInstance.get('/rooms/public', { params });
     return data;
@@ -83,7 +84,7 @@ export const sendChatMessage = async (roomId: string, message: string) => {
 
 export const updateQueueWhileLive = async (
     roomId: string,
-    payload: { playlistIds: string[]; streamGoal?: number }
+    payload: { playlistIds?: string[]; streamGoal?: number }
 ): Promise<void> => {
     await axiosInstance.patch(`/rooms/${roomId}/queue`, payload);
 };

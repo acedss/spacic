@@ -3,6 +3,40 @@ import * as walletService from "../services/wallet.service.js";
 
 const getClerkId = (req) => req.devBypass ? req.devClerkId : req.auth().userId;
 
+// ── Stripe Connect ────────────────────────────────────────────────────────────
+
+export const getConnectStatus = async (req, res, next) => {
+    try {
+        const data = await walletService.getConnectStatus(getClerkId(req));
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+export const onboardConnect = async (req, res, next) => {
+    try {
+        const requestOrigin = req.get('origin') || req.get('referer') || null;
+        const data = await walletService.onboardConnect(getClerkId(req), requestOrigin);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+export const handleConnectReturn = async (req, res, next) => {
+    try {
+        const data = await walletService.handleConnectReturn(getClerkId(req));
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+// ── Withdrawal ────────────────────────────────────────────────────────────────
+
+export const withdrawWinPoints = async (req, res, next) => {
+    try {
+        const amount = Number(req.body?.amount);
+        const data = await walletService.withdrawWinPoints(getClerkId(req), amount);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
 export const getPackages = async (req, res, next) => {
     try {
         const data = await walletService.getActivePackages();

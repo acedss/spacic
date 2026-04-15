@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { useAuth } from '@clerk/clerk-react'
+import { useSocialSocket } from '@/providers/SocialSocketProvider'
 
 interface RoomData {
     _id: string
@@ -31,16 +32,35 @@ export const FeaturedLiveRoom = () => {
     const scrollRef = useRef<HTMLDivElement>(null)
     const navigate = useNavigate()
     const { userId } = useAuth()
+    const socket = useSocialSocket()
     const [rooms, setRooms] = useState<RoomData[]>([])
     const [loading, setLoading] = useState(true)
     const [featuredFavorited, setFeaturedFavorited] = useState(false)
 
+    const refreshRooms = async () => {
+        try {
+            const res = await getPublicRooms({ limit: 10, sort: 'listener_count' })
+            setRooms(res.data ?? [])
+        } catch {
+            // Error already shown by toast elsewhere
+        }
+    }
+
     useEffect(() => {
-        getPublicRooms({ limit: 10, sort: 'listener_count' })
-            .then((res) => setRooms(res.data ?? []))
-            .catch(() => setRooms([]))
-            .finally(() => setLoading(false))
+        refreshRooms().finally(() => setLoading(false))
     }, [])
+
+    // Listen for new rooms going live and refresh the list
+    useEffect(() => {
+        if (!socket) return
+        const handleRoomStatusChange = () => { refreshRooms() }
+        socket.on('creator:room_live', handleRoomStatusChange)
+        socket.on('creator:room_offline', handleRoomStatusChange)
+        return () => {
+            socket.off('creator:room_live', handleRoomStatusChange)
+            socket.off('creator:room_offline', handleRoomStatusChange)
+        }
+    }, [socket])
 
     // Check favorite status for featured room once loaded
     useEffect(() => {
