@@ -17,6 +17,13 @@ export interface ConnectStatus {
         donationsMade:  number;
         totalWithdrawn: number;
     };
+    creatorStats?: {
+        totalRoomsHosted:     number;
+        totalStreams:         number;
+        totalMinutesListened: number;
+        totalWinPointsEarned: number;
+    };
+    isCreator?: boolean;
 }
 
 interface WalletStore {

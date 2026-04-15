@@ -347,7 +347,12 @@ export const donateToRoom = async (clerkId, roomId, amount, idempotencyKey) => {
 
             const creator = await User.findByIdAndUpdate(
                 room.creatorId,
-                { $inc: { balance: payoutAmount } },
+                {
+                    $inc: {
+                        winPoints: payoutAmount,
+                        'creatorStats.totalWinPointsEarned': payoutAmount,
+                    },
+                },
                 { new: true, session }
             );
 
@@ -387,7 +392,7 @@ export const donateToRoom = async (clerkId, roomId, amount, idempotencyKey) => {
 
 export const getConnectStatus = async (clerkId) => {
     const user = await User.findOne({ clerkId })
-        .select('winPoints stripeConnectAccountId stripeConnectStatus activityStats');
+        .select('winPoints stripeConnectAccountId stripeConnectStatus activityStats creatorStats role userTier');
     if (!user) throw Object.assign(new Error('User not found'), { statusCode: 404 });
 
     const config = await getConfig();
@@ -399,6 +404,8 @@ export const getConnectStatus = async (clerkId) => {
         winPointsToUsdCents:    config.winPointsToUsdCents,
         withdrawFeePercent:     config.withdrawFeePercent,
         activityStats:          user.activityStats,
+        creatorStats:           user.creatorStats,
+        isCreator:              user.userTier === 'CREATOR' || user.role === 'ADMIN',
     };
 };
 

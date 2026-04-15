@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
     Wallet, TrendingUp, ArrowUpRight, Loader,
-    Zap, Crown, Star, ChevronRight, ChevronDown,
+    Zap, Crown, Star, ChevronRight, ChevronDown, Coins,
 } from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { axiosInstance } from '@/lib/axios';
@@ -127,8 +127,8 @@ const WalletPage = () => {
                         </div>
                     </div>
 
-                    <div className="bg-white/10 rounded-xl p-3 flex-shrink-0">
-                        <Wallet className="size-6 text-purple-300" />
+                    <div className="bg-yellow-500/15 rounded-xl p-3 flex-shrink-0">
+                        <Coins className="size-6 text-yellow-400" />
                     </div>
                 </div>
             </div>
@@ -195,11 +195,11 @@ const WalletPage = () => {
                                 <TabsTrigger value="all" className="text-xs data-[state=active]:bg-white/10 data-[state=active]:text-white text-zinc-500 h-6 px-2.5">
                                     All ({transactions.length})
                                 </TabsTrigger>
-                                <TabsTrigger value="coins" className="text-xs data-[state=active]:bg-white/10 data-[state=active]:text-white text-zinc-500 h-6 px-2.5">
-                                    🪙 ({coinCount})
+                                <TabsTrigger value="coins" className="text-xs data-[state=active]:bg-yellow-500/15 data-[state=active]:text-yellow-300 text-zinc-500 h-6 px-2.5">
+                                    🪙 Coins ({coinCount})
                                 </TabsTrigger>
-                                <TabsTrigger value="winpoints" className="text-xs data-[state=active]:bg-white/10 data-[state=active]:text-white text-zinc-500 h-6 px-2.5">
-                                    WP ({wpCount})
+                                <TabsTrigger value="winpoints" className="text-xs data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-300 text-zinc-500 h-6 px-2.5">
+                                    🏆 WP ({wpCount})
                                 </TabsTrigger>
                             </TabsList>
                         </Tabs>

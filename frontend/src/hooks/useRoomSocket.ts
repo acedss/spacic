@@ -4,9 +4,9 @@ import { io, Socket } from 'socket.io-client';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useWalletStore } from '@/stores/useWalletStore';
-import { useAudioRef, useSongEndedCallbackRef, useTimeUpdateCallbackRef, usePlayStateCallbackRef } from '@/providers/AudioProvider';
+import { useAudioRef, useSongEndedCallbackRef, usePlayStateCallbackRef } from '@/providers/AudioProvider';
 import { useAuthStore } from '@/stores/useAuthStore';
-import type { ActiveGame } from '@/types/types';
+import type { ActiveGame } from '@/types/types.tsx';
 import { toast } from 'sonner';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin;
@@ -38,7 +38,6 @@ export const useRoomSocket = (roomId: string) => {
     const walletStore = useWalletStore();
     const audioRef = useAudioRef();
     const songEndedCallbackRef = useSongEndedCallbackRef();
-    const timeUpdateCallbackRef = useTimeUpdateCallbackRef();
     const playStateCallbackRef = usePlayStateCallbackRef();
 
     const emit = useCallback((event: string, data: Record<string, unknown>) => {
@@ -95,14 +94,6 @@ export const useRoomSocket = (roomId: string) => {
             });
         };
 
-        // Seek-only callback — emits room:seek with new position anchor
-        timeUpdateCallbackRef.current = (currentTimeMs: number, isSeeked = false) => {
-            const { isCreator } = useRoomStore.getState();
-            const { isAdmin: adminNow } = useAuthStore.getState();
-            if (!isSeeked || (!isCreator && !adminNow)) return;
-            socket.emit('room:seek', { roomId, seekPositionMs: currentTimeMs });
-        };
-
         // Play callback — creator notifies room when they start playing a song
         // (pause is local only, doesn't broadcast)
         playStateCallbackRef.current = (isPlaying: boolean) => {
@@ -121,7 +112,7 @@ export const useRoomSocket = (roomId: string) => {
             socket.emit('room:join', { roomId, clerkId: userId });
         });
 
-        socket.on('room:joined', ({ isCreator, playback, listenerCount, serverTimestamp }: {
+        socket.on('room:joined', ({ isCreator, playback, listenerCount, serverTimestamp, activeGame }: {
             isCreator: boolean;
             playback?: {
                 isPlaying: boolean;
@@ -131,6 +122,7 @@ export const useRoomSocket = (roomId: string) => {
             };
             listenerCount: number;
             serverTimestamp: number;
+            activeGame?: ActiveGame | null;
         }) => {
             roomStore.setIsCreator(isCreator);
             roomStore.setListenerCount(listenerCount);
@@ -168,6 +160,20 @@ export const useRoomSocket = (roomId: string) => {
                         playback.currentSongPresignedUrl,
                     );
                 }
+            }
+
+            // If a game was running when we joined, populate listener game state
+            if (activeGame && !isCreator) {
+                roomStore.setActiveGame(activeGame);
+                const secs = activeGame.endsAt
+                    ? Math.max(0, Math.ceil((new Date(activeGame.endsAt).getTime() - Date.now()) / 1000))
+                    : activeGame.durationSeconds;
+                roomStore.setGameSecondsLeft(secs);
+                const tick = setInterval(() => {
+                    const cur = useRoomStore.getState().gameSecondsLeft;
+                    if (cur <= 1) { clearInterval(tick); roomStore.setGameSecondsLeft(0); }
+                    else roomStore.setGameSecondsLeft(cur - 1);
+                }, 1000);
             }
         });
 
@@ -428,7 +434,6 @@ export const useRoomSocket = (roomId: string) => {
 
         return () => {
             songEndedCallbackRef.current = null;
-            timeUpdateCallbackRef.current = null;
             playStateCallbackRef.current = null;
             if (countdownRef.current) clearInterval(countdownRef.current);
             socket.emit('room:leave', { roomId, clerkId: userId });
