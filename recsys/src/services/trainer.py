@@ -41,7 +41,7 @@ async def run_training(force: bool = False) -> dict:
         cursor = db["listenevents"].find(
             {"playedAt": {"$gte": cutoff}},
             {"userId": 1, "songId": 1, "listenedMs": 1,
-             "countedStream": 1, "wasSkipped": 1},
+            "countedStream": 1, "wasSkipped": 1},
         )
 
         songs_cursor = db["songs"].find({}, {"_id": 1, "duration": 1})

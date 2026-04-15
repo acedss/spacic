@@ -1,6 +1,6 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-motor==3.5.1               # async MongoDB driver (bundles bson via pymongo)
+motor==3.6.0               # async MongoDB driver — 3.6+ required for pymongo>=4.9 compat
 redis==5.0.8               # async Redis client
 implicit==0.7.2            # ALS collaborative filtering (C extension — needs build-essential+cmake)
 scipy==1.13.1
