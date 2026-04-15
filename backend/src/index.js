@@ -18,6 +18,7 @@ import subscriptionRoutes from './routes/subscription.route.js';
 import friendRoutes from './routes/friend.route.js';
 import playlistRoutes from './routes/playlist.route.js';
 import minigameRoutes from './routes/minigame.route.js';
+import recsysRoutes from './routes/recsys.route.js';
 import { handleWebhook } from './controllers/wallet.controller.js';
 import { handleClerkWebhook } from './controllers/auth.controller.js';
 
@@ -135,6 +136,7 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/playlists', playlistRoutes);
 app.use('/api/minigames', minigameRoutes);
+app.use('/api/recs', recsysRoutes);
 
 //  Error handler
 app.use((error, req, res, next) => {
