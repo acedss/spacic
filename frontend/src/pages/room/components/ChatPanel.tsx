@@ -1,14 +1,24 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 
 interface Props {
     onSendMessage: (message: string) => void;
 }
+
+// Classify system messages by keyword for styled display
+const classifySystem = (text: string): { color: string; icon: string } => {
+    const t = text.toLowerCase();
+    if (t.includes('donated'))       return { color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20', icon: '🪙' };
+    if (t.includes('goal reached'))  return { color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', icon: '🎉' };
+    if (t.includes('now playing'))   return { color: 'text-violet-300 bg-violet-500/10 border-violet-500/20', icon: '🎵' };
+    if (t.includes('joined'))        return { color: 'text-blue-300 bg-blue-500/8 border-blue-500/15', icon: '👋' };
+    if (t.includes('left'))          return { color: 'text-zinc-500 bg-white/3 border-white/8', icon: '💨' };
+    if (t.includes('stream goal'))   return { color: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20', icon: '🎯' };
+    return { color: 'text-zinc-500 bg-white/3 border-white/8', icon: '—' };
+};
 
 export const ChatPanel = ({ onSendMessage }: Props) => {
     const [input, setInput] = useState('');
@@ -26,55 +36,59 @@ export const ChatPanel = ({ onSendMessage }: Props) => {
     };
 
     return (
-        <div className="flex flex-col h-full bg-zinc-900 rounded-2xl border border-white/5 overflow-hidden">
-            <div className="px-4 py-3 flex-shrink-0">
-                <h3 className="text-sm font-semibold text-zinc-300">Live Chat</h3>
-            </div>
-            <Separator className="bg-white/5" />
-
+        <div className="flex flex-col h-full">
             <ScrollArea className="flex-1 min-h-0">
-                <div className="p-4 space-y-2">
+                <div className="p-3 space-y-1.5">
                     {chatMessages.length === 0 ? (
-                        <p className="text-center text-zinc-600 text-xs mt-8">
+                        <p className="text-center text-zinc-600 text-xs mt-10">
                             No messages yet. Say hello!
                         </p>
                     ) : (
-                        chatMessages.map((msg) => (
-                            <div key={msg.id} className={`text-sm ${msg.isSystem ? 'italic text-zinc-500' : ''}`}>
-                                {msg.isSystem ? (
-                                    <span className="text-zinc-500">⸻ {msg.message}</span>
-                                ) : (
-                                    <>
-                                        <span className="font-medium text-emerald-400">{msg.user.username}</span>
-                                        <span className="text-zinc-500">: </span>
-                                        <span className="text-zinc-200 break-words">{msg.message}</span>
-                                    </>
-                                )}
-                            </div>
-                        ))
+                        chatMessages.map((msg) => {
+                            if (msg.isSystem) {
+                                const { color, icon } = classifySystem(msg.message);
+                                return (
+                                    <div
+                                        key={msg.id}
+                                        className={`flex items-start gap-2 px-2.5 py-1.5 rounded-lg border text-xs ${color}`}
+                                    >
+                                        <span className="flex-shrink-0">{icon}</span>
+                                        <span className="leading-relaxed">{msg.message}</span>
+                                    </div>
+                                );
+                            }
+                            return (
+                                <div key={msg.id} className="flex items-start gap-2 px-1 py-1 group">
+                                    <div className="flex-1 min-w-0">
+                                        <span className="text-xs font-semibold text-emerald-400 mr-1.5">
+                                            {msg.user.username}
+                                        </span>
+                                        <span className="text-xs text-zinc-200 break-words">{msg.message}</span>
+                                    </div>
+                                </div>
+                            );
+                        })
                     )}
                     <div ref={messagesEndRef} />
                 </div>
             </ScrollArea>
 
-            <Separator className="bg-white/5" />
-            <div className="p-3 flex gap-2 flex-shrink-0">
+            <div className="p-2.5 border-t border-white/5 flex gap-2 flex-shrink-0">
                 <Input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                     placeholder="Say something..."
                     maxLength={500}
-                    className="flex-1 bg-zinc-800 border-white/10 text-white placeholder:text-zinc-600 focus-visible:ring-white/20"
+                    className="flex-1 bg-zinc-800 border-white/10 text-white placeholder:text-zinc-600 focus-visible:ring-white/20 h-8 text-xs"
                 />
-                <Button
+                <button
                     onClick={handleSend}
-                    variant="ghost"
-                    size="icon-sm"
-                    className="bg-white/10 hover:bg-white/20 flex-shrink-0"
+                    disabled={!input.trim()}
+                    className="p-2 bg-white/10 hover:bg-white/15 disabled:opacity-40 border border-white/10 rounded-lg transition-colors flex-shrink-0"
                 >
-                    <Send className="size-4" />
-                </Button>
+                    <Send className="size-3.5 text-white" />
+                </button>
             </div>
         </div>
     );

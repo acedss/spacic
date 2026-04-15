@@ -4,9 +4,9 @@ import { io, Socket } from 'socket.io-client';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useWalletStore } from '@/stores/useWalletStore';
-import { useAudioRef, useSongEndedCallbackRef, useTimeUpdateCallbackRef, usePlayStateCallbackRef } from '@/providers/AudioProvider';
+import { useAudioRef, useSongEndedCallbackRef, usePlayStateCallbackRef } from '@/providers/AudioProvider';
 import { useAuthStore } from '@/stores/useAuthStore';
-import type { ActiveGame } from '@/types/types';
+import type { ActiveGame } from '@/types/types.tsx';
 import { toast } from 'sonner';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin;
@@ -38,7 +38,6 @@ export const useRoomSocket = (roomId: string) => {
     const walletStore = useWalletStore();
     const audioRef = useAudioRef();
     const songEndedCallbackRef = useSongEndedCallbackRef();
-    const timeUpdateCallbackRef = useTimeUpdateCallbackRef();
     const playStateCallbackRef = usePlayStateCallbackRef();
 
     const emit = useCallback((event: string, data: Record<string, unknown>) => {
@@ -95,30 +94,25 @@ export const useRoomSocket = (roomId: string) => {
             });
         };
 
-        // Seek-only callback — emits room:seek with new position anchor
-        timeUpdateCallbackRef.current = (currentTimeMs: number, isSeeked = false) => {
-            const { isCreator } = useRoomStore.getState();
-            const { isAdmin: adminNow } = useAuthStore.getState();
-            if (!isSeeked || (!isCreator && !adminNow)) return;
-            socket.emit('room:seek', { roomId, seekPositionMs: currentTimeMs });
-        };
-
-        // Play/pause callback — creator's audio element fires onPlay/onPause
+        // Play callback — creator notifies room when they start playing a song
+        // (pause is local only, doesn't broadcast)
         playStateCallbackRef.current = (isPlaying: boolean) => {
             const { isCreator } = useRoomStore.getState();
             const { isAdmin: adminNow } = useAuthStore.getState();
             if (!isCreator && !adminNow) return;
             // Don't re-emit when triggered by incoming room:sync
             if (syncInProgressRef.current) return;
-            const event = isPlaying ? 'room:resume' : 'room:pause';
-            socket.emit(event, { roomId });
+            // Only emit when creator plays (pause is local)
+            if (isPlaying) {
+                socket.emit('room:resume', { roomId });
+            }
         };
 
         socket.on('connect', () => {
             socket.emit('room:join', { roomId, clerkId: userId });
         });
 
-        socket.on('room:joined', ({ isCreator, playback, listenerCount, serverTimestamp }: {
+        socket.on('room:joined', ({ isCreator, playback, listenerCount, serverTimestamp, activeGame }: {
             isCreator: boolean;
             playback?: {
                 isPlaying: boolean;
@@ -128,6 +122,7 @@ export const useRoomSocket = (roomId: string) => {
             };
             listenerCount: number;
             serverTimestamp: number;
+            activeGame?: ActiveGame | null;
         }) => {
             roomStore.setIsCreator(isCreator);
             roomStore.setListenerCount(listenerCount);
@@ -166,6 +161,20 @@ export const useRoomSocket = (roomId: string) => {
                     );
                 }
             }
+
+            // If a game was running when we joined, populate listener game state
+            if (activeGame && !isCreator) {
+                roomStore.setActiveGame(activeGame);
+                const secs = activeGame.endsAt
+                    ? Math.max(0, Math.ceil((new Date(activeGame.endsAt).getTime() - Date.now()) / 1000))
+                    : activeGame.durationSeconds;
+                roomStore.setGameSecondsLeft(secs);
+                const tick = setInterval(() => {
+                    const cur = useRoomStore.getState().gameSecondsLeft;
+                    if (cur <= 1) { clearInterval(tick); roomStore.setGameSecondsLeft(0); }
+                    else roomStore.setGameSecondsLeft(cur - 1);
+                }, 1000);
+            }
         });
 
         socket.on('room:listener_joined', ({ listenerCount }: { listenerCount: number }) => {
@@ -200,12 +209,8 @@ export const useRoomSocket = (roomId: string) => {
                 serverTimestamp,
             );
 
-            // Always update server playback state (listeners' local pause only blocks audio element, not state)
+            // Update playback state from server
             playerStore.setPlaying(isPlaying);
-            // Clear local pause flag when creator resumes (auto-resume listeners)
-            if (isPlaying) {
-                playerStore.setListenerLocalPaused(false);
-            }
             if (startTimeUnix !== undefined) playerStore.setStartTimeUnix(startTimeUnix ?? null);
             if (pausedAtMs !== undefined) playerStore.setPausedAtMs(pausedAtMs ?? null);
             if (listenerCount !== undefined) roomStore.setListenerCount(listenerCount);
@@ -243,12 +248,7 @@ export const useRoomSocket = (roomId: string) => {
             if (listenerCount !== undefined) roomStore.setListenerCount(listenerCount);
             const { listenerLocalPaused } = usePlayerStore.getState();
 
-            // Clear local pause flag if server is playing (listener should resume)
-            if (isPlaying && listenerLocalPaused) {
-                usePlayerStore.getState().setListenerLocalPaused(false);
-            }
-
-            // Skip drift correction if listener is locally paused
+            // Skip drift correction if listener is locally paused (they're in control)
             if (listenerLocalPaused) return;
 
             const expectedMs = computePositionFromSync(isPlaying, startTimeUnix, pausedAtMs, serverTimestamp);
@@ -434,7 +434,6 @@ export const useRoomSocket = (roomId: string) => {
 
         return () => {
             songEndedCallbackRef.current = null;
-            timeUpdateCallbackRef.current = null;
             playStateCallbackRef.current = null;
             if (countdownRef.current) clearInterval(countdownRef.current);
             socket.emit('room:leave', { roomId, clerkId: userId });

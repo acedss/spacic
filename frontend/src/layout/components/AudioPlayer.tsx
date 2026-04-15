@@ -1,12 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { useAudioRef, useSongEndedCallbackRef, useTimeUpdateCallbackRef, usePlayStateCallbackRef } from '@/providers/AudioProvider';
+import { useAudioRef, useSongEndedCallbackRef, usePlayStateCallbackRef } from '@/providers/AudioProvider';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 
 const AudioPlayer = () => {
     const audioRef = useAudioRef();
     const songEndedCallbackRef = useSongEndedCallbackRef();
-    const timeUpdateCallbackRef = useTimeUpdateCallbackRef();
     const playStateCallbackRef = usePlayStateCallbackRef();
     const { room, isCreator } = useRoomStore();
     const { currentSongIndex, currentTimeMs, isPlaying, isSynced, listenerLocalPaused, setCurrentTimeMs, setListenerLocalPaused } = usePlayerStore();
@@ -81,32 +80,22 @@ const AudioPlayer = () => {
                 // and use a stale startTimeUnix after pause/resume.
             }}
             onSeeked={() => {
-                if (!audioRef.current) return;
-                // Programmatic seek (sync correction / drift fix / force-seek from room:sync)
-                if (skipNextSeekEmitRef.current) {
-                    skipNextSeekEmitRef.current = false;
-                    return;
-                }
-                // Also skip if we're in the middle of a sync correction window
-                // (room:sync force-seeked audio, isSynced is still false)
-                if (!usePlayerStore.getState().isSynced) return;
-                // User-initiated seek — broadcast new position to room
-                const ms = audioRef.current.currentTime * 1000;
-                console.log('[AudioPlayer] onSeeked → broadcasting room:seek at', Math.round(ms), 'ms');
-                timeUpdateCallbackRef.current?.(ms, true);
+                // All seeks are local — no broadcasting. skipNextSeekEmitRef kept for future use.
+                skipNextSeekEmitRef.current = false;
             }}
             onPlay={() => {
-                // Clear local pause flag when listener resumes
+                // Clear local pause flag when user resumes
                 setListenerLocalPaused(false);
                 // Seek to current server position to sync (mark as programmatic)
                 if (audioRef.current && !isCreator) {
                     skipNextSeekEmitRef.current = true;
                     audioRef.current.currentTime = currentTimeMs / 1000;
                 }
-                // Creators notify socket of resume
+                // Creators notify socket when starting a song (resume broadcasts startTimeUnix)
                 if (isCreator) {
                     playStateCallbackRef.current?.(true);
                 }
+                // Listeners: pause is local only, no broadcast
             }}
             onPause={() => {
                 // Skip if pause was programmatic (from play effect sync)
@@ -114,13 +103,8 @@ const AudioPlayer = () => {
                     programmaticPauseRef.current = false;
                     return;
                 }
-                // Creators emit pause to server; listeners just set local flag
-                if (isCreator) {
-                    playStateCallbackRef.current?.(false);
-                } else {
-                    // User-initiated pause (from audio control)
-                    setListenerLocalPaused(true);
-                }
+                // All pause is local — creators' pause doesn't broadcast, listeners' pause doesn't broadcast
+                setListenerLocalPaused(true);
             }}
             onEnded={() => {
                 songEndedCallbackRef.current?.();

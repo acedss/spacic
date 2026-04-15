@@ -2,7 +2,7 @@ import { useEffect, useCallback, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { axiosInstance } from '@/lib/axios';
-import { Loader, LogOut, Radio, Users, Clock, Gem, Heart } from 'lucide-react';
+import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Coins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -17,6 +17,9 @@ import { GuestAuthDialog } from './components/GuestAuthDialog';
 import { CreatorSpeakingOverlay } from './components/CreatorSpeakingOverlay';
 import { ListenerGamePanel } from './components/ListenerGamePanel';
 import type { RoomInfo } from '@/types/types';
+import { cn } from '@/lib/utils';
+
+type RightTab = 'chat' | 'queue' | 'donate';
 
 export const RoomPage = () => {
     const { roomId } = useParams<{ roomId: string }>();
@@ -25,6 +28,7 @@ export const RoomPage = () => {
     const { userId, isSignedIn, isLoaded } = useAuth();
 
     const [guestDialogOpen, setGuestDialogOpen] = useState(false);
+    const [rightTab, setRightTab] = useState<RightTab>('chat');
 
     const roomStore = useRoomStore();
     const playerStore = usePlayerStore();
@@ -33,7 +37,7 @@ export const RoomPage = () => {
     // Track referral once on mount — fire-and-forget, never blocks UX
     useEffect(() => {
         const ref  = searchParams.get('ref');
-        const type = searchParams.get('type') ?? 'link';   // 'link' | 'activity_join'
+        const type = searchParams.get('type') ?? 'link';
         if (!ref || !roomId) return;
         axiosInstance.post(`/rooms/${roomId}/referral`, { ref, type }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -47,7 +51,6 @@ export const RoomPage = () => {
     useEffect(() => {
         if (!roomId) return;
 
-        // Skip re-fetch only if already connected AND live — never reuse stale offline state
         if (roomStore.room?._id === roomId && roomStore.room?.status === 'live') {
             if (isSignedIn) joinRoom(roomId);
             return;
@@ -60,14 +63,10 @@ export const RoomPage = () => {
                 const creatorClerkId = (room.creatorId as unknown as { clerkId: string })?.clerkId ?? room.creatorId;
                 roomStore.setIsCreator(creatorClerkId === userId);
                 playerStore.setCurrentSongIndex(room.playback?.currentSongIndex ?? 0);
-                // Only connect socket for live rooms + signed-in users
                 if (room.status === 'live' && isSignedIn) joinRoom(roomId);
             })
             .catch((err) => roomStore.setError(err.message))
             .finally(() => roomStore.setLoading(false));
-
-        // No reset on unmount — socket and state persist for background listening.
-        // Stores are only reset via explicit leaveRoom().
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, isSignedIn]);
 
@@ -109,61 +108,87 @@ export const RoomPage = () => {
     }
 
     return (
-        <div className="flex flex-col md:flex-row md:h-full gap-4 p-4 min-h-0 relative">
-            {/* Leave button */}
-            {isSignedIn && (
-                <Button
-                    onClick={handleLeave}
-                    variant="ghost"
-                    size="sm"
-                    className="absolute top-4 right-4 z-10 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-lg text-xs text-zinc-300"
-                >
-                    <LogOut className="size-3.5" />
-                    Leave
-                </Button>
-            )}
-
-            {/* Guest join button (top-right, only for unauthed) */}
-            {!isSignedIn && (
-                <Button
-                    onClick={() => setGuestDialogOpen(true)}
-                    size="sm"
-                    className="absolute top-4 right-4 z-10 bg-violet-600 hover:bg-violet-500 text-white text-xs"
-                >
-                    Join to listen
-                </Button>
-            )}
+        <div className="flex flex-col md:flex-row h-full gap-3 p-3 min-h-0 relative">
+            {/* Top-right action */}
+            <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+                {isSignedIn ? (
+                    <Button
+                        onClick={handleLeave}
+                        variant="ghost"
+                        size="sm"
+                        className="bg-zinc-800/80 hover:bg-zinc-700 border border-white/10 rounded-lg text-xs text-zinc-300 backdrop-blur"
+                    >
+                        <LogOut className="size-3.5" />
+                        Leave
+                    </Button>
+                ) : (
+                    <Button
+                        onClick={() => setGuestDialogOpen(true)}
+                        size="sm"
+                        className="bg-violet-600 hover:bg-violet-500 text-white text-xs"
+                    >
+                        Join to listen
+                    </Button>
+                )}
+            </div>
 
             {/* Left: Player */}
             <div className="w-full md:w-72 flex-shrink-0">
                 <RoomPlayer onSkip={skipSong} onClose={handleGoOffline} />
             </div>
 
-            {/* Right: Queue + Chat/Invite + Donation */}
-            <div className="flex flex-col flex-1 gap-4 min-h-0 overflow-hidden">
-                <PlaylistPanel />
-                <DonationPanel onDonate={donate} onUpdateGoal={updateGoal} isCreator={roomStore.isCreator} />
+            {/* Right: Tabbed panel */}
+            <div className="flex flex-col flex-1 min-h-0 bg-zinc-900 rounded-2xl border border-white/5 overflow-hidden">
+                {/* Tab bar */}
+                <div className="flex items-center gap-1 px-3 pt-2.5 pb-0 border-b border-white/5 flex-shrink-0">
+                    {([
+                        { id: 'chat'   as RightTab, icon: MessageSquare, label: 'Chat' },
+                        { id: 'queue'  as RightTab, icon: Music2,         label: 'Queue' },
+                        { id: 'donate' as RightTab, icon: Coins,          label: 'Donate' },
+                    ] as const).map(({ id, icon: Icon, label }) => (
+                        <button
+                            key={id}
+                            onClick={() => setRightTab(id)}
+                            className={cn(
+                                'flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg transition-colors border-b-2 -mb-px',
+                                rightTab === id
+                                    ? 'text-white border-violet-500 bg-white/5'
+                                    : 'text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-white/5',
+                            )}
+                        >
+                            <Icon className="size-3.5" />
+                            {label}
+                        </button>
+                    ))}
+                </div>
 
-                <div className="flex-1 min-h-0">
-                    <ChatPanel onSendMessage={sendChat} />
+                {/* Tab content */}
+                <div className="flex-1 min-h-0 overflow-hidden">
+                    {rightTab === 'chat' && (
+                        <ChatPanel onSendMessage={sendChat} />
+                    )}
+                    {rightTab === 'queue' && (
+                        <PlaylistPanel />
+                    )}
+                    {rightTab === 'donate' && (
+                        <DonationPanel onDonate={donate} onUpdateGoal={updateGoal} isCreator={roomStore.isCreator} />
+                    )}
                 </div>
             </div>
 
+            {/* Overlays */}
             {roomStore.creatorDisconnectCountdown !== null && (
                 <DisconnectCountdown countdown={roomStore.creatorDisconnectCountdown} />
             )}
 
-            {/* Creator voice broadcast overlay — all signed-in listeners */}
             {isSignedIn && !roomStore.isCreator && (
                 <CreatorSpeakingOverlay creatorName={roomStore.room?.title} />
             )}
 
-            {/* Listener minigame panel — floats above player when a game is active */}
             {isSignedIn && !roomStore.isCreator && (
                 <ListenerGamePanel />
             )}
 
-            {/* Guest sign-up prompt */}
             <GuestAuthDialog
                 open={guestDialogOpen}
                 onOpenChange={setGuestDialogOpen}

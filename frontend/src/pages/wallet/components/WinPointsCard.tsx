@@ -1,21 +1,26 @@
-// WinPointsCard — WinPoints balance, activity gate, Stripe Connect, withdraw
-// Loaded lazily — fetchConnectStatus is called on first expand
+// WinPointsCard — WinPoints balance, activity gate (listener or creator), Stripe Connect, withdraw
 import { useEffect, useState } from 'react'
-import { Trophy, ExternalLink, CheckCircle2, Clock, Loader2, ChevronDown, ChevronUp, ArrowDownToLine, AlertCircle } from 'lucide-react'
+import { Trophy, ExternalLink, CheckCircle2, Clock, Loader2, ChevronDown, ChevronUp, ArrowDownToLine, AlertCircle, Radio, Users } from 'lucide-react'
 import { useWalletStore } from '@/stores/useWalletStore'
 import { WithdrawDialog } from './WithdrawDialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
-// Activity gate thresholds — must meet all to unlock withdrawal
-const GATE = {
+// ── Listener gate thresholds ──
+const LISTENER_GATE = {
     roomsJoined:   5,
     gamesPlayed:   3,
     donationsMade: 1,
 } as const
 
-interface GateRowProps { label: string; current: number; required: number }
-const GateRow = ({ label, current, required }: GateRowProps) => {
+// ── Creator gate thresholds ──
+const CREATOR_GATE = {
+    streamHours:    2,   // total hours streamed (totalMinutesListened / 60)
+    totalListeners: 10,  // total unique listener joins
+} as const
+
+interface GateRowProps { label: string; current: number; required: number; unit?: string }
+const GateRow = ({ label, current, required, unit = '' }: GateRowProps) => {
     const done = current >= required
     return (
         <div className="flex items-center gap-3">
@@ -27,7 +32,7 @@ const GateRow = ({ label, current, required }: GateRowProps) => {
                 <div className="flex justify-between text-xs mb-0.5">
                     <span className={done ? 'text-zinc-300' : 'text-zinc-500'}>{label}</span>
                     <span className={done ? 'text-emerald-400 font-medium' : 'text-zinc-500'}>
-                        {Math.min(current, required)}/{required}
+                        {Math.min(current, required)}/{required}{unit}
                     </span>
                 </div>
                 <div className="h-1 bg-white/8 rounded-full overflow-hidden">
@@ -51,25 +56,30 @@ export const WinPointsCard = () => {
     const [expanded, setExpanded] = useState(false)
     const [withdrawOpen, setWithdrawOpen] = useState(false)
 
-    // Fetch full connect context once when user expands
     useEffect(() => {
         if (expanded && !connectStatus && !connectLoading) {
             fetchConnectStatus()
         }
     }, [expanded, connectStatus, connectLoading, fetchConnectStatus])
 
-    // Use connectStatus data when available, fall back to wallet data
     const wpBalance    = connectStatus?.winPoints ?? winPoints
     const feePercent   = connectStatus?.withdrawFeePercent   ?? 20
     const minWithdraw  = connectStatus?.minWithdrawWinPoints ?? 2000
     const wpToUsdCents = connectStatus?.winPointsToUsdCents  ?? 1
     const stats        = connectStatus?.activityStats        ?? activityStats
     const connectSt    = connectStatus?.stripeConnectStatus  ?? stripeConnectStatus
+    const isCreator    = connectStatus?.isCreator ?? false
+    const creatorStats = connectStatus?.creatorStats
 
-    const gateUnlocked =
-        (stats.roomsJoined   ?? 0) >= GATE.roomsJoined   &&
-        (stats.gamesPlayed   ?? 0) >= GATE.gamesPlayed   &&
-        (stats.donationsMade ?? 0) >= GATE.donationsMade
+    // ── Gate check ──
+    const gateUnlocked = isCreator
+        ? // Creator gate: stream hours + total listeners
+          Math.floor((creatorStats?.totalMinutesListened ?? 0) / 60) >= CREATOR_GATE.streamHours &&
+          (creatorStats?.totalStreams ?? 0) >= CREATOR_GATE.totalListeners
+        : // Listener gate: rooms + games + donations
+          (stats.roomsJoined   ?? 0) >= LISTENER_GATE.roomsJoined   &&
+          (stats.gamesPlayed   ?? 0) >= LISTENER_GATE.gamesPlayed   &&
+          (stats.donationsMade ?? 0) >= LISTENER_GATE.donationsMade
 
     const canWithdraw  = gateUnlocked && connectSt === 'active' && wpBalance >= minWithdraw
 
@@ -97,7 +107,7 @@ export const WinPointsCard = () => {
                     <p className="text-xs text-zinc-400 uppercase tracking-widest">WinPoints</p>
                     <p className="text-2xl font-bold text-white tabular-nums">{wpBalance.toLocaleString()}</p>
                     <p className="text-xs text-zinc-500 mt-0.5">
-                        ≈ ${((wpBalance * wpToUsdCents) / 100).toFixed(2)} · earned from wins &amp; streams
+                        ≈ ${((wpBalance * wpToUsdCents) / 100).toFixed(2)} · {isCreator ? 'earned from donations & streams' : 'earned from wins & streams'}
                     </p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -125,22 +135,54 @@ export const WinPointsCard = () => {
                             {/* Activity gate */}
                             <div>
                                 <div className="flex items-center justify-between mb-3">
-                                    <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                                        Activity Gate
-                                    </p>
+                                    <div className="flex items-center gap-1.5">
+                                        <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                                            Activity Gate
+                                        </p>
+                                        <span className={cn(
+                                            'text-[9px] font-semibold px-1.5 py-0.5 rounded-full border',
+                                            isCreator
+                                                ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20'
+                                                : 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+                                        )}>
+                                            {isCreator ? 'Creator' : 'Listener'}
+                                        </span>
+                                    </div>
                                     {gateUnlocked
                                         ? <span className="text-[10px] text-emerald-400 flex items-center gap-1"><CheckCircle2 className="size-3" /> Unlocked</span>
                                         : <span className="text-[10px] text-zinc-600">Required to withdraw</span>
                                     }
                                 </div>
+
                                 <div className="space-y-3">
-                                    <GateRow label="Rooms joined"     current={stats.roomsJoined   ?? 0} required={GATE.roomsJoined}   />
-                                    <GateRow label="Games played"     current={stats.gamesPlayed   ?? 0} required={GATE.gamesPlayed}   />
-                                    <GateRow label="Donations made"   current={stats.donationsMade ?? 0} required={GATE.donationsMade} />
+                                    {isCreator ? (
+                                        <>
+                                            <GateRow
+                                                label="Hours streamed"
+                                                current={Math.floor((creatorStats?.totalMinutesListened ?? 0) / 60)}
+                                                required={CREATOR_GATE.streamHours}
+                                                unit="h"
+                                            />
+                                            <GateRow
+                                                label="Total listeners"
+                                                current={creatorStats?.totalStreams ?? 0}
+                                                required={CREATOR_GATE.totalListeners}
+                                            />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <GateRow label="Rooms joined"   current={stats.roomsJoined   ?? 0} required={LISTENER_GATE.roomsJoined}   />
+                                            <GateRow label="Games played"   current={stats.gamesPlayed   ?? 0} required={LISTENER_GATE.gamesPlayed}   />
+                                            <GateRow label="Donations made" current={stats.donationsMade ?? 0} required={LISTENER_GATE.donationsMade} />
+                                        </>
+                                    )}
                                 </div>
                                 {!gateUnlocked && (
                                     <p className="text-[11px] text-zinc-600 mt-2.5">
-                                        Join rooms, play minigames, and donate to unlock payouts.
+                                        {isCreator
+                                            ? 'Host live rooms to accumulate stream hours and listeners.'
+                                            : 'Join rooms, play minigames, and donate to unlock payouts.'
+                                        }
                                     </p>
                                 )}
                             </div>

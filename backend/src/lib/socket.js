@@ -326,12 +326,27 @@ export const initializeSocket = (httpServer) => {
                     }
                 }
 
+                // If a game is currently active in this room, include it so late-joiners see it
+                const activeGame = await Minigame.findOne({ roomId, status: 'active' }).lean();
+
                 socket.emit('room:joined', {
                     roomId,
                     playback: playbackState ? { ...playbackState, currentSongPresignedUrl } : null,
                     serverTimestamp: Date.now(),
                     listenerCount:   roomSession.listenerCount,
                     isCreator,
+                    activeGame: activeGame ? {
+                        minigameId:      activeGame._id.toString(),
+                        type:            activeGame.type,
+                        title:           activeGame.title,
+                        durationSeconds: activeGame.durationSeconds,
+                        coinReward:      activeGame.coinReward,
+                        config:          activeGame.config,
+                        startedAt:       activeGame.startedAt?.toISOString() ?? null,
+                        endsAt:          activeGame.startedAt
+                            ? new Date(activeGame.startedAt.getTime() + activeGame.durationSeconds * 1000).toISOString()
+                            : null,
+                    } : null,
                 });
 
                 const updatedRoom = await socketManager.getRoomById(roomId);
@@ -480,59 +495,6 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
-        socket.on('room:seek', async ({ roomId, seekPositionMs }) => {
-            try {
-                const userSession = await socketManager.getUserBySocketId(socket.id);
-                let roomSession   = await socketManager.getRoomById(roomId);
-                if (!roomSession) roomSession = await recoverSessionFromDB(roomId);
-                if (!userSession) return socket.emit('room:error', { message: 'Session expired.' });
-                if (!roomSession) return socket.emit('room:error', { message: 'Room session not found.' });
-                if (!canControlRoom(userSession, roomSession)) return;
-                const startTimeUnix = Date.now() - seekPositionMs;
-                await socketManager.updateRoomPlaybackState(roomId, { startTimeUnix, isPlaying: true, pausedAtMs: null });
-                io.to(roomId).emit('room:sync', { roomId, startTimeUnix, isPlaying: true, pausedAtMs: null, serverTimestamp: Date.now() });
-            } catch (error) {
-                console.error(`[Server] room:seek ERROR:`, error);
-                socket.emit('room:error', { message: 'Failed to process seek.' });
-            }
-        });
-
-        socket.on('room:pause', async ({ roomId }) => {
-            try {
-                const userSession = await socketManager.getUserBySocketId(socket.id);
-                let roomSession   = await socketManager.getRoomById(roomId);
-                if (!roomSession) roomSession = await recoverSessionFromDB(roomId);
-                if (!userSession) return socket.emit('room:error', { message: 'Session expired.' });
-                if (!roomSession) return socket.emit('room:error', { message: 'Room session not found.' });
-                if (!canControlRoom(userSession, roomSession)) return;
-                if (!roomSession.isPlaying) return;
-                const pausedAtMs = await socketManager.computeCurrentPositionMs(roomId);
-                await socketManager.updateRoomPlaybackState(roomId, { isPlaying: false, pausedAtMs });
-                io.to(roomId).emit('room:sync', { roomId, isPlaying: false, pausedAtMs, serverTimestamp: Date.now() });
-            } catch (error) {
-                console.error(`[Server] room:pause ERROR:`, error);
-                socket.emit('room:error', { message: 'Failed to process pause.' });
-            }
-        });
-
-        socket.on('room:resume', async ({ roomId }) => {
-            try {
-                const userSession = await socketManager.getUserBySocketId(socket.id);
-                let roomSession   = await socketManager.getRoomById(roomId);
-                if (!roomSession) roomSession = await recoverSessionFromDB(roomId);
-                if (!userSession) return socket.emit('room:error', { message: 'Session expired.' });
-                if (!roomSession) return socket.emit('room:error', { message: 'Room session not found.' });
-                if (!canControlRoom(userSession, roomSession)) return;
-                if (roomSession.isPlaying) return;
-                const pausedAtMs    = roomSession.pausedAtMs ?? 0;
-                const startTimeUnix = Date.now() - pausedAtMs;
-                await socketManager.updateRoomPlaybackState(roomId, { startTimeUnix, isPlaying: true, pausedAtMs: null });
-                io.to(roomId).emit('room:sync', { roomId, startTimeUnix, isPlaying: true, pausedAtMs: null, serverTimestamp: Date.now() });
-            } catch (error) {
-                console.error(`[Server] room:resume ERROR:`, error);
-                socket.emit('room:error', { message: 'Failed to process resume.' });
-            }
-        });
 
         socket.on('room:song_ended', async ({ roomId, currentSongIndex }) => {
             try {
@@ -676,7 +638,7 @@ export const initializeSocket = (httpServer) => {
                 if (!userSession) return;
                 if (typeof answer !== 'string' || answer.length > 200) return;
 
-                const result = await recordAnswer(minigameId, userSession.userId, userSession.userName, answer.trim());
+                const result = await recordAnswer(minigameId, userSession.userId, userSession.fullName ?? userSession.userName, answer.trim());
                 if (!result) return;
 
                 // Broadcast updated participant count to everyone
