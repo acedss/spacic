@@ -2,8 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system deps for implicit (BLAS)
+# Build tools required by the `implicit` library (C extension via CMake/scikit-build)
+# libopenblas-dev: fast linear algebra (speeds up ALS matrix ops significantly)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
     libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 

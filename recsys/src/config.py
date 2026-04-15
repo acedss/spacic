@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     REDIS_URL: str    # e.g. redis://default:pass@host:port
 
     # Internal API key — Node.js sends this header to reach Python service
-    # Store as "RECSYS_INTERNAL_API_KEY" in Jenkins credentials
     RECSYS_INTERNAL_API_KEY: str = "spacic-recsys-internal-2026"
 
     # ALS model hyper-params

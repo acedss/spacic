@@ -1,8 +1,3 @@
-"""
-Admin monitoring routes — consumed by Node.js admin panel proxy.
-All routes protected by X-Internal-Key header.
-"""
-
 import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Header, BackgroundTasks
@@ -13,8 +8,6 @@ from ..config import get_settings
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-_training_task: asyncio.Task | None = None
-
 
 def _require_internal_key(x_internal_key: str | None):
     if x_internal_key != get_settings().RECSYS_INTERNAL_API_KEY:
@@ -24,11 +17,9 @@ def _require_internal_key(x_internal_key: str | None):
 @router.get("/status", response_model=AdminStatus)
 async def get_status(x_internal_key: str | None = Header(default=None)):
     _require_internal_key(x_internal_key)
-
     meta = await get_model_meta()
     cache = await get_cache_stats()
     last = get_last_metrics()
-
     return AdminStatus(
         service="healthy",
         model=ModelInfo(
@@ -64,17 +55,11 @@ async def trigger_training(
     x_internal_key: str | None = Header(default=None),
 ):
     _require_internal_key(x_internal_key)
-
     meta = await get_model_meta()
     if meta.get("is_training"):
         raise HTTPException(status_code=409, detail="Training already in progress")
-
-    async def _run():
-        await run_training(force=body.force)
-
-    background_tasks.add_task(_run)
+    background_tasks.add_task(run_training, force=body.force)
     await set_training_lock(True)
-
     return {"status": "training_started", "startedAt": datetime.now(timezone.utc).isoformat()}
 
 

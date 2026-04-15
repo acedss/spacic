@@ -16,11 +16,8 @@ import json
 from datetime import datetime, timezone
 from ..db.redis_client import get_redis
 
-
 RECS_TTL = 86_400 * 2  # pre-computed recs expire after 2 days
 
-
-# ── Read ──────────────────────────────────────────────────────────────────────
 
 async def get_user_recs(user_id: str) -> list[str] | None:
     r = get_redis()
@@ -54,7 +51,6 @@ async def get_cache_stats() -> dict:
     reqs = int(reqs or 0)
     hits = int(hits or 0)
 
-    # Count how many users have cached recs
     cursor = 0
     users_cached = 0
     while True:
@@ -70,8 +66,6 @@ async def get_cache_stats() -> dict:
         "hit_rate_pct": round((hits / reqs * 100), 1) if reqs > 0 else 0.0,
     }
 
-
-# ── Write ─────────────────────────────────────────────────────────────────────
 
 async def set_user_recs(user_id: str, song_ids: list[str]) -> None:
     r = get_redis()

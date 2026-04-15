@@ -1,25 +1,9 @@
-"""
-Spacic RecSys — Python microservice
-────────────────────────────────────
-Runs on port 8000. Separate process from Node.js backend (port 4000).
-Node.js calls this service via HTTP for:
-  - GET  /recs/{userId}     → recommendations
-  - GET  /admin/status      → monitoring dashboard data
-  - POST /admin/train       → trigger manual training
-  - GET  /admin/health      → liveness probe
-
-Communication pattern:
-  Node.js backend  →  HTTP  →  this service  →  MongoDB + Redis
-"""
-
 import logging
 from contextlib import asynccontextmanager
-
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from .config import get_settings
 from .db.mongo import close as close_mongo
 from .db.redis_client import close as close_redis
@@ -35,8 +19,6 @@ scheduler = AsyncIOScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-
-    # Schedule nightly training
     scheduler.add_job(
         run_training,
         CronTrigger(hour=settings.TRAIN_HOUR_UTC, minute=settings.TRAIN_MINUTE_UTC, timezone="UTC"),
@@ -44,30 +26,18 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
     )
     scheduler.start()
-    logger.info(
-        "Scheduler started — nightly training at %02d:%02d UTC",
-        settings.TRAIN_HOUR_UTC,
-        settings.TRAIN_MINUTE_UTC,
-    )
-
+    logger.info("Scheduler started — nightly training at %02d:%02d UTC", settings.TRAIN_HOUR_UTC, settings.TRAIN_MINUTE_UTC)
     yield
-
     scheduler.shutdown(wait=False)
     await close_mongo()
     await close_redis()
-    logger.info("RecSys service shut down cleanly")
 
 
-app = FastAPI(
-    title="Spacic RecSys",
-    version="1.0.0",
-    lifespan=lifespan,
-)
+app = FastAPI(title="Spacic RecSys", version="1.0.0", lifespan=lifespan)
 
-# Only allow calls from the Node.js backend (internal network in prod)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4000"],
+    allow_origins=["http://localhost:4000", "http://spacic-be:4000"],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )

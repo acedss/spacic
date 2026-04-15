@@ -47,4 +47,4 @@ class AdminStatus(BaseModel):
 
 
 class TrainRequest(BaseModel):
-    force: bool = False  # skip cooldown check
+    force: bool = False
