@@ -90,11 +90,14 @@ async def run_training(force: bool = False) -> dict:
                 cols.append(song_idx[sid])
                 data.append(rating)
 
+        # user×song CSR matrix — rows=users, cols=songs
         interaction_matrix = sp.csr_matrix(
             (data, (rows, cols)),
             shape=(len(user_ids), len(song_ids)),
             dtype=np.float32,
         )
+        # implicit expects song×user (item×user) input — build as CSR directly
+        item_user_matrix = sp.csr_matrix(interaction_matrix.T)
 
         model = implicit.als.AlternatingLeastSquares(
             factors=settings.ALS_FACTORS,
@@ -102,9 +105,11 @@ async def run_training(force: bool = False) -> dict:
             regularization=settings.ALS_REGULARIZATION,
             random_state=42,
         )
-        model.fit(interaction_matrix.T)
+        model.fit(item_user_matrix)
 
-        top_k = settings.TOP_K
+        # N must be strictly less than total songs — implicit's topk C extension
+        # crashes with an out-of-bounds error when N == len(song_ids)
+        top_k = max(1, min(settings.TOP_K, len(song_ids) - 1))
         tasks = []
         batch_size = 100
         for i in range(0, len(user_ids), batch_size):

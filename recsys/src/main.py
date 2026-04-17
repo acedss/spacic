@@ -1,4 +1,6 @@
 import logging
+import os
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")  # prevent ALS thread contention
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
