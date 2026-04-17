@@ -16,6 +16,9 @@ import roomRoutes from './routes/room.route.js';
 import walletRoutes from './routes/wallet.route.js';
 import subscriptionRoutes from './routes/subscription.route.js';
 import friendRoutes from './routes/friend.route.js';
+import playlistRoutes from './routes/playlist.route.js';
+import minigameRoutes from './routes/minigame.route.js';
+import recsysRoutes from './routes/recsys.route.js';
 import { handleWebhook } from './controllers/wallet.controller.js';
 import { handleClerkWebhook } from './controllers/auth.controller.js';
 
@@ -74,10 +77,10 @@ const realIp = (req) => {
     return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
 };
 
-// Global: 200 req / 15 min per IP
+// Global: 200 req / 15 min per IP (relaxed to 1000 in dev — React Strict Mode + multi-component mounts exhaust 200 quickly)
 app.use('/api/', rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 200,
+    limit: process.env.NODE_ENV === 'development' ? 1000 : 200,
     keyGenerator: realIp,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
@@ -131,6 +134,9 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/friends', friendRoutes);
+app.use('/api/playlists', playlistRoutes);
+app.use('/api/minigames', minigameRoutes);
+app.use('/api/recs', recsysRoutes);
 
 //  Error handler
 app.use((error, req, res, next) => {

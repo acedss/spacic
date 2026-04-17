@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { create } from 'zustand';
 import type { SubscriptionPlan } from '@/types/types';
 import { axiosInstance } from '@/lib/axios';
@@ -57,10 +58,17 @@ export const useSubscriptionStore = create<SubscriptionStore>((set) => ({
         set({ subscribeLoading: true });
         try {
             const { data } = await axiosInstance.post('/subscriptions/subscribe', { slug, billingCycle });
-            window.location.href = data.data.url;
-        } catch (err: any) {
-            const msg = err?.response?.data?.message ?? 'Failed to start checkout';
-            toast.error(msg);
+            const checkoutUrl = data?.data?.url;
+            if (!checkoutUrl) throw new Error('Checkout URL was not returned by server');
+            window.location.href = checkoutUrl;
+        } catch (error) {
+            const message = axios.isAxiosError<{ message?: string }>(error)
+                ? (error.response?.data?.message ?? 'Failed to start checkout')
+                : error instanceof Error
+                    ? error.message
+                    : 'Failed to start checkout';
+            toast.error(message);
+        } finally {
             set({ subscribeLoading: false });
         }
     },

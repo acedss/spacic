@@ -178,6 +178,65 @@ export interface FriendInvite {
     expiresAt:  string;
 }
 
+// ── Playlists (Sprint 6) ──────────────────────────────────────────────────────
+
+export interface SavedPlaylist {
+    _id: string;
+    ownerId: string;
+    name: string;
+    coverArt?: string | null;
+    songs: Pick<Song, '_id' | 'title' | 'artist' | 'imageUrl' | 'duration'>[];
+    isPublic: boolean;
+    createdAt: string;
+}
+
+// ── Minigames (Sprint 6) ──────────────────────────────────────────────────────
+
+export type MinigameType        = 'song_guesser' | 'lyric_fill' | 'trivia' | 'skip_battle';
+export type MinigameTriggerType = 'before_song'  | 'after_song' | 'manual';
+export type MinigameStatus      = 'draft' | 'scheduled' | 'active' | 'completed' | 'cancelled';
+
+export interface MinigameConfig {
+    question?:      string | null;
+    answer?:        string | null;
+    lyric?:         string | null;
+    options?:       string[];
+    correctOption?: number | null;
+}
+
+export interface Minigame {
+    _id:         string;
+    roomId:      string;
+    creatorId:   string;
+    type:        MinigameType;
+    title:       string;
+    status:      MinigameStatus;
+    trigger: {
+        type:      MinigameTriggerType;
+        songIndex: number | null;
+    };
+    durationSeconds: number;
+    coinReward:      number;
+    config:          MinigameConfig;
+    participantCount: number;
+    winner?: { userId: string; username: string; answer: string } | null;
+    startedAt?:   string | null;
+    completedAt?: string | null;
+    createdAt:    string;
+}
+
+// Emitted via socket when a game starts
+export interface ActiveGame {
+    minigameId:      string;
+    type:            MinigameType;
+    title:           string;
+    durationSeconds: number;
+    coinReward:      number;
+    config:          MinigameConfig;
+    startedAt:       string;
+    endsAt:          string;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ChatMessage {

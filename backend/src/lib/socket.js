@@ -12,6 +12,8 @@ import { Friendship } from '../models/friendship.model.js';
 import { getPresignedUrl } from '../services/s3.services.js';
 import { donateToRoom } from '../services/wallet.service.js';
 import { goOfflineInternal, recordSongTransition } from '../services/room.service.js';
+import { findAndActivateScheduledGame, recordAnswer, completeGame, settleGamePrize } from '../services/minigame.service.js';
+import { Minigame } from '../models/minigame.model.js';
 import geoip from 'geoip-lite';
 
 // Per-process timers — intentionally not in Redis.
@@ -23,6 +25,15 @@ const disconnectTimers = new Map();
 const notifyTimers     = new Map();
 // Debounce: multiple clients fire song_ended simultaneously; only first within 3s wins.
 const songEndedDebounce = new Map();
+// Active game timers — keyed by roomId. Cleared when game ends or room goes offline.
+const gameTimers = new Map();
+// Track whether a game timer is blocking a pending song advance.
+// { roomId → { currentSongIndex, currentSong, prevStart } }
+const pendingAdvance = new Map();
+// Creator speaking timers — 10s hard limit per room.
+const creatorSpeakTimers = new Map();
+// Song-ending-soon timers — notify creator 15s before song ends.
+const songEndingSoonTimers = new Map();
 
 // ── Heartbeat ────────────────────────────────────────────────────────────────
 
@@ -96,6 +107,9 @@ const goOfflineAndNotify = async (io, roomId, reason) => {
     stopSyncCheckpoint(roomId);
     disconnectTimers.delete(roomId);
     songEndedDebounce.delete(roomId);
+    pendingAdvance.delete(roomId);
+    const gameTimer = gameTimers.get(roomId);
+    if (gameTimer) { clearTimeout(gameTimer); gameTimers.delete(roomId); }
     const pendingNotify = notifyTimers.get(roomId);
     if (pendingNotify) { clearTimeout(pendingNotify); notifyTimers.delete(roomId); }
 
@@ -213,6 +227,26 @@ const getNextSong = async (roomId, currentIndex) => {
     return { nextSong, nextIndex, presignedUrl, startTimeUnix };
 };
 
+// ── Song-Ending-Soon Notifier ─────────────────────────────────────────────────
+// Call whenever a new song starts. Notifies the creator 15s before song ends
+// so they can prepare their mic introduction for the next track.
+
+const scheduleSongEndingSoon = (io, roomId, creatorId, durationMs) => {
+    const existing = songEndingSoonTimers.get(roomId);
+    if (existing) clearTimeout(existing);
+
+    const WARN_BEFORE_MS = 15_000;
+    const delay = durationMs - WARN_BEFORE_MS;
+    if (delay <= 0) return; // song too short for a warning
+
+    const timer = setTimeout(() => {
+        songEndingSoonTimers.delete(roomId);
+        // Emit only to the creator's personal socket room (creatorId)
+        io.to(creatorId).emit('room:song_ending_soon', { roomId });
+    }, delay);
+    songEndingSoonTimers.set(roomId, timer);
+};
+
 // ── Auth guard ───────────────────────────────────────────────────────────────
 
 const canControlRoom = (userSession, roomSession) =>
@@ -292,12 +326,27 @@ export const initializeSocket = (httpServer) => {
                     }
                 }
 
+                // If a game is currently active in this room, include it so late-joiners see it
+                const activeGame = await Minigame.findOne({ roomId, status: 'active' }).lean();
+
                 socket.emit('room:joined', {
                     roomId,
                     playback: playbackState ? { ...playbackState, currentSongPresignedUrl } : null,
                     serverTimestamp: Date.now(),
                     listenerCount:   roomSession.listenerCount,
                     isCreator,
+                    activeGame: activeGame ? {
+                        minigameId:      activeGame._id.toString(),
+                        type:            activeGame.type,
+                        title:           activeGame.title,
+                        durationSeconds: activeGame.durationSeconds,
+                        coinReward:      activeGame.coinReward,
+                        config:          activeGame.config,
+                        startedAt:       activeGame.startedAt?.toISOString() ?? null,
+                        endsAt:          activeGame.startedAt
+                            ? new Date(activeGame.startedAt.getTime() + activeGame.durationSeconds * 1000).toISOString()
+                            : null,
+                    } : null,
                 });
 
                 const updatedRoom = await socketManager.getRoomById(roomId);
@@ -433,6 +482,10 @@ export const initializeSocket = (httpServer) => {
                     songPresignedUrl: presignedUrl, startTimeUnix: nextStart, serverTimestamp: Date.now(),
                 });
                 emitSystemMessage(io, roomId, `Now playing: ${nextSong.title} — ${nextSong.artist}`);
+                const roomSess = await socketManager.getRoomById(roomId);
+                if (roomSess?.creatorId && nextSong.duration) {
+                    scheduleSongEndingSoon(io, roomId, roomSess.creatorId, nextSong.duration);
+                }
 
                 // Fire-and-forget — analytics must not block playback
                 recordSongTransition(roomId, currentSong, prevStart, true)
@@ -442,76 +495,80 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
-        socket.on('room:seek', async ({ roomId, seekPositionMs }) => {
-            try {
-                const userSession = await socketManager.getUserBySocketId(socket.id);
-                let roomSession   = await socketManager.getRoomById(roomId);
-                if (!roomSession) roomSession = await recoverSessionFromDB(roomId);
-                if (!userSession) return socket.emit('room:error', { message: 'Session expired.' });
-                if (!roomSession) return socket.emit('room:error', { message: 'Room session not found.' });
-                if (!canControlRoom(userSession, roomSession)) return;
-                const startTimeUnix = Date.now() - seekPositionMs;
-                await socketManager.updateRoomPlaybackState(roomId, { startTimeUnix, isPlaying: true, pausedAtMs: null });
-                io.to(roomId).emit('room:sync', { roomId, startTimeUnix, isPlaying: true, pausedAtMs: null, serverTimestamp: Date.now() });
-            } catch (error) {
-                console.error(`[Server] room:seek ERROR:`, error);
-                socket.emit('room:error', { message: 'Failed to process seek.' });
-            }
-        });
-
-        socket.on('room:pause', async ({ roomId }) => {
-            try {
-                const userSession = await socketManager.getUserBySocketId(socket.id);
-                let roomSession   = await socketManager.getRoomById(roomId);
-                if (!roomSession) roomSession = await recoverSessionFromDB(roomId);
-                if (!userSession) return socket.emit('room:error', { message: 'Session expired.' });
-                if (!roomSession) return socket.emit('room:error', { message: 'Room session not found.' });
-                if (!canControlRoom(userSession, roomSession)) return;
-                if (!roomSession.isPlaying) return;
-                const pausedAtMs = await socketManager.computeCurrentPositionMs(roomId);
-                await socketManager.updateRoomPlaybackState(roomId, { isPlaying: false, pausedAtMs });
-                io.to(roomId).emit('room:sync', { roomId, isPlaying: false, pausedAtMs, serverTimestamp: Date.now() });
-            } catch (error) {
-                console.error(`[Server] room:pause ERROR:`, error);
-                socket.emit('room:error', { message: 'Failed to process pause.' });
-            }
-        });
-
-        socket.on('room:resume', async ({ roomId }) => {
-            try {
-                const userSession = await socketManager.getUserBySocketId(socket.id);
-                let roomSession   = await socketManager.getRoomById(roomId);
-                if (!roomSession) roomSession = await recoverSessionFromDB(roomId);
-                if (!userSession) return socket.emit('room:error', { message: 'Session expired.' });
-                if (!roomSession) return socket.emit('room:error', { message: 'Room session not found.' });
-                if (!canControlRoom(userSession, roomSession)) return;
-                if (roomSession.isPlaying) return;
-                const pausedAtMs    = roomSession.pausedAtMs ?? 0;
-                const startTimeUnix = Date.now() - pausedAtMs;
-                await socketManager.updateRoomPlaybackState(roomId, { startTimeUnix, isPlaying: true, pausedAtMs: null });
-                io.to(roomId).emit('room:sync', { roomId, startTimeUnix, isPlaying: true, pausedAtMs: null, serverTimestamp: Date.now() });
-            } catch (error) {
-                console.error(`[Server] room:resume ERROR:`, error);
-                socket.emit('room:error', { message: 'Failed to process resume.' });
-            }
-        });
 
         socket.on('room:song_ended', async ({ roomId, currentSongIndex }) => {
             try {
                 const lastAdvance = songEndedDebounce.get(roomId);
                 if (lastAdvance && Date.now() - lastAdvance < 3000) return;
+                // Don't advance if a game timer is already blocking this room
+                if (gameTimers.has(roomId)) return;
 
-                // Fetch index + startTimeUnix together
                 const roomDoc   = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
                 if (!roomDoc) return;
                 const serverIndex = roomDoc.playback?.currentSongIndex ?? 0;
                 if (currentSongIndex !== serverIndex) return;
                 songEndedDebounce.set(roomId, Date.now());
 
-                // Snapshot current song BEFORE advancing (needed for analytics)
                 const playlist    = await socketManager.getCachedPlaylist(roomId);
                 const currentSong = playlist?.[currentSongIndex] ?? null;
                 const prevStart   = roomDoc.playback?.startTimeUnix ?? null;
+
+                // Check for a game scheduled at this transition point
+                const afterGame  = await findAndActivateScheduledGame(roomId, 'after_song', currentSongIndex);
+                const beforeGame = !afterGame
+                    ? await findAndActivateScheduledGame(roomId, 'before_song', currentSongIndex + 1)
+                    : null;
+                const activeGame = afterGame ?? beforeGame;
+
+                if (activeGame) {
+                    // Store what to advance to once the game ends
+                    pendingAdvance.set(roomId, { currentSongIndex, currentSong, prevStart });
+
+                    io.to(roomId).emit('room:game_start', {
+                        roomId,
+                        minigameId:      activeGame._id.toString(),
+                        type:            activeGame.type,
+                        title:           activeGame.title,
+                        durationSeconds: activeGame.durationSeconds,
+                        coinReward:      activeGame.coinReward,
+                        config:          activeGame.config,
+                        startedAt:       new Date().toISOString(),
+                        endsAt:          new Date(Date.now() + activeGame.durationSeconds * 1000).toISOString(),
+                    });
+
+                    const timer = setTimeout(async () => {
+                        gameTimers.delete(roomId);
+                        const completed = await completeGame(activeGame._id);
+                        await settleGamePrize(completed).catch(err => console.error('[settleGamePrize]', err.message));
+                        io.to(roomId).emit('room:game_result', {
+                            roomId,
+                            minigameId:       activeGame._id.toString(),
+                            winner:           completed?.winner ?? null,
+                            participantCount: completed?.participantCount ?? 0,
+                        });
+                        // Brief pause before the next song starts
+                        setTimeout(async () => {
+                            try {
+                                const advance = pendingAdvance.get(roomId);
+                                pendingAdvance.delete(roomId);
+                                const { nextSong, nextIndex, presignedUrl, startTimeUnix: nextStart } =
+                                    await getNextSong(roomId, advance?.currentSongIndex ?? currentSongIndex);
+                                io.to(roomId).emit('room:song_changed', {
+                                    roomId, songIndex: nextIndex, song: nextSong,
+                                    songPresignedUrl: presignedUrl, startTimeUnix: nextStart, serverTimestamp: Date.now(),
+                                });
+                                emitSystemMessage(io, roomId, `Now playing: ${nextSong.title} — ${nextSong.artist}`);
+                                recordSongTransition(roomId, advance?.currentSong, advance?.prevStart, false)
+                                    .catch(err => console.error('[game advance analytics]', err.message));
+                            } catch (err) {
+                                console.error('[game timer] advance song error:', err.message);
+                            }
+                        }, 3000); // 3s for listeners to see results before music starts
+                    }, activeGame.durationSeconds * 1000);
+
+                    gameTimers.set(roomId, timer);
+                    return; // Don't advance the song now — game is running
+                }
 
                 const { nextSong, nextIndex, presignedUrl, startTimeUnix: nextStart } = await getNextSong(roomId, currentSongIndex);
                 io.to(roomId).emit('room:song_changed', {
@@ -519,13 +576,171 @@ export const initializeSocket = (httpServer) => {
                     songPresignedUrl: presignedUrl, startTimeUnix: nextStart, serverTimestamp: Date.now(),
                 });
                 emitSystemMessage(io, roomId, `Now playing: ${nextSong.title} — ${nextSong.artist}`);
-
-                // Fire-and-forget — analytics must not block playback
                 recordSongTransition(roomId, currentSong, prevStart, false)
                     .catch(err => console.error('[room:song_ended analytics]', err.message));
             } catch (error) {
                 console.error('[Server] room:song_ended ERROR:', error);
                 socket.emit('room:error', { message: 'Failed to advance to next song.' });
+            }
+        });
+
+        // Creator manually triggers a draft or scheduled game mid-session
+        socket.on('room:game_trigger', async ({ roomId, minigameId }) => {
+            try {
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                const roomSession = await socketManager.getRoomById(roomId);
+                if (!canControlRoom(userSession, roomSession))
+                    return socket.emit('room:error', { message: 'Only the creator can trigger games' });
+                if (gameTimers.has(roomId))
+                    return socket.emit('room:error', { message: 'A game is already running' });
+
+                const game = await Minigame.findOneAndUpdate(
+                    { _id: minigameId, roomId, status: { $in: ['draft', 'scheduled'] } },
+                    { $set: { status: 'active', startedAt: new Date() } },
+                    { new: true }
+                );
+                if (!game) return socket.emit('room:error', { message: 'Game not found or already active' });
+
+                io.to(roomId).emit('room:game_start', {
+                    roomId,
+                    minigameId:      game._id.toString(),
+                    type:            game.type,
+                    title:           game.title,
+                    durationSeconds: game.durationSeconds,
+                    coinReward:      game.coinReward,
+                    config:          game.config,
+                    startedAt:       new Date().toISOString(),
+                    endsAt:          new Date(Date.now() + game.durationSeconds * 1000).toISOString(),
+                });
+
+                const timer = setTimeout(async () => {
+                    gameTimers.delete(roomId);
+                    const completed = await completeGame(game._id);
+                    await settleGamePrize(completed).catch(err => console.error('[settleGamePrize]', err.message));
+                    io.to(roomId).emit('room:game_result', {
+                        roomId,
+                        minigameId:       game._id.toString(),
+                        winner:           completed?.winner ?? null,
+                        participantCount: completed?.participantCount ?? 0,
+                    });
+                }, game.durationSeconds * 1000);
+                gameTimers.set(roomId, timer);
+            } catch (error) {
+                console.error('[Server] room:game_trigger ERROR:', error);
+                socket.emit('room:error', { message: 'Failed to start game' });
+            }
+        });
+
+        // Listener submits an answer during an active game
+        socket.on('room:game_answer', async ({ roomId, minigameId, answer }) => {
+            try {
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+                if (typeof answer !== 'string' || answer.length > 200) return;
+
+                const result = await recordAnswer(minigameId, userSession.userId, userSession.fullName ?? userSession.userName, answer.trim());
+                if (!result) return;
+
+                // Broadcast updated participant count to everyone
+                io.to(roomId).emit('room:game_progress', {
+                    roomId, minigameId,
+                    participantCount: result.game.participantCount,
+                });
+
+                // For guessing games: first correct answer ends the game immediately
+                if (result.isWinner && ['song_guesser', 'lyric_fill', 'trivia'].includes(result.game.type)) {
+                    const timer = gameTimers.get(roomId);
+                    if (timer) { clearTimeout(timer); gameTimers.delete(roomId); }
+
+                    const completed = await completeGame(minigameId);
+                    await settleGamePrize(completed).catch(err => console.error('[settleGamePrize]', err.message));
+                    io.to(roomId).emit('room:game_result', {
+                        roomId, minigameId,
+                        winner:           completed?.winner ?? null,
+                        participantCount: completed?.participantCount ?? 0,
+                    });
+
+                    // If this game was blocking a song advance, resume after 3s
+                    const advance = pendingAdvance.get(roomId);
+                    if (advance) {
+                        pendingAdvance.delete(roomId);
+                        setTimeout(async () => {
+                            try {
+                                const { nextSong, nextIndex, presignedUrl, startTimeUnix: nextStart } =
+                                    await getNextSong(roomId, advance.currentSongIndex);
+                                io.to(roomId).emit('room:song_changed', {
+                                    roomId, songIndex: nextIndex, song: nextSong,
+                                    songPresignedUrl: presignedUrl, startTimeUnix: nextStart, serverTimestamp: Date.now(),
+                                });
+                                emitSystemMessage(io, roomId, `Now playing: ${nextSong.title} — ${nextSong.artist}`);
+                                recordSongTransition(roomId, advance.currentSong, advance.prevStart, false)
+                                    .catch(err => console.error('[early-win advance analytics]', err.message));
+                            } catch (err) {
+                                console.error('[early-win] advance song error:', err.message);
+                            }
+                        }, 3000);
+                    }
+                }
+            } catch (error) {
+                console.error('[Server] room:game_answer ERROR:', error);
+            }
+        });
+
+        // ── Creator Mic / Speaking ─────────────────────────────────────────────
+        // Creator announces they're about to speak (broadcast warning to listeners)
+        socket.on('room:creator_speaking', async ({ roomId }) => {
+            try {
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+                const roomSession = await socketManager.getRoomById(roomId);
+                if (!roomSession || roomSession.creatorId !== userSession.userId) return;
+
+                // Set a server-side 10s hard limit — auto-ends speaking if creator forgets
+                const existingTimer = creatorSpeakTimers.get(roomId);
+                if (existingTimer) clearTimeout(existingTimer);
+                const endTimer = setTimeout(() => {
+                    creatorSpeakTimers.delete(roomId);
+                    io.to(roomId).emit('room:creator_done', { roomId });
+                }, 10_000);
+                creatorSpeakTimers.set(roomId, endTimer);
+
+                // Notify all listeners — they show an overlay and mute the music
+                io.to(roomId).emit('room:creator_speaking', { roomId });
+            } catch (err) {
+                console.error('[room:creator_speaking]', err.message);
+            }
+        });
+
+        // Relay raw audio chunk (base64) from creator to all listeners in-memory (no DB/S3)
+        socket.on('room:audio_chunk', async ({ roomId, chunk }) => {
+            try {
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+                const roomSession = await socketManager.getRoomById(roomId);
+                if (!roomSession || roomSession.creatorId !== userSession.userId) return;
+                if (typeof chunk !== 'string' || chunk.length > 65536) return; // ~48KB per chunk max
+
+                // Relay chunk to all other sockets in the room (listeners only)
+                socket.to(roomId).emit('room:audio_chunk', { roomId, chunk });
+            } catch (err) {
+                console.error('[room:audio_chunk]', err.message);
+            }
+        });
+
+        // Creator finishes speaking — resume music
+        socket.on('room:creator_done', async ({ roomId }) => {
+            try {
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+                const roomSession = await socketManager.getRoomById(roomId);
+                if (!roomSession || roomSession.creatorId !== userSession.userId) return;
+
+                const timer = creatorSpeakTimers.get(roomId);
+                if (timer) { clearTimeout(timer); creatorSpeakTimers.delete(roomId); }
+
+                io.to(roomId).emit('room:creator_done', { roomId });
+            } catch (err) {
+                console.error('[room:creator_done]', err.message);
             }
         });
 

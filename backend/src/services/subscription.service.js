@@ -33,9 +33,39 @@ export const getActivePlans = async () => {
     return plans;
 };
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const DEFAULT_FRONTEND_URL = 'http://localhost:5173';
 
 const err = (msg, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
+
+const isLocalHost = (hostname) => hostname === 'localhost' || hostname === '127.0.0.1';
+const normalizeOrigin = (raw) => {
+    if (!raw) return null;
+    const input = String(raw).trim();
+    if (!input) return null;
+    const withProtocol = /^https?:\/\//i.test(input)
+        ? input
+        : isLocalHost(input.split(':')[0]) ? `http://${input}` : `https://${input}`;
+    try {
+        const parsed = new URL(withProtocol);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+        if (parsed.protocol === 'http:' && !isLocalHost(parsed.hostname)) return null;
+        return parsed.origin;
+    } catch {
+        return null;
+    }
+};
+const resolveCheckoutOrigin = (requestOrigin) =>
+    normalizeOrigin(process.env.FRONTEND_URL)
+    || normalizeOrigin(requestOrigin)
+    || DEFAULT_FRONTEND_URL;
+
+const normalizeBillingCycle = (value) => {
+    const normalized = String(value ?? 'monthly').trim().toLowerCase();
+    if (normalized !== 'monthly' && normalized !== 'yearly') {
+        throw err("billingCycle must be either 'monthly' or 'yearly'", 400);
+    }
+    return normalized;
+};
 
 export const getSubscriptionStatus = async (clerkId) => {
     const user = await User.findOne({ clerkId })
@@ -91,34 +121,53 @@ export const reactivateSubscription = async (clerkId) => {
     return { status: 'active' };
 };
 
-export const createSubscribeSession = async (clerkId, slug, billingCycle) => {
-    const origin = FRONTEND_URL;
-    if (!stripe) throw new Error('Stripe is not configured');
+export const createSubscribeSession = async (clerkId, slug, billingCycle, requestOrigin) => {
+    if (!stripe) throw err('Stripe is not configured', 500);
+    if (!slug || typeof slug !== 'string') throw err('slug is required', 400);
+    const normalizedSlug = slug.trim().toLowerCase();
+    if (!normalizedSlug) throw err('slug is required', 400);
+    const normalizedBillingCycle = normalizeBillingCycle(billingCycle);
+    const origin = resolveCheckoutOrigin(requestOrigin);
 
-    const plan = await SubscriptionPlan.findOne({ slug, isActive: true }).lean();
-    if (!plan) throw new Error('Plan not found');
+    const plan = await SubscriptionPlan.findOne({ slug: normalizedSlug, isActive: true }).lean();
+    if (!plan) throw err('Plan not found', 404);
 
-    const priceId = billingCycle === 'yearly'
+    const priceId = normalizedBillingCycle === 'yearly'
         ? plan.stripePriceIdYearly
         : plan.stripePriceIdMonthly;
 
-    if (!priceId) throw new Error('This plan is not yet available — Stripe price not configured');
+    if (!priceId) {
+        const cycleLabel = normalizedBillingCycle === 'yearly' ? 'yearly' : 'monthly';
+        throw err(`This plan is not yet available for ${cycleLabel} billing — Stripe price not configured`, 400);
+    }
 
     const user = await User.findOne({ clerkId });
-    if (!user) throw new Error('User not found');
+    if (!user) throw err('User not found', 404);
 
-    const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        mode: 'subscription',
-        line_items: [{ price: priceId, quantity: 1 }],
-        metadata: {
-            userId: user._id.toString(),
-            clerkId,
-            tier: plan.tier,
-        },
-        success_url: `${origin}/subscription?status=success`,
-        cancel_url: `${origin}/subscription?status=cancelled`,
-    });
+    let session;
+    try {
+        session = await stripe.checkout.sessions.create({
+            payment_method_types: ['card'],
+            mode: 'subscription',
+            line_items: [{ price: priceId, quantity: 1 }],
+            metadata: {
+                userId: user._id.toString(),
+                clerkId,
+                tier: plan.tier,
+            },
+            success_url: `${origin}/subscription?status=success`,
+            cancel_url: `${origin}/subscription?status=cancelled`,
+        });
+    } catch (error) {
+        // Stripe returns 400 for malformed success/cancel URLs; surface a clear message.
+        if (error?.type === 'StripeInvalidRequestError') {
+            const msg = String(error.message || '');
+            if (msg.includes('success_url') || msg.includes('cancel_url')) {
+                throw err('Invalid checkout return URL. Set FRONTEND_URL to a valid http(s) origin.', 400);
+            }
+        }
+        throw error;
+    }
 
     return { url: session.url };
 };

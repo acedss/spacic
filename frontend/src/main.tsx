@@ -16,8 +16,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ClerkProvider
       publishableKey={PUBLISHABLE_KEY}
-      afterSignInUrl="/auth-callback"
-      afterSignUpUrl="/auth-callback"
+      signInFallbackRedirectUrl="/auth-callback"
+      signUpFallbackRedirectUrl="/auth-callback"
     >
       <AuthProvider>
         <AudioProvider>

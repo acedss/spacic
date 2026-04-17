@@ -1,16 +1,16 @@
-import { useState } from "react";
+// import { useState } from "react";
 import { UserButton, useAuth } from "@clerk/clerk-react";
-import { ChevronLeft, ChevronRight, LayoutDashboardIcon, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, LayoutDashboardIcon } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import SignInOAuthButtons from "./ui/SignInOAuthButtons";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { Button } from "@/components/ui/button";
-import CreateRoomModal from "@/pages/home/compoments/CreateRoomModal";
+// import CreateRoomModal from "@/pages/home/compoments/CreateRoomModal";
 
 const TopBar = () => {
     const { isAdmin } = useAuthStore();
     const { isSignedIn } = useAuth();
-    const [showCreateRoom, setShowCreateRoom] = useState(false);
+    // const [showCreateRoom, setShowCreateRoom] = useState(false);
     const navigate = useNavigate();
 
     return (
@@ -33,18 +33,18 @@ const TopBar = () => {
                             </Link>
                         </Button>
                     )}
-                    {isSignedIn && (
+                    {/* {isSignedIn && (
                         <Button size="sm" onClick={() => setShowCreateRoom(true)} className="bg-purple-600 hover:bg-purple-500 text-white rounded-xl">
                             <Plus className="size-4" />
                             Create Room
                         </Button>
-                    )}
+                    )} */}
                     {!isSignedIn && <SignInOAuthButtons />}
                     <UserButton userProfileUrl="/profile" />
                 </div>
             </div>
 
-            <CreateRoomModal isOpen={showCreateRoom} onClose={() => setShowCreateRoom(false)} />
+            {/* <CreateRoomModal isOpen={showCreateRoom} onClose={() => setShowCreateRoom(false)} /> */}
         </>
     );
 };

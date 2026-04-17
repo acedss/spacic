@@ -30,7 +30,13 @@ export const DonationPanel = ({ onDonate, onUpdateGoal, isCreator }: DonationPan
     const [showGoalModal, setShowGoalModal] = useState(false);
     const [newGoalDollars, setNewGoalDollars] = useState('');
 
-    if (!room || room.streamGoal <= 0) return null;
+    if (!room || room.streamGoal <= 0) return (
+        <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-8">
+            <Zap className="size-6 text-zinc-700" />
+            <p className="text-zinc-600 text-xs">No stream goal set.</p>
+            <p className="text-zinc-700 text-xs">The creator hasn't set a donation goal yet.</p>
+        </div>
+    );
 
     const goalReached = room.streamGoalCurrent >= room.streamGoal;
     const progress = Math.min((room.streamGoalCurrent / room.streamGoal) * 100, 100);

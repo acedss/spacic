@@ -24,7 +24,7 @@ export const authCallback = async (req, res, next) => {
 // PATCH /auth/username — updates via Clerk Backend SDK (no re-verification required)
 export const updateUsername = async (req, res, next) => {
     try {
-        const clerkId = req.auth?.userId;
+        const clerkId = req.auth?.userId;req.auth
         const { username } = req.body;
 
         if (!username || !/^[a-z0-9_]{3,20}$/.test(username)) {
