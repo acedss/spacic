@@ -45,19 +45,25 @@ pipeline {
             parallel {
                 stage('Backend: Install & Test') {
                     steps {
-                        dir('backend') {
-                            sh 'npm ci'
-                            sh 'npx vitest run --reporter=verbose'
-                        }
+                        // Run inside Node container — Jenkins host needs no Node install
+                        sh """
+                        docker run --rm \\
+                            -v ${WORKSPACE}/backend:/app \\
+                            -w /app \\
+                            node:22-alpine \\
+                            sh -c 'npm ci && npx vitest run --reporter=verbose'
+                        """
                     }
                 }
                 stage('Frontend: Install, Lint & Type-check') {
                     steps {
-                        dir('frontend') {
-                            sh 'npm ci'
-                            sh 'npx eslint . --max-warnings=0 || true'
-                            sh 'npx tsc --noEmit'
-                        }
+                        sh """
+                        docker run --rm \\
+                            -v ${WORKSPACE}/frontend:/app \\
+                            -w /app \\
+                            node:22-alpine \\
+                            sh -c 'npm ci && npx eslint . --max-warnings=0 || true && npx tsc --noEmit'
+                        """
                     }
                 }
             }
