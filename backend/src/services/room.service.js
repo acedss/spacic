@@ -555,9 +555,10 @@ export const goOfflineInternal = async (roomId) => {
 
     await socketManager.removeRoomSession(roomId);
 
-    // Notify creator that their room is now offline
+    // Broadcast room closed to all listeners in the room, and to creator's sidebar
     const io = getIo();
     if (io) {
+        io.to(roomId).emit('room:offline', { roomId, reason: 'creator_manual' });
         io.to(room.creatorId.toString()).emit('creator:room_offline');
     }
 };

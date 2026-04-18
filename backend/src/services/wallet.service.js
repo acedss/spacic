@@ -89,6 +89,7 @@ export const createTopupSession = async (clerkId, packageId, requestOrigin) => {
     const transaction = await Transaction.create({
         userId: user._id,
         type: "topup",
+        currency: "coins",
         amount: pkg.credits,
         status: "pending",
     });

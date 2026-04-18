@@ -7,6 +7,28 @@ interface CreatorAudio {
     mimeType: string;
 }
 
+export interface Nomination {
+    songId: string;
+    title:  string;
+    artist: string;
+    nominatorId:   string;
+    nominatorName: string;
+    votes: number;
+}
+
+export interface EmojiBurst {
+    id:       string;
+    userId:   string;
+    userName: string;
+    emoji:    string;
+}
+
+export interface SessionInfo {
+    maxSessionMinutes: number | null;
+    liveAt:            string | null;
+    voteThresholdPercent: number;
+}
+
 interface RoomStore {
     room:                       RoomInfo | null;
     chatMessages:               ChatMessage[];
@@ -22,6 +44,13 @@ interface RoomStore {
     // Active minigame visible to all room members
     activeGame:      ActiveGame | null;
     gameSecondsLeft: number;
+
+    // Voting & reactions
+    skipVotes:   { count: number; needed: number };
+    reactions:   { likes: number; dislikes: number };
+    nominations: Nomination[];
+    emojiBursts: EmojiBurst[];
+    sessionInfo: SessionInfo | null;
 
     setRoom:                      (room: RoomInfo) => void;
     setIsCreator:                 (isCreator: boolean) => void;
@@ -42,6 +71,13 @@ interface RoomStore {
     // Minigame actions
     setActiveGame:      (game: ActiveGame | null) => void;
     setGameSecondsLeft: (secs: number) => void;
+
+    // Voting & reactions actions
+    setSkipVotes:    (votes: { count: number; needed: number }) => void;
+    setReactions:    (r: { likes: number; dislikes: number }) => void;
+    setNominations:  (n: Nomination[]) => void;
+    addEmojiBurst:   (burst: EmojiBurst) => void;
+    setSessionInfo:  (info: SessionInfo | null) => void;
 }
 
 const DEFAULT_AUDIO: CreatorAudio = { state: 'idle', chunks: [], mimeType: 'audio/webm' };
@@ -57,6 +93,11 @@ export const useRoomStore = create<RoomStore>((set) => ({
     creatorAudio:               { ...DEFAULT_AUDIO },
     activeGame:                 null,
     gameSecondsLeft:            0,
+    skipVotes:                  { count: 0, needed: 1 },
+    reactions:                  { likes: 0, dislikes: 0 },
+    nominations:                [],
+    emojiBursts:                [],
+    sessionInfo:                null,
 
     setRoom:          (room) => set({ room }),
     setIsCreator:     (isCreator) => set({ isCreator }),
@@ -90,6 +131,11 @@ export const useRoomStore = create<RoomStore>((set) => ({
         creatorAudio:               { ...DEFAULT_AUDIO },
         activeGame:                 null,
         gameSecondsLeft:            0,
+        skipVotes:                  { count: 0, needed: 1 },
+        reactions:                  { likes: 0, dislikes: 0 },
+        nominations:                [],
+        emojiBursts:                [],
+        sessionInfo:                null,
     }),
 
     // Creator audio
@@ -114,4 +160,13 @@ export const useRoomStore = create<RoomStore>((set) => ({
     // Minigame
     setActiveGame:      (activeGame) => set({ activeGame }),
     setGameSecondsLeft: (gameSecondsLeft) => set({ gameSecondsLeft }),
+
+    // Voting & reactions
+    setSkipVotes:   (skipVotes) => set({ skipVotes }),
+    setReactions:   (reactions) => set({ reactions }),
+    setNominations: (nominations) => set({ nominations }),
+    addEmojiBurst:  (burst) => set((s) => ({
+        emojiBursts: [...s.emojiBursts.slice(-19), burst],
+    })),
+    setSessionInfo: (sessionInfo) => set({ sessionInfo }),
 }));

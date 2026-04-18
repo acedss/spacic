@@ -20,6 +20,13 @@ const K = {
     socket:    (id)      => `user:socket:${id}`,
     playlist:  (id)      => `room:${id}:playlist`,
     userClerk: (clerkId) => `user:clerk:${clerkId}`,
+    skipVotes: (id)      => `room:${id}:skip_votes`,
+    reactions: (id)      => `room:${id}:reactions`,
+    queueReqs: (id)      => `room:${id}:queue_requests`,
+    queueVotes:    (id)      => `room:${id}:queue_votes`,
+    queueVoters:   (id, sid) => `room:${id}:queue_voters:${sid}`,
+    queueNominator:(id, sid) => `room:${id}:queue_nom:${sid}`,
+    emojiRate: (id, uid) => `room:${id}:emoji:${uid}`,
 };
 
 const USER_TTL_S       = 86_400; // 24h — socket sessions auto-expire after crash
@@ -191,11 +198,149 @@ class SocketManager {
         return Date.now() - (state.startTimeUnix ?? Date.now());
     }
 
+    // ── Skip Voting ─────────────────────────────────────────────────────
+    // Redis SET of userIds who voted to skip the current song.
+    // Cleared on every song change via clearSkipVotes().
+
+    async addSkipVote(roomId, userId) {
+        return redis.sadd(K.skipVotes(roomId), userId);
+    }
+
+    async getSkipVoteCount(roomId) {
+        return redis.scard(K.skipVotes(roomId));
+    }
+
+    async hasVotedToSkip(roomId, userId) {
+        return redis.sismember(K.skipVotes(roomId), userId);
+    }
+
+    async clearSkipVotes(roomId) {
+        return redis.del(K.skipVotes(roomId));
+    }
+
+    // ── Song Reactions (like/dislike per song in room) ───────────────────
+    // Hash: { "like": count, "dislike": count }  — reset per song change.
+    // Separate SET tracks which users reacted to prevent double-voting.
+
+    async addSongReaction(roomId, userId, reaction) {
+        const userKey = `${K.reactions(roomId)}:users:${reaction}`;
+        const alreadyReacted = await redis.sismember(userKey, userId);
+        if (alreadyReacted) return null;
+
+        const oppositeReaction = reaction === 'like' ? 'dislike' : 'like';
+        const oppositeKey = `${K.reactions(roomId)}:users:${oppositeReaction}`;
+        const hadOpposite = await redis.sismember(oppositeKey, userId);
+        if (hadOpposite) {
+            await redis.srem(oppositeKey, userId);
+            await redis.hincrby(K.reactions(roomId), oppositeReaction, -1);
+        }
+
+        await redis.sadd(userKey, userId);
+        await redis.hincrby(K.reactions(roomId), reaction, 1);
+
+        const counts = await redis.hgetall(K.reactions(roomId));
+        return {
+            likes:    parseInt(counts.like    || '0', 10),
+            dislikes: parseInt(counts.dislike || '0', 10),
+            toggled:  !!hadOpposite,
+        };
+    }
+
+    async getSongReactionCounts(roomId) {
+        const counts = await redis.hgetall(K.reactions(roomId));
+        return {
+            likes:    parseInt(counts.like    || '0', 10),
+            dislikes: parseInt(counts.dislike || '0', 10),
+        };
+    }
+
+    async clearSongReactions(roomId) {
+        await redis.del(
+            K.reactions(roomId),
+            `${K.reactions(roomId)}:users:like`,
+            `${K.reactions(roomId)}:users:dislike`,
+        );
+    }
+
+    // ── Emoji Reactions (rate-limited ephemeral bursts) ──────────────────
+
+    async canSendEmoji(roomId, userId) {
+        const key = K.emojiRate(roomId, userId);
+        const count = await redis.incr(key);
+        if (count === 1) await redis.expire(key, 5);
+        return count <= 3;
+    }
+
+    // ── Queue Voting (nominate + upvote songs) ────────────────────────
+    // Sorted set: member = songId, score = vote count.
+    // Separate hash stores nomination metadata (title, artist, nominator).
+    // Per-user SET prevents double-voting on same song.
+
+    async nominateSong(roomId, songId, userId, metadata) {
+        const nomKey = K.queueNominator(roomId, songId);
+        const exists = await redis.exists(nomKey);
+        if (exists) return null;
+
+        await redis.hset(nomKey, {
+            songId, title: metadata.title, artist: metadata.artist,
+            nominatorId: userId, nominatorName: metadata.nominatorName,
+        });
+        await redis.expire(nomKey, 7200);
+        await redis.zadd(K.queueVotes(roomId), 1, songId);
+
+        const voterKey = K.queueVoters(roomId, songId);
+        await redis.sadd(voterKey, userId);
+        await redis.expire(voterKey, 7200);
+
+        return this.getQueueNominations(roomId);
+    }
+
+    async voteForSong(roomId, songId, userId) {
+        const voterKey = K.queueVoters(roomId, songId);
+        const alreadyVoted = await redis.sismember(voterKey, userId);
+        if (alreadyVoted) return null;
+
+        await redis.sadd(voterKey, userId);
+        const newScore = await redis.zincrby(K.queueVotes(roomId), 1, songId);
+        return parseInt(newScore, 10);
+    }
+
+    async getQueueNominations(roomId) {
+        const songs = await redis.zrevrange(K.queueVotes(roomId), 0, 19, 'WITHSCORES');
+        const nominations = [];
+        for (let i = 0; i < songs.length; i += 2) {
+            const songId = songs[i];
+            const votes  = parseInt(songs[i + 1], 10);
+            const meta   = await redis.hgetall(K.queueNominator(roomId, songId));
+            nominations.push({ songId, votes, ...meta });
+        }
+        return nominations;
+    }
+
+    async removeNomination(roomId, songId) {
+        await redis.zrem(K.queueVotes(roomId), songId);
+        await redis.del(K.queueNominator(roomId, songId), K.queueVoters(roomId, songId));
+    }
+
+    async clearQueueVotes(roomId) {
+        const songs = await redis.zrange(K.queueVotes(roomId), 0, -1);
+        const keys = [K.queueVotes(roomId)];
+        for (const sid of songs) {
+            keys.push(K.queueNominator(roomId, sid), K.queueVoters(roomId, sid));
+        }
+        if (keys.length > 0) await redis.del(...keys);
+    }
+
     // ── Utility ──────────────────────────────────────────────────────────────
 
     getRoomCapacityByTier(tier) {
         const caps = { FREE: 10, PREMIUM: 50, CREATOR: Infinity };
         return caps[tier] ?? 10;
+    }
+
+    getMaxSessionMinutesByTier(tier) {
+        const limits = { FREE: 60, PREMIUM: 180, CREATOR: Infinity };
+        return limits[tier] ?? 60;
     }
 }
 

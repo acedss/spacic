@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { io, Socket } from 'socket.io-client';
 import { useRoomStore } from '@/stores/useRoomStore';
+import type { Nomination, SessionInfo } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { useAudioRef, useSongEndedCallbackRef, usePlayStateCallbackRef } from '@/providers/AudioProvider';
@@ -71,6 +72,26 @@ export const useRoomSocket = (roomId: string) => {
         emit('room:game_answer', { roomId, minigameId, answer });
     }, [roomId, emit]);
 
+    const voteSkip = useCallback(() => {
+        emit('room:vote_skip', { roomId });
+    }, [roomId, emit]);
+
+    const reactToSong = useCallback((reaction: 'like' | 'dislike') => {
+        emit('room:song_reaction', { roomId, reaction });
+    }, [roomId, emit]);
+
+    const sendEmoji = useCallback((emoji: string) => {
+        emit('room:emoji', { roomId, emoji });
+    }, [roomId, emit]);
+
+    const nominateSong = useCallback((songId: string) => {
+        emit('room:nominate_song', { roomId, songId });
+    }, [roomId, emit]);
+
+    const voteForSong = useCallback((songId: string) => {
+        emit('room:vote_queue', { roomId, songId });
+    }, [roomId, emit]);
+
     useEffect(() => {
         if (!userId || !roomId) return;
 
@@ -112,7 +133,7 @@ export const useRoomSocket = (roomId: string) => {
             socket.emit('room:join', { roomId, clerkId: userId });
         });
 
-        socket.on('room:joined', ({ isCreator, playback, listenerCount, serverTimestamp, activeGame }: {
+        socket.on('room:joined', ({ isCreator, playback, listenerCount, serverTimestamp, activeGame, sessionInfo, reactions, skipVotes }: {
             isCreator: boolean;
             playback?: {
                 isPlaying: boolean;
@@ -123,6 +144,9 @@ export const useRoomSocket = (roomId: string) => {
             listenerCount: number;
             serverTimestamp: number;
             activeGame?: ActiveGame | null;
+            sessionInfo?: SessionInfo | null;
+            reactions?: { likes: number; dislikes: number };
+            skipVotes?: { count: number; needed: number };
         }) => {
             roomStore.setIsCreator(isCreator);
             roomStore.setListenerCount(listenerCount);
@@ -161,6 +185,13 @@ export const useRoomSocket = (roomId: string) => {
                     );
                 }
             }
+
+            // Populate voting & session state
+            if (sessionInfo) roomStore.setSessionInfo(sessionInfo);
+            if (reactions) roomStore.setReactions(reactions);
+            if (skipVotes) roomStore.setSkipVotes(skipVotes);
+            // Fetch current nominations
+            socket.emit('room:get_nominations', { roomId });
 
             // If a game was running when we joined, populate listener game state
             if (activeGame && !isCreator) {
@@ -394,8 +425,44 @@ export const useRoomSocket = (roomId: string) => {
         });
 
         socket.on('room:game_progress', ({ participantCount }: { participantCount: number }) => {
-            // Listener-side: just a count update, no visual needed
             void participantCount;
+        });
+
+        // ── Voting & Reactions ───────────────────────────────────────────
+        socket.on('room:skip_vote_update', ({ voteCount, needed }: { voteCount: number; needed: number }) => {
+            roomStore.setSkipVotes({ count: voteCount, needed });
+        });
+
+        socket.on('room:reaction_update', ({ likes, dislikes }: { likes: number; dislikes: number }) => {
+            roomStore.setReactions({ likes, dislikes });
+        });
+
+        socket.on('room:emoji_burst', ({ userId: uid, userName, emoji }: { userId: string; userName: string; emoji: string }) => {
+            roomStore.addEmojiBurst({ id: `${Date.now()}-${uid}`, userId: uid, userName, emoji });
+        });
+
+        socket.on('room:nominations_update', ({ nominations }: { nominations: Nomination[] }) => {
+            roomStore.setNominations(nominations);
+        });
+
+        socket.on('room:queue_song_added', ({ title }: { title?: string }) => {
+            toast.success(`"${title ?? 'Song'}" was voted into the queue!`);
+        });
+
+        // Reset per-song state when song changes
+        socket.on('room:song_changed', () => {
+            roomStore.setSkipVotes({ count: 0, needed: useRoomStore.getState().skipVotes.needed });
+            roomStore.setReactions({ likes: 0, dislikes: 0 });
+        });
+
+        // ── Session Timer ────────────────────────────────────────────────
+        socket.on('room:session_warning', ({ remainingMinutes, message }: { remainingMinutes: number; message: string }) => {
+            toast.warning(message);
+            void remainingMinutes;
+        });
+
+        socket.on('room:session_expired', ({ message }: { message: string }) => {
+            toast.error(message);
         });
 
         // ── Creator mic audio relay (listeners only) ──────────────────────────
@@ -442,5 +509,5 @@ export const useRoomSocket = (roomId: string) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, userId]);
 
-    return { sendChat, skipSong, leaveRoom, donate, updateGoal, submitAnswer };
+    return { sendChat, skipSong, leaveRoom, donate, updateGoal, submitAnswer, voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong };
 };

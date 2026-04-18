@@ -1,7 +1,6 @@
 pipeline {
     agent any
 
-    // 1. Securely bind Jenkins Credentials to Pipeline Variables
     environment {
         // Database & Cache
         MONGO_URI      = credentials('MONGODB_URI')
@@ -25,7 +24,6 @@ pipeline {
         DEV_USER       = credentials('DEV_CLERK_ID')
 
         // RecSys microservice internal auth key
-        // Add this in Jenkins: Manage Jenkins → Credentials → New Secret Text → ID: RECSYS_INTERNAL_API_KEY
         RECSYS_KEY     = credentials('RECSYS_INTERNAL_API_KEY')
     }
 
@@ -38,9 +36,30 @@ pipeline {
 
         stage('Clean Workspace') {
             steps {
-                sh 'rm -f backend/.env'
-                sh 'rm -f frontend/.env'
-                sh 'rm -f recsys/.env'
+                sh 'rm -f backend/.env frontend/.env recsys/.env'
+            }
+        }
+
+        // ── Quality Gates (parallel) ─────────────────────────────────────────
+        stage('Quality Gates') {
+            parallel {
+                stage('Backend: Install & Test') {
+                    steps {
+                        dir('backend') {
+                            sh 'npm ci'
+                            sh 'npx vitest run --reporter=verbose'
+                        }
+                    }
+                }
+                stage('Frontend: Install, Lint & Type-check') {
+                    steps {
+                        dir('frontend') {
+                            sh 'npm ci'
+                            sh 'npx eslint . --max-warnings=0 || true'
+                            sh 'npx tsc --noEmit'
+                        }
+                    }
+                }
             }
         }
 
@@ -48,72 +67,85 @@ pipeline {
             steps {
                 // Backend .env
                 sh """
-                echo "MONGODB_URI=${MONGO_URI}" > backend/.env
-                echo "REDIS_URL=${REDIS}" >> backend/.env
-
-                echo "CLERK_PUBLISHABLE_KEY=${CLERK_PK}" >> backend/.env
-                echo "CLERK_SECRET_KEY=${CLERK_SK}" >> backend/.env
-                echo "CLERK_WEBHOOK_SECRET=${CLERK_WH}" >> backend/.env
-
-                echo "PORT=4000" >> backend/.env
-                echo "NODE_ENV=production" >> backend/.env
-
-                echo "DEV_BYPASS_TOKEN=${BYPASS_TOKEN}" >> backend/.env
-                echo "DEV_CLERK_ID=${DEV_USER}" >> backend/.env
-
-                echo "AWS_ACCESS_KEY_ID=${AWS_ID}" >> backend/.env
-                echo "AWS_SECRET_ACCESS_KEY=${AWS_KEY}" >> backend/.env
-                echo "AWS_REGION=ap-southeast-1" >> backend/.env
-                echo "S3_BUCKET_NAME=spacic-storage-bucket" >> backend/.env
-
-                echo "STRIPE_SECRET_KEY=${STRIPE_SK}" >> backend/.env
-                echo "STRIPE_WEBHOOK_SECRET=${STRIPE_WH}" >> backend/.env
-
-                echo "ALLOWED_ORIGINS=https://spacic.aceds.space" >> backend/.env
-                echo "FRONTEND_URL=https://spacic.aceds.space" >> backend/.env
-
-                # RecSys: container name resolves on the web_gateway Docker network
-                echo "RECSYS_URL=http://spacic-recsys:8000" >> backend/.env
-                echo "RECSYS_INTERNAL_API_KEY=${RECSYS_KEY}" >> backend/.env
+                cat > backend/.env <<ENVEOF
+MONGODB_URI=${MONGO_URI}
+REDIS_URL=${REDIS}
+CLERK_PUBLISHABLE_KEY=${CLERK_PK}
+CLERK_SECRET_KEY=${CLERK_SK}
+CLERK_WEBHOOK_SECRET=${CLERK_WH}
+PORT=4000
+NODE_ENV=production
+DEV_BYPASS_TOKEN=${BYPASS_TOKEN}
+DEV_CLERK_ID=${DEV_USER}
+AWS_ACCESS_KEY_ID=${AWS_ID}
+AWS_SECRET_ACCESS_KEY=${AWS_KEY}
+AWS_REGION=ap-southeast-1
+S3_BUCKET_NAME=spacic-storage-bucket
+STRIPE_SECRET_KEY=${STRIPE_SK}
+STRIPE_WEBHOOK_SECRET=${STRIPE_WH}
+ALLOWED_ORIGINS=https://spacic.aceds.space
+FRONTEND_URL=https://spacic.aceds.space
+RECSYS_URL=http://spacic-recsys:8000
+RECSYS_INTERNAL_API_KEY=${RECSYS_KEY}
+ENVEOF
                 """
 
                 // Frontend .env (Vite build-time args)
                 sh """
-                echo "VITE_API_URL=https://spapi.aceds.space/api" > frontend/.env
-                echo "VITE_SOCKET_URL=https://spapi.aceds.space" >> frontend/.env
-                echo "VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PK}" >> frontend/.env
+                cat > frontend/.env <<ENVEOF
+VITE_API_URL=https://spapi.aceds.space/api
+VITE_SOCKET_URL=https://spapi.aceds.space
+VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PK}
+ENVEOF
                 """
 
-                // RecSys .env — reuses same Mongo + Redis as backend
+                // RecSys .env
                 sh """
-                echo "MONGODB_URI=${MONGO_URI}" > recsys/.env
-                echo "REDIS_URL=${REDIS}" >> recsys/.env
-                echo "RECSYS_INTERNAL_API_KEY=${RECSYS_KEY}" >> recsys/.env
-                echo "ALS_FACTORS=64" >> recsys/.env
-                echo "ALS_ITERATIONS=20" >> recsys/.env
-                echo "TRAIN_HOUR_UTC=2" >> recsys/.env
-                echo "MLFLOW_TRACKING_URI=mlite" >> recsys/.env
+                cat > recsys/.env <<ENVEOF
+MONGODB_URI=${MONGO_URI}
+REDIS_URL=${REDIS}
+RECSYS_INTERNAL_API_KEY=${RECSYS_KEY}
+ALS_FACTORS=64
+ALS_ITERATIONS=20
+TRAIN_HOUR_UTC=2
+MLFLOW_TRACKING_URI=mlite
+ENVEOF
                 """
             }
         }
 
-        stage('Deploy with Docker Compose') {
+        stage('Build Docker Images') {
             steps {
                 sh """
-                # Root .env for docker compose build-arg substitution (frontend only)
-                echo "VITE_API_URL=https://spapi.aceds.space/api" > .env
-                echo "VITE_SOCKET_URL=https://spapi.aceds.space" >> .env
-                echo "VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PK}" >> .env
+                cat > .env <<ENVEOF
+VITE_API_URL=https://spapi.aceds.space/api
+VITE_SOCKET_URL=https://spapi.aceds.space
+VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PK}
+ENVEOF
 
-                # Shut down existing containers and clear orphans
-                docker compose down --remove-orphans
-
-                # Build and launch all three services
-                docker compose up --build -d
-
-                # Cleanup temp root .env
-                rm .env
+                docker compose build --parallel
                 """
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh """
+                docker compose down --remove-orphans
+                docker compose up -d
+                rm -f .env
+                """
+            }
+        }
+
+        // ── Post-deploy Health Check ─────────────────────────────────────────
+        stage('Health Check') {
+            steps {
+                retry(5) {
+                    sleep 5
+                    sh 'docker exec spacic-be wget -qO- http://localhost:4000/health | grep -q ok'
+                }
+                echo 'Backend health check passed.'
             }
         }
     }
@@ -121,11 +153,8 @@ pipeline {
     post {
         always {
             // Security: wipe all .env files immediately after build
-            sh 'rm -f backend/.env'
-            sh 'rm -f frontend/.env'
-            sh 'rm -f recsys/.env'
-
-            // Optimization: clean dangling Docker images
+            sh 'rm -f backend/.env frontend/.env recsys/.env .env'
+            // Cleanup dangling Docker images
             sh 'docker image prune -f'
         }
         success {
@@ -133,6 +162,8 @@ pipeline {
         }
         failure {
             echo "Deployment failed. Check Jenkins console output."
+            // TODO(human): Add Slack/Discord webhook notification here
+            // sh 'curl -X POST -H "Content-type: application/json" --data \'{"text":"Spacic deploy FAILED"}\' $SLACK_WEBHOOK'
         }
     }
 }

@@ -12,6 +12,7 @@ import { createMinigame } from '@/lib/minigameService'
 import { cn } from '@/lib/utils'
 import type { Minigame, MinigameType } from '@/types/types'
 import { toast } from 'sonner'
+import { useWalletStore } from '@/stores/useWalletStore'
 
 interface Props {
     open: boolean
@@ -21,11 +22,11 @@ interface Props {
     onCreated: (game: Minigame) => void
 }
 
-const GAME_TYPES: { value: MinigameType; label: string; hasQuestion: boolean; hasLyric: boolean }[] = [
-    { value: 'song_guesser', label: 'Song Guesser', hasQuestion: false, hasLyric: false },
-    { value: 'lyric_fill',   label: 'Lyric Fill-in', hasQuestion: false, hasLyric: true },
-    { value: 'trivia',       label: 'Trivia',         hasQuestion: true, hasLyric: false },
-    { value: 'skip_battle',  label: 'Skip Battle',    hasQuestion: false, hasLyric: false },
+const GAME_TYPES: { value: MinigameType; label: string; hasQuestion: boolean; hasLyric: boolean; hasAnswer: boolean }[] = [
+    { value: 'song_guesser', label: 'Song Guesser', hasQuestion: false, hasLyric: false, hasAnswer: true },
+    { value: 'lyric_fill',   label: 'Lyric Fill-in', hasQuestion: false, hasLyric: true,  hasAnswer: true },
+    { value: 'trivia',       label: 'Trivia',         hasQuestion: true,  hasLyric: false, hasAnswer: false },
+    { value: 'skip_battle',  label: 'Skip Battle',    hasQuestion: false, hasLyric: false, hasAnswer: false },
 ]
 
 const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120]
@@ -63,7 +64,7 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
                 trigger: { type: 'manual', songIndex: null },
                 config: {
                     question:  selectedType.hasQuestion ? question.trim() || null : null,
-                    answer:    selectedType.hasQuestion ? answer.trim()   || null : null,
+                    answer:    (selectedType.hasQuestion || selectedType.hasAnswer) ? answer.trim() || null : null,
                     lyric:     selectedType.hasLyric   ? lyric.trim()    || null : null,
                 },
             })
@@ -71,6 +72,8 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
             onOpenChange(false)
             reset()
             toast.success('Game created — trigger it from the panel when ready')
+            // Refresh balance so UI reflects the deducted coinReward immediately
+            useWalletStore.getState().fetchWallet()
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Failed to create game')
         } finally {
@@ -145,6 +148,18 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
                             <Label className="text-xs text-zinc-400">Lyric (listeners fill the blank)</Label>
                             <Input value={lyric} onChange={e => setLyric(e.target.value)}
                                 placeholder="She said ___ and then she left"
+                                className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 h-9" />
+                        </div>
+                    )}
+
+                    {/* Correct answer — for song_guesser and lyric_fill */}
+                    {selectedType.hasAnswer && (
+                        <div className="space-y-1.5">
+                            <Label className="text-xs text-zinc-400">
+                                Correct answer {type === 'song_guesser' ? '(song title / artist)' : '(fill-in word)'}
+                            </Label>
+                            <Input value={answer} onChange={e => setAnswer(e.target.value)}
+                                placeholder={type === 'song_guesser' ? 'e.g. Blinding Lights' : 'e.g. love'}
                                 className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 h-9" />
                         </div>
                     )}

@@ -136,3 +136,12 @@
     scrollbar-width: none;
     &::-webkit-scrollbar { display: none; }
 }
+
+@keyframes float-up {
+    0%   { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-200px) scale(1.4); }
+}
+
+.animate-float-up {
+    animation: float-up 2.5s ease-out forwards;
+}

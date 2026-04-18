@@ -16,6 +16,9 @@ const AudioPlayer = () => {
     // Tracks programmatic pause (from play effect) so onPause doesn't set listenerLocalPaused
     const programmaticPauseRef = useRef(false);
     const prevSongIdRef = useRef<string | null>(null);
+    // Whether we *want* the audio playing — used by onCanPlay to auto-play
+    // after a new src finishes loading (avoids "interrupted by new load" error)
+    const wantPlayRef = useRef(false);
 
     const currentSong = room?.playlist?.[currentSongIndex];
 
@@ -40,12 +43,22 @@ const AudioPlayer = () => {
     useEffect(() => {
         if (!audioRef.current) return;
         // Skip server play/pause commands if listener has locally paused
-        if (listenerLocalPaused) return;
+        if (listenerLocalPaused) {
+            wantPlayRef.current = false;
+            return;
+        }
         if (isPlaying) {
-            audioRef.current.play().catch((err) => {
-                console.warn('[AudioPlayer] play() failed:', err.message);
-            });
+            wantPlayRef.current = true;
+            // If audio isn't loaded yet (new src still fetching), defer to onCanPlay.
+            // readyState < 2 = HAVE_CURRENT_DATA: calling play() now would be
+            // interrupted by the in-flight load, producing the "interrupted" DOMException.
+            if (audioRef.current.readyState >= 2) {
+                audioRef.current.play().catch((err) => {
+                    console.warn('[AudioPlayer] play() failed:', err.message);
+                });
+            }
         } else {
+            wantPlayRef.current = false;
             // Mark as programmatic so onPause doesn't set listenerLocalPaused
             programmaticPauseRef.current = true;
             audioRef.current.pause();
@@ -63,6 +76,15 @@ const AudioPlayer = () => {
     return (
         <audio
             ref={audioRef}
+            onCanPlay={() => {
+                // Audio has buffered enough to play. If we wanted to play but
+                // couldn't because the src was still loading, start now.
+                if (wantPlayRef.current && !usePlayerStore.getState().listenerLocalPaused) {
+                    audioRef.current?.play().catch((err) => {
+                        console.warn('[AudioPlayer] onCanPlay play() failed:', err.message);
+                    });
+                }
+            }}
             onTimeUpdate={() => {
                 if (!audioRef.current) return;
                 const audioMs = audioRef.current.currentTime * 1000;

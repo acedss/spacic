@@ -14,6 +14,7 @@ import { donateToRoom } from '../services/wallet.service.js';
 import { goOfflineInternal, recordSongTransition } from '../services/room.service.js';
 import { findAndActivateScheduledGame, recordAnswer, completeGame, settleGamePrize } from '../services/minigame.service.js';
 import { Minigame } from '../models/minigame.model.js';
+import { SongReaction } from '../models/songReaction.model.js';
 import geoip from 'geoip-lite';
 
 // Per-process timers — intentionally not in Redis.
@@ -105,6 +106,7 @@ const notifyFriendsActivityChanged = async (io, userIdOrIds) => {
 
 const goOfflineAndNotify = async (io, roomId, reason) => {
     stopSyncCheckpoint(roomId);
+    stopSessionTimer(roomId);
     disconnectTimers.delete(roomId);
     songEndedDebounce.delete(roomId);
     pendingAdvance.delete(roomId);
@@ -112,6 +114,10 @@ const goOfflineAndNotify = async (io, roomId, reason) => {
     if (gameTimer) { clearTimeout(gameTimer); gameTimers.delete(roomId); }
     const pendingNotify = notifyTimers.get(roomId);
     if (pendingNotify) { clearTimeout(pendingNotify); notifyTimers.delete(roomId); }
+    await Promise.all([
+        clearPerSongState(roomId),
+        socketManager.clearQueueVotes(roomId),
+    ]);
 
     // Capture listener IDs BEFORE goOfflineInternal marks them inactive + clears Redis
     const activeListeners = await Listener.find({ roomId, isActive: true }).select('userId');
@@ -247,6 +253,58 @@ const scheduleSongEndingSoon = (io, roomId, creatorId, durationMs) => {
     songEndingSoonTimers.set(roomId, timer);
 };
 
+// ── Per-song cleanup (votes + reactions) ─────────────────────────────────────
+
+const clearPerSongState = async (roomId) => {
+    await Promise.all([
+        socketManager.clearSkipVotes(roomId),
+        socketManager.clearSongReactions(roomId),
+    ]);
+};
+
+// ── Session Time Limit ───────────────────────────────────────────────────────
+// Per-tier: FREE=60min, PREMIUM=180min, CREATOR=unlimited.
+// Timer starts on goLive, emits warnings, auto-closes room.
+
+const sessionTimers = new Map();
+const sessionWarningTimers = new Map();
+
+const startSessionTimer = (io, roomId, maxMinutes) => {
+    if (!Number.isFinite(maxMinutes)) return;
+    const maxMs = maxMinutes * 60_000;
+    const warnMs = maxMs - 5 * 60_000; // warn 5min before
+
+    if (warnMs > 0) {
+        const warnTimer = setTimeout(() => {
+            sessionWarningTimers.delete(roomId);
+            io.to(roomId).emit('room:session_warning', {
+                roomId,
+                remainingMinutes: 5,
+                message: 'Session ending in 5 minutes — upgrade for longer sessions!',
+            });
+        }, warnMs);
+        sessionWarningTimers.set(roomId, warnTimer);
+    }
+
+    const timer = setTimeout(() => {
+        sessionTimers.delete(roomId);
+        sessionWarningTimers.delete(roomId);
+        io.to(roomId).emit('room:session_expired', {
+            roomId,
+            message: 'Session time limit reached. Room going offline.',
+        });
+        goOfflineAndNotify(io, roomId, 'session_time_limit');
+    }, maxMs);
+    sessionTimers.set(roomId, timer);
+};
+
+const stopSessionTimer = (roomId) => {
+    const timer = sessionTimers.get(roomId);
+    if (timer) { clearTimeout(timer); sessionTimers.delete(roomId); }
+    const warn = sessionWarningTimers.get(roomId);
+    if (warn) { clearTimeout(warn); sessionWarningTimers.delete(roomId); }
+};
+
 // ── Auth guard ───────────────────────────────────────────────────────────────
 
 const canControlRoom = (userSession, roomSession) =>
@@ -312,6 +370,22 @@ export const initializeSocket = (httpServer) => {
 
                 // Creator page-reload: cancel the shutdown countdown automatically
                 if (isCreator) {
+                    // Start session timer if not already running (first creator join or reconnect)
+                    if (!sessionTimers.has(roomId)) {
+                        const creatorUser = await User.findById(user.userId).select('userTier').lean();
+                        const maxMins = socketManager.getMaxSessionMinutesByTier(creatorUser?.userTier);
+                        // Offset by time already elapsed since liveAt
+                        const room = await Room.findById(roomId).select('liveAt').lean();
+                        const elapsedMs = room?.liveAt ? Date.now() - new Date(room.liveAt).getTime() : 0;
+                        const remainingMins = maxMins - (elapsedMs / 60_000);
+                        if (remainingMins > 0) {
+                            startSessionTimer(io, roomId, remainingMins);
+                        } else if (Number.isFinite(maxMins)) {
+                            goOfflineAndNotify(io, roomId, 'session_time_limit');
+                            return;
+                        }
+                    }
+
                     const pendingNotify = notifyTimers.get(roomId);
                     if (pendingNotify) { clearTimeout(pendingNotify); notifyTimers.delete(roomId); }
 
@@ -329,12 +403,31 @@ export const initializeSocket = (httpServer) => {
                 // If a game is currently active in this room, include it so late-joiners see it
                 const activeGame = await Minigame.findOne({ roomId, status: 'active' }).lean();
 
+                // Resolve session time limit for this room's creator tier
+                const creatorDoc = await User.findById(roomSession.creatorId).select('userTier').lean();
+                const maxSessionMinutes = socketManager.getMaxSessionMinutesByTier(creatorDoc?.userTier);
+                const roomForLiveAt = await Room.findById(roomId).select('liveAt voteThresholdPercent').lean();
+
+                // Current reaction counts for the playing song
+                const reactionCounts = await socketManager.getSongReactionCounts(roomId);
+                const skipVoteCount  = await socketManager.getSkipVoteCount(roomId);
+                const skipNeeded     = Math.max(1, Math.ceil(
+                    (roomSession.listenerCount || 1) * (roomForLiveAt?.voteThresholdPercent ?? 50) / 100
+                ));
+
                 socket.emit('room:joined', {
                     roomId,
                     playback: playbackState ? { ...playbackState, currentSongPresignedUrl } : null,
                     serverTimestamp: Date.now(),
                     listenerCount:   roomSession.listenerCount,
                     isCreator,
+                    sessionInfo: {
+                        maxSessionMinutes: Number.isFinite(maxSessionMinutes) ? maxSessionMinutes : null,
+                        liveAt: roomForLiveAt?.liveAt?.toISOString?.() ?? roomForLiveAt?.liveAt ?? null,
+                        voteThresholdPercent: roomForLiveAt?.voteThresholdPercent ?? 50,
+                    },
+                    reactions: reactionCounts,
+                    skipVotes: { count: skipVoteCount, needed: skipNeeded },
                     activeGame: activeGame ? {
                         minigameId:      activeGame._id.toString(),
                         type:            activeGame.type,
@@ -467,14 +560,14 @@ export const initializeSocket = (httpServer) => {
                     return socket.emit('room:error', { message: 'Only the creator or admin can skip songs' });
                 }
 
-                // Fetch index + startTimeUnix together
                 const roomDoc      = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
                 const currentIndex = roomDoc?.playback?.currentSongIndex ?? 0;
                 const prevStart    = roomDoc?.playback?.startTimeUnix ?? null;
 
-                // Snapshot current song BEFORE advancing (needed for analytics)
                 const playlist    = await socketManager.getCachedPlaylist(roomId);
                 const currentSong = playlist?.[currentIndex] ?? null;
+
+                await clearPerSongState(roomId);
 
                 const { nextSong, nextIndex, presignedUrl, startTimeUnix: nextStart } = await getNextSong(roomId, currentIndex);
                 io.to(roomId).emit('room:song_changed', {
@@ -487,11 +580,177 @@ export const initializeSocket = (httpServer) => {
                     scheduleSongEndingSoon(io, roomId, roomSess.creatorId, nextSong.duration);
                 }
 
-                // Fire-and-forget — analytics must not block playback
                 recordSongTransition(roomId, currentSong, prevStart, true)
                     .catch(err => console.error('[room:skip analytics]', err.message));
             } catch (error) {
                 socket.emit('room:error', { message: error.message });
+            }
+        });
+
+        // ── Vote to Skip (listeners) ─────────────────────────────────────────
+        socket.on('room:vote_skip', async ({ roomId }) => {
+            try {
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+                const roomSession = await socketManager.getRoomById(roomId);
+                if (!roomSession) return;
+                if (roomSession.creatorId === userSession.userId) {
+                    return socket.emit('room:error', { message: 'Creator should use skip, not vote' });
+                }
+
+                const alreadyVoted = await socketManager.hasVotedToSkip(roomId, userSession.userId);
+                if (alreadyVoted) return socket.emit('room:error', { message: 'Already voted to skip' });
+
+                await socketManager.addSkipVote(roomId, userSession.userId);
+                const voteCount     = await socketManager.getSkipVoteCount(roomId);
+                const listenerCount = roomSession.listenerCount || 1;
+
+                const roomDoc  = await Room.findById(roomId).select('voteThresholdPercent');
+                const threshold = roomDoc?.voteThresholdPercent ?? 50;
+                const needed    = Math.max(1, Math.ceil(listenerCount * threshold / 100));
+
+                io.to(roomId).emit('room:skip_vote_update', {
+                    roomId, voteCount, needed, votedBy: userSession.userName,
+                });
+
+                if (voteCount >= needed) {
+                    await clearPerSongState(roomId);
+                    const roomDoc2     = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
+                    const currentIndex = roomDoc2?.playback?.currentSongIndex ?? 0;
+                    const prevStart    = roomDoc2?.playback?.startTimeUnix ?? null;
+                    const playlist     = await socketManager.getCachedPlaylist(roomId);
+                    const currentSong  = playlist?.[currentIndex] ?? null;
+
+                    const { nextSong, nextIndex, presignedUrl, startTimeUnix: nextStart } = await getNextSong(roomId, currentIndex);
+                    io.to(roomId).emit('room:song_changed', {
+                        roomId, songIndex: nextIndex, song: nextSong,
+                        songPresignedUrl: presignedUrl, startTimeUnix: nextStart, serverTimestamp: Date.now(),
+                    });
+                    emitSystemMessage(io, roomId, `Listeners voted to skip! Now playing: ${nextSong.title}`);
+                    recordSongTransition(roomId, currentSong, prevStart, true)
+                        .catch(err => console.error('[vote_skip analytics]', err.message));
+                }
+            } catch (error) {
+                console.error('[room:vote_skip]', error.message);
+                socket.emit('room:error', { message: 'Vote failed' });
+            }
+        });
+
+        // ── Song Reactions (like/dislike) ────────────────────────────────────
+        socket.on('room:song_reaction', async ({ roomId, reaction }) => {
+            try {
+                if (reaction !== 'like' && reaction !== 'dislike') return;
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+
+                const result = await socketManager.addSongReaction(roomId, userSession.userId, reaction);
+                if (!result) return socket.emit('room:error', { message: 'Already reacted' });
+
+                io.to(roomId).emit('room:reaction_update', {
+                    roomId, likes: result.likes, dislikes: result.dislikes,
+                });
+
+                // Persist to MongoDB for RecSys (fire-and-forget)
+                const playbackState = await socketManager.getRoomPlaybackState(roomId);
+                if (playbackState?.currentSongId) {
+                    SongReaction.findOneAndUpdate(
+                        { userId: userSession.userId, songId: playbackState.currentSongId },
+                        { reaction, roomId },
+                        { upsert: true }
+                    ).catch(err => console.error('[song_reaction persist]', err.message));
+                }
+            } catch (error) {
+                console.error('[room:song_reaction]', error.message);
+            }
+        });
+
+        // ── Emoji Burst (ephemeral, rate-limited) ────────────────────────────
+        socket.on('room:emoji', async ({ roomId, emoji }) => {
+            try {
+                if (typeof emoji !== 'string' || emoji.length > 8) return;
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+
+                const allowed = await socketManager.canSendEmoji(roomId, userSession.userId);
+                if (!allowed) return;
+
+                socket.to(roomId).emit('room:emoji_burst', {
+                    userId: userSession.userId, userName: userSession.userName, emoji,
+                });
+            } catch (error) {
+                console.error('[room:emoji]', error.message);
+            }
+        });
+
+        // ── Queue Voting (nominate + upvote) ─────────────────────────────────
+        socket.on('room:nominate_song', async ({ roomId, songId }) => {
+            try {
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+
+                const song = await Song.findById(songId).select('title artist').lean();
+                if (!song) return socket.emit('room:error', { message: 'Song not found' });
+
+                const nominations = await socketManager.nominateSong(roomId, songId, userSession.userId, {
+                    title: song.title, artist: song.artist, nominatorName: userSession.userName,
+                });
+                if (!nominations) return socket.emit('room:error', { message: 'Song already nominated' });
+
+                io.to(roomId).emit('room:nominations_update', { roomId, nominations });
+                emitSystemMessage(io, roomId, `${userSession.userName} nominated "${song.title}"`);
+            } catch (error) {
+                console.error('[room:nominate_song]', error.message);
+                socket.emit('room:error', { message: 'Nomination failed' });
+            }
+        });
+
+        socket.on('room:vote_queue', async ({ roomId, songId }) => {
+            try {
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+
+                const newScore = await socketManager.voteForSong(roomId, songId, userSession.userId);
+                if (newScore === null) return socket.emit('room:error', { message: 'Already voted for this song' });
+
+                const roomSession = await socketManager.getRoomById(roomId);
+                const roomDoc     = await Room.findById(roomId).select('voteThresholdPercent');
+                const threshold   = roomDoc?.voteThresholdPercent ?? 50;
+                const listenerCount = roomSession?.listenerCount || 1;
+                const needed = Math.max(1, Math.ceil(listenerCount * threshold / 100));
+
+                if (newScore >= needed) {
+                    await Room.findByIdAndUpdate(roomId, { $addToSet: { playlist: songId } });
+                    const playlist = await socketManager.getCachedPlaylist(roomId);
+                    const song = await Song.findById(songId).lean();
+                    if (playlist && song) {
+                        const newEntry = {
+                            _id: song._id.toString(), title: song.title, artist: song.artist,
+                            duration: song.duration, imageUrl: song.imageUrl || '', s3Key: song.s3Key,
+                            albumId: song.albumId?.toString() ?? null,
+                        };
+                        await socketManager.cacheRoomPlaylist(roomId, [...playlist, newEntry]);
+                    }
+                    await socketManager.removeNomination(roomId, songId);
+                    const nominations = await socketManager.getQueueNominations(roomId);
+                    io.to(roomId).emit('room:nominations_update', { roomId, nominations });
+                    io.to(roomId).emit('room:queue_song_added', { roomId, songId, title: song?.title });
+                    emitSystemMessage(io, roomId, `"${song?.title}" was voted into the queue!`);
+                } else {
+                    const nominations = await socketManager.getQueueNominations(roomId);
+                    io.to(roomId).emit('room:nominations_update', { roomId, nominations });
+                }
+            } catch (error) {
+                console.error('[room:vote_queue]', error.message);
+                socket.emit('room:error', { message: 'Vote failed' });
+            }
+        });
+
+        socket.on('room:get_nominations', async ({ roomId }) => {
+            try {
+                const nominations = await socketManager.getQueueNominations(roomId);
+                socket.emit('room:nominations_update', { roomId, nominations });
+            } catch (error) {
+                console.error('[room:get_nominations]', error.message);
             }
         });
 
@@ -508,6 +767,7 @@ export const initializeSocket = (httpServer) => {
                 const serverIndex = roomDoc.playback?.currentSongIndex ?? 0;
                 if (currentSongIndex !== serverIndex) return;
                 songEndedDebounce.set(roomId, Date.now());
+                await clearPerSongState(roomId);
 
                 const playlist    = await socketManager.getCachedPlaylist(roomId);
                 const currentSong = playlist?.[currentSongIndex] ?? null;
@@ -543,7 +803,7 @@ export const initializeSocket = (httpServer) => {
                         io.to(roomId).emit('room:game_result', {
                             roomId,
                             minigameId:       activeGame._id.toString(),
-                            winner:           completed?.winner ?? null,
+                            winner:           completed?.winner?.userId ? completed.winner : null,
                             participantCount: completed?.participantCount ?? 0,
                         });
                         // Brief pause before the next song starts
@@ -620,7 +880,7 @@ export const initializeSocket = (httpServer) => {
                     io.to(roomId).emit('room:game_result', {
                         roomId,
                         minigameId:       game._id.toString(),
-                        winner:           completed?.winner ?? null,
+                        winner:           completed?.winner?.userId ? completed.winner : null,
                         participantCount: completed?.participantCount ?? 0,
                     });
                 }, game.durationSeconds * 1000);
@@ -656,7 +916,7 @@ export const initializeSocket = (httpServer) => {
                     await settleGamePrize(completed).catch(err => console.error('[settleGamePrize]', err.message));
                     io.to(roomId).emit('room:game_result', {
                         roomId, minigameId,
-                        winner:           completed?.winner ?? null,
+                        winner:           completed?.winner?.userId ? completed.winner : null,
                         participantCount: completed?.participantCount ?? 0,
                     });
 
@@ -752,8 +1012,8 @@ export const initializeSocket = (httpServer) => {
                 const roomSession = await socketManager.getRoomById(roomId);
 
                 if (roomSession && roomSession.creatorId === userSession.userId) {
-                    const SILENT_MS = 10_000;  // silent reconnect window — no notification shown
-                    const GRACE_MS  = 45_000;  // total time before room closes
+                    const SILENT_MS = 30_000;  // silent reconnect window — no notification shown (covers page reload)
+                    const GRACE_MS  = 300_000; // 5 min total before room closes (matches tier policy)
 
                     // Delay notification by SILENT_MS so a quick page reload never shows
                     // the countdown to listeners at all.

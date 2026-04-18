@@ -1,7 +1,7 @@
 // ListenerGamePanel — shown to listeners when an active minigame is running
 // Reads activeGame + gameSecondsLeft from useRoomStore (set by useRoomSocket handlers)
 // Calls submitAnswer from useRoomSession when listener submits
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Trophy, Clock, Gamepad2, Send } from 'lucide-react'
 import { useRoomStore } from '@/stores/useRoomStore'
 import { useRoomSession } from '@/providers/RoomSessionProvider'
@@ -24,9 +24,16 @@ export const ListenerGamePanel = () => {
     const [answer, setAnswer]     = useState('')
     const [submitted, setSubmitted] = useState(false)
 
-    // Reset input whenever a new game starts
     const gameId = activeGame?.minigameId
-    // biome-ignore: intentional key-derived reset
+
+    // Reset answer + submitted state whenever a different game becomes active.
+    // Can't rely on component unmount because React may batch null→newGame into
+    // a single render, skipping the null state entirely.
+    useEffect(() => {
+        setAnswer('');
+        setSubmitted(false);
+    }, [gameId]);
+
     if (!gameId) return null
 
     const handleSubmit = () => {

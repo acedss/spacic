@@ -22,6 +22,11 @@ interface RoomSessionContextValue {
     donate:       (amount: number) => void;
     updateGoal:   (newGoal: number) => void;
     submitAnswer: (minigameId: string, answer: string) => void;
+    voteSkip:     () => void;
+    reactToSong:  (reaction: 'like' | 'dislike') => void;
+    sendEmoji:    (emoji: string) => void;
+    nominateSong: (songId: string) => void;
+    voteForSong:  (songId: string) => void;
 }
 
 const RoomSessionContext = createContext<RoomSessionContextValue | null>(null);
@@ -31,7 +36,7 @@ export const RoomSessionProvider = ({ children }: { children: React.ReactNode })
     const roomStore   = useRoomStore();
     const playerStore = usePlayerStore();
 
-    const { sendChat, skipSong, leaveRoom: socketLeave, donate, updateGoal, submitAnswer } =
+    const { sendChat, skipSong, leaveRoom: socketLeave, donate, updateGoal, submitAnswer, voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong } =
         useRoomSocket(activeRoomId ?? '');
 
     const joinRoom = useCallback((roomId: string) => {
@@ -46,7 +51,10 @@ export const RoomSessionProvider = ({ children }: { children: React.ReactNode })
     }, [socketLeave, setActiveRoomId, roomStore, playerStore]);
 
     return (
-        <RoomSessionContext.Provider value={{ activeRoomId, joinRoom, leaveRoom, sendChat, skipSong, donate, updateGoal, submitAnswer }}>
+        <RoomSessionContext.Provider value={{
+            activeRoomId, joinRoom, leaveRoom, sendChat, skipSong, donate, updateGoal, submitAnswer,
+            voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong,
+        }}>
             {children}
         </RoomSessionContext.Provider>
     );

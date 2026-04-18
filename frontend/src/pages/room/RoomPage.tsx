@@ -2,7 +2,7 @@ import { useEffect, useCallback, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { axiosInstance } from '@/lib/axios';
-import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Coins } from 'lucide-react';
+import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Coins, Vote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -16,10 +16,15 @@ import { DonationPanel } from './components/DonationPanel';
 import { GuestAuthDialog } from './components/GuestAuthDialog';
 import { CreatorSpeakingOverlay } from './components/CreatorSpeakingOverlay';
 import { ListenerGamePanel } from './components/ListenerGamePanel';
+import { VoteSkipButton } from './components/VoteSkipButton';
+import { SongReactions } from './components/SongReactions';
+import { EmojiBurstOverlay } from './components/EmojiBurstOverlay';
+import { NominationsPanel } from './components/NominationsPanel';
+import { SessionTimer } from './components/SessionTimer';
 import type { RoomInfo } from '@/types/types';
 import { cn } from '@/lib/utils';
 
-type RightTab = 'chat' | 'queue' | 'donate';
+type RightTab = 'chat' | 'queue' | 'donate' | 'vote';
 
 export const RoomPage = () => {
     const { roomId } = useParams<{ roomId: string }>();
@@ -32,7 +37,7 @@ export const RoomPage = () => {
 
     const roomStore = useRoomStore();
     const playerStore = usePlayerStore();
-    const { joinRoom, leaveRoom, sendChat, skipSong, donate, updateGoal } = useRoomSession();
+    const { joinRoom, leaveRoom, sendChat, skipSong, donate, updateGoal, voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong } = useRoomSession();
 
     // Track referral once on mount — fire-and-forget, never blocks UX
     useEffect(() => {
@@ -111,6 +116,7 @@ export const RoomPage = () => {
         <div className="flex flex-col md:flex-row h-full gap-3 p-3 min-h-0 relative">
             {/* Top-right action */}
             <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+                <SessionTimer />
                 {isSignedIn ? (
                     <Button
                         onClick={handleLeave}
@@ -132,9 +138,20 @@ export const RoomPage = () => {
                 )}
             </div>
 
-            {/* Left: Player */}
-            <div className="w-full md:w-72 flex-shrink-0">
+            {/* Left: Player + interactions */}
+            <div className="w-full md:w-72 flex-shrink-0 flex flex-col gap-2">
                 <RoomPlayer onSkip={skipSong} onClose={handleGoOffline} />
+                {isSignedIn && (
+                    <div className="flex items-center justify-between gap-2 px-1">
+                        <SongReactions onReact={reactToSong} />
+                        <VoteSkipButton onVoteSkip={voteSkip} />
+                    </div>
+                )}
+                {isSignedIn && (
+                    <div className="px-1">
+                        <EmojiBurstOverlay onSendEmoji={sendEmoji} />
+                    </div>
+                )}
             </div>
 
             {/* Right: Tabbed panel */}
@@ -144,6 +161,7 @@ export const RoomPage = () => {
                     {([
                         { id: 'chat'   as RightTab, icon: MessageSquare, label: 'Chat' },
                         { id: 'queue'  as RightTab, icon: Music2,         label: 'Queue' },
+                        { id: 'vote'   as RightTab, icon: Vote,           label: 'Vote' },
                         { id: 'donate' as RightTab, icon: Coins,          label: 'Donate' },
                     ] as const).map(({ id, icon: Icon, label }) => (
                         <button
@@ -169,6 +187,9 @@ export const RoomPage = () => {
                     )}
                     {rightTab === 'queue' && (
                         <PlaylistPanel />
+                    )}
+                    {rightTab === 'vote' && (
+                        <NominationsPanel onNominate={nominateSong} onVote={voteForSong} />
                     )}
                     {rightTab === 'donate' && (
                         <DonationPanel onDonate={donate} onUpdateGoal={updateGoal} isCreator={roomStore.isCreator} />

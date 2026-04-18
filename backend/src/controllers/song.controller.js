@@ -62,7 +62,7 @@ export const getTrending = async (req, res, next) => {
 // Reads from UserDailyStat rollup if available, falls back to raw ListenEvent scan.
 export const getMyStats = async (req, res, next) => {
     try {
-        const clerkId = req.auth?.userId;
+        const clerkId = req.auth().userId;
         const user    = await User.findOne({ clerkId }).select('_id').lean();
         if (!user) return res.status(404).json({ message: 'User not found' });
 
