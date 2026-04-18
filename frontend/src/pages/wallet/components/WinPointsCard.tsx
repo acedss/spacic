@@ -1,6 +1,6 @@
 // WinPointsCard — WinPoints balance, activity gate (listener or creator), Stripe Connect, withdraw
 import { useEffect, useState } from 'react'
-import { Trophy, ExternalLink, CheckCircle2, Clock, Loader2, ChevronDown, ChevronUp, ArrowDownToLine, AlertCircle, Radio, Users } from 'lucide-react'
+import { Trophy, ExternalLink, CheckCircle2, Clock, Loader2, ChevronDown, ChevronUp, ArrowDownToLine, AlertCircle } from 'lucide-react'
 import { useWalletStore } from '@/stores/useWalletStore'
 import { WithdrawDialog } from './WithdrawDialog'
 import { Skeleton } from '@/components/ui/skeleton'
