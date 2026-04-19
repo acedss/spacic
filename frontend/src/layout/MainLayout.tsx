@@ -87,7 +87,14 @@ const MainLayout = () => {
                     </>
                 )}
 
-                <main className={cn('flex-1 overflow-y-auto hide-scrollbar', isRoomPage ? 'overflow-hidden' : 'pb-28')}>
+                <main className={cn(
+                    'flex-1 hide-scrollbar',
+                    // Room pages manage their own inner scroll, but we still reserve
+                    // h-24 (96px) at the bottom so the fixed playback bar doesn't
+                    // overlap the chat input, constellation, or queue. Without pb-24,
+                    // any child using h-full extends behind the bar.
+                    isRoomPage ? 'overflow-hidden pb-24' : 'overflow-y-auto pb-28',
+                )}>
                     <Outlet />
                 </main>
 

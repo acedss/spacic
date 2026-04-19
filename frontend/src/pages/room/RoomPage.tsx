@@ -2,7 +2,7 @@ import { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { axiosInstance } from '@/lib/axios';
-import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Vote, WifiOff, Mic, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Vote, WifiOff, Mic, Sparkles } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useRoomSession } from '@/providers/RoomSessionProvider';
@@ -26,91 +26,84 @@ import { cn } from '@/lib/utils';
 type RightTab = 'chat' | 'tip' | 'goal';
 
 /* ─── Constellation ─────────────────────────────────────────────────────── */
+/* Compact bounded layout: fixed 176px orb height, safe dot range (22–78% y)
+   to guarantee no clipping regardless of column width.                      */
 const Constellation = ({ room, listenerCount }: { room: RoomInfo; listenerCount: number }) => {
     const nodes = useMemo(() => {
-        return Array.from({ length: 12 }, (_, i) => {
-            const angle = (i / 12) * Math.PI * 2;
-            const radius = 28 + (i % 3) * 9;
+        const N = Math.min(10, Math.max(3, listenerCount || 6));
+        return Array.from({ length: N }, (_, i) => {
+            const angle = (i / N) * Math.PI * 2;
+            const radius = 22 + (i % 3) * 6; // 22, 28, 34 — all safe inside bounds
             const x = 50 + Math.cos(angle) * radius;
             const y = 50 + Math.sin(angle) * radius;
-            const dx = ((i * 7) % 12) - 6;
-            const dy = ((i * 11) % 10) - 5;
-            const hue = (i * 31) % 360;
-            return { i, x, y, dx, dy, delay: (i * 0.25) % 2, hue };
+            const hue = (i * 37) % 360;
+            return { i, x, y, delay: (i * 0.25) % 2, hue };
         });
-    }, []);
+    }, [listenerCount]);
 
-    const coverUrl = (room as any).coverUrl ?? '';
     const creator = (room as any).creatorId as { fullName?: string; imageUrl?: string } | undefined;
 
     return (
-        <div className="rounded-2xl ring-1 ring-white/10 p-5 h-fit glass relative overflow-hidden">
-            <div className="flex items-center justify-between mb-4">
+        <div className="rounded-2xl ring-1 ring-white/10 p-4 glass relative overflow-hidden">
+            <div className="flex items-center justify-between mb-3">
                 <div>
                     <div className="mono text-[9px] uppercase tracking-[0.25em]" style={{ color: 'var(--fg-3)' }}>Listening together</div>
-                    <p className="text-[13px] text-white mt-1">
-                        {listenerCount.toLocaleString()} people
+                    <p className="text-[12px] text-white mt-0.5">
+                        {listenerCount.toLocaleString()} {listenerCount === 1 ? 'person' : 'people'}
                     </p>
                 </div>
-                <button className="inline-flex items-center gap-1 h-7 px-3 rounded-lg text-[11px] ring-1 ring-white/10 hover:bg-white/8 transition-colors" style={{ color: 'var(--fg-2)' }}>
+                <button className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] ring-1 ring-white/10 hover:bg-white/8 transition-colors" style={{ color: 'var(--fg-2)' }}>
                     <Users className="size-3" /> All
                 </button>
             </div>
 
-            <div className="relative rounded-xl overflow-hidden" style={{ aspectRatio: '5/4', background: 'radial-gradient(ellipse at center, oklch(0.22 0.06 295 / 0.6), oklch(0.12 0.02 285) 70%)' }}>
+            {/* Fixed-height orb — no more aspect-ratio surprises */}
+            <div className="relative rounded-xl overflow-hidden h-44" style={{ background: 'radial-gradient(ellipse at center, oklch(0.22 0.06 295 / 0.5), oklch(0.12 0.02 285) 75%)' }}>
                 {/* orbit rings */}
                 <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
                     <circle cx="50" cy="50" r="18" fill="none" stroke="oklch(1 0 0 / 0.05)" strokeDasharray="1 2" />
-                    <circle cx="50" cy="50" r="30" fill="none" stroke="oklch(1 0 0 / 0.04)" strokeDasharray="1 2" />
-                    <circle cx="50" cy="50" r="40" fill="none" stroke="oklch(1 0 0 / 0.03)" strokeDasharray="1 2" />
+                    <circle cx="50" cy="50" r="28" fill="none" stroke="oklch(1 0 0 / 0.04)" strokeDasharray="1 2" />
+                    <circle cx="50" cy="50" r="38" fill="none" stroke="oklch(1 0 0 / 0.03)" strokeDasharray="1 2" />
                 </svg>
 
                 {/* Host at center */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
                     <div className="relative">
                         {creator?.imageUrl ? (
                             <img src={creator.imageUrl}
-                                className="w-14 h-14 rounded-full object-cover ring-2 ring-[oklch(0.88_0.12_75)]"
-                                style={{ boxShadow: '0 0 30px oklch(0.88 0.12 75 / 0.6)' }}
+                                className="w-11 h-11 rounded-full object-cover ring-2 ring-[oklch(0.88_0.12_75)]"
+                                style={{ boxShadow: '0 0 22px oklch(0.88 0.12 75 / 0.5)' }}
                                 alt="" />
                         ) : (
-                            <div className="w-14 h-14 rounded-full ring-2 ring-[oklch(0.88_0.12_75)]"
-                                style={{ background: 'oklch(0.3 0.08 295)', boxShadow: '0 0 30px oklch(0.88 0.12 75 / 0.6)' }} />
+                            <div className="w-11 h-11 rounded-full ring-2 ring-[oklch(0.88_0.12_75)]"
+                                style={{ background: 'oklch(0.3 0.08 295)', boxShadow: '0 0 22px oklch(0.88 0.12 75 / 0.5)' }} />
                         )}
-                        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[8px] mono uppercase bg-[oklch(0.88_0.12_75)] text-[var(--ink-0)] font-semibold tracking-wider">Host</span>
+                        <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[7px] mono uppercase bg-[oklch(0.88_0.12_75)] text-[var(--ink-0)] font-semibold tracking-wider whitespace-nowrap">Host</span>
                     </div>
                 </div>
 
-                {/* Listener avatar dots */}
+                {/* Listener dots — scales with real listener count */}
                 {nodes.map(n => (
                     <div key={n.i} className="absolute drift"
                         style={{
                             left: `${n.x}%`, top: `${n.y}%`,
                             transform: 'translate(-50%,-50%)',
-                            '--dx': `${n.dx}px`, '--dy': `${n.dy}px`,
                             animationDelay: `${n.delay}s`,
-                        } as React.CSSProperties}>
-                        <div className="w-8 h-8 rounded-full ring-2 ring-white/20"
-                            style={{ background: `oklch(0.5 0.12 ${n.hue})` }} />
-                        {n.i === 3 && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[oklch(0.72_0.22_20)] ring-2 ring-[var(--ink-0)]" />}
+                        }}>
+                        <div className="w-6 h-6 rounded-full ring-2 ring-white/20"
+                            style={{ background: `oklch(0.55 0.14 ${n.hue})` }} />
                     </div>
                 ))}
-
-                {/* Country badges */}
-                <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-1.5">
-                    {['🇩🇪 Berlin', '🇯🇵 Tokyo', '🇳🇬 Lagos', '🇨🇱 Santiago', '+38 cities'].map((t, i) => (
-                        <span key={i} className="mono text-[9px] px-1.5 py-0.5 rounded bg-black/40 text-white/70 ring-1 ring-white/10">{t}</span>
-                    ))}
-                </div>
             </div>
 
-            <div className="mt-4 flex items-center gap-2 px-1">
-                <div className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--fg-2)' }}>
-                    <Mic className="size-3 text-[oklch(0.72_0.22_20)]" />
-                    <span>{creator?.fullName ?? 'Host'} is speaking</span>
-                </div>
+            {/* Speaking indicator — compact single row */}
+            <div className="mt-3 flex items-center gap-2">
+                <Mic className="size-3 text-[oklch(0.72_0.22_20)]" />
+                <span className="text-[11px] truncate" style={{ color: 'var(--fg-2)' }}>
+                    {creator?.fullName ?? 'Host'} is speaking
+                </span>
                 <span className="ml-auto inline-flex items-end gap-[2px] text-[oklch(0.72_0.22_20)]">
-                    {[8, 13, 9, 12].map((h, i) => (
+                    {[8, 12, 9, 11].map((h, i) => (
                         <span key={i} style={{ width: 2, height: h, background: 'currentColor', borderRadius: 1, opacity: 0.8, animation: `wf ${0.9 + i * 0.2}s ease-in-out ${i * 0.2}s infinite alternate` }} />
                     ))}
                 </span>
@@ -220,14 +213,15 @@ const NowMoment = ({ room }: { room: RoomInfo }) => {
 };
 
 /* ─── ReactionsRow ──────────────────────────────────────────────────────── */
-const ReactionsRow = ({ onReact, onSendEmoji, onVoteSkip, onDonate }: {
-    onReact: (reaction: string) => void;
+/* Like/dislike live in the RoomPlayer card (left column). This row focuses on
+   transient crowd reactions: floating emojis + skip-vote + tip CTA.          */
+const ReactionsRow = ({ onSendEmoji, onVoteSkip, onDonate }: {
     onSendEmoji: (emoji: string) => void;
     onVoteSkip: () => void;
     onDonate: (amount: number) => void;
 }) => {
     const [bursts, setBursts] = useState<{ id: number; emoji: string; x: number }[]>([]);
-    const { skipVotes, reactions, emojiBursts } = useRoomStore();
+    const { skipVotes, emojiBursts } = useRoomStore();
     const REACTIONS = ['❤️', '🔥', '✨', '🥲', '🕺', '👏'];
 
     const pop = (emoji: string) => {
@@ -246,40 +240,30 @@ const ReactionsRow = ({ onReact, onSendEmoji, onVoteSkip, onDonate }: {
     return (
         <div className="rounded-2xl ring-1 ring-white/10 glass p-4 relative overflow-hidden">
             <div className="flex items-center gap-2 mb-3">
-                <div className="mono text-[9px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>React</div>
-                <span className="text-[11px]" style={{ color: 'var(--fg-2)' }}>Your vibes show up for everyone in the room</span>
+                <Sparkles className="size-3.5 text-[oklch(0.88_0.12_75)]" />
+                <div className="mono text-[9px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>Crowd</div>
+                <span className="text-[11px]" style={{ color: 'var(--fg-2)' }}>Tap an emoji — everyone sees it float</span>
+
+                {/* Skip + Tip on the right */}
+                <div className="ml-auto flex items-center gap-2">
+                    <button onClick={onVoteSkip}
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg ring-1 ring-white/15 text-[11px] hover:bg-white/8 press"
+                        style={{ color: 'var(--fg-1)' }}>
+                        <Vote className="size-3" />
+                        Skip {skipVotes.count}/{skipVotes.needed}
+                    </button>
+                    <button onClick={() => onDonate(500)}
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[oklch(0.88_0.12_75)] text-[oklch(0.18_0.02_80)] text-[11px] font-semibold press">
+                        <Gem className="size-3" /> Tip 500
+                    </button>
+                </div>
             </div>
 
-            {/* Like / Dislike */}
-            <div className="flex items-center gap-2 mb-3">
-                <button onClick={() => onReact('like')}
-                    className="flex items-center gap-1.5 h-9 px-3 rounded-xl ring-1 ring-[oklch(0.74_0.14_160_/_0.3)] bg-[oklch(0.74_0.14_160_/_0.08)] text-[oklch(0.74_0.14_160)] text-[12px] press hover:bg-[oklch(0.74_0.14_160_/_0.15)]">
-                    <ThumbsUp className="size-3.5" /> {reactions.likes}
-                </button>
-                <button onClick={() => onReact('dislike')}
-                    className="flex items-center gap-1.5 h-9 px-3 rounded-xl ring-1 ring-white/10 bg-white/5 text-[12px] press hover:bg-white/8"
-                    style={{ color: 'var(--fg-2)' }}>
-                    <ThumbsDown className="size-3.5" /> {reactions.dislikes}
-                </button>
-                <div className="flex-1" />
-                <button onClick={onVoteSkip}
-                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl ring-1 ring-white/15 text-[12px] hover:bg-white/8 press"
-                    style={{ color: 'var(--fg-1)' }}>
-                    <Vote className="size-3.5" />
-                    Skip {skipVotes.count}/{skipVotes.needed}
-                </button>
-                <button
-                    onClick={() => onDonate(500)}
-                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-[oklch(0.88_0.12_75)] text-[oklch(0.18_0.02_80)] text-[12px] font-semibold press">
-                    <Gem className="size-3.5" /> Tip 500
-                </button>
-            </div>
-
-            {/* Emoji row */}
+            {/* Emoji row — primary interaction */}
             <div className="flex items-center gap-2">
                 {REACTIONS.map(e => (
                     <button key={e} onClick={() => pop(e)}
-                        className="w-10 h-10 rounded-xl grid place-items-center bg-white/6 hover:bg-white/12 ring-1 ring-white/10 text-[18px] press">
+                        className="flex-1 h-11 rounded-xl grid place-items-center bg-white/6 hover:bg-white/12 ring-1 ring-white/10 text-[20px] press transition-all hover:scale-105">
                         {e}
                     </button>
                 ))}
@@ -527,28 +511,27 @@ export const RoomPage = () => {
                 <div className="grid grid-cols-12 gap-4 p-6 flex-1 min-h-0 overflow-hidden">
 
                     {/* Col 1–4: Player + Constellation */}
-                    <div className="col-span-4 flex flex-col gap-4 overflow-y-auto hide-scrollbar">
+                    <div className="col-span-4 flex flex-col gap-4 overflow-y-auto hide-scrollbar min-h-0">
                         {creatorAway && !roomStore.isCreator && (
                             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl ring-1 ring-[oklch(0.78_0.18_75_/_0.3)] bg-[oklch(0.78_0.18_75_/_0.08)] text-[oklch(0.88_0.12_75)] text-[12px]">
                                 <WifiOff className="size-3 flex-shrink-0" />
                                 Creator temporarily away — music continues
                             </div>
                         )}
-                        <RoomPlayer onSkip={skipSong} onClose={handleGoOffline} />
+                        <RoomPlayer onSkip={skipSong} onClose={handleGoOffline} onReact={reactToSong} />
                         {roomStore.room && (
                             <Constellation room={roomStore.room} listenerCount={roomStore.listenerCount} />
                         )}
                     </div>
 
                     {/* Col 5–9: NowMoment + Reactions + Queue */}
-                    <div className="col-span-5 flex flex-col gap-4 overflow-y-auto hide-scrollbar">
+                    <div className="col-span-5 flex flex-col gap-4 overflow-y-auto hide-scrollbar min-h-0">
                         {roomStore.room && (
                             <NowMoment room={roomStore.room} />
                         )}
 
                         {isSignedIn && (
                             <ReactionsRow
-                                onReact={reactToSong}
                                 onSendEmoji={sendEmoji}
                                 onVoteSkip={voteSkip}
                                 onDonate={donate}
@@ -556,14 +539,14 @@ export const RoomPage = () => {
                         )}
 
                         {/* Queue — nominations/vote */}
-                        <div className="rounded-2xl ring-1 ring-white/10 glass flex-1 overflow-hidden min-h-0">
+                        <div className="rounded-2xl ring-1 ring-white/10 glass flex-1 min-h-[280px] overflow-hidden">
                             <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b hair">
                                 <div className="flex items-center gap-2">
                                     <Music2 className="size-3.5" style={{ color: 'var(--fg-2)' }} />
                                     <span className="mono text-[9px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>Up next · Queue</span>
                                 </div>
                             </div>
-                            <div className="overflow-auto h-full">
+                            <div className="overflow-auto">
                                 <NominationsPanel onNominate={nominateSong} onVote={voteForSong} />
                             </div>
                         </div>

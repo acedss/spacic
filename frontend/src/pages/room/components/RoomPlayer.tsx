@@ -1,10 +1,12 @@
-import { SkipForward, Users, Wifi, WifiOff, Music2, X } from 'lucide-react';
+import { SkipForward, Users, Wifi, WifiOff, Music2, X, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { cn } from '@/lib/utils';
 
 interface Props {
     onSkip: () => void;
     onClose: () => void;
+    onReact: (reaction: 'like' | 'dislike') => void;
 }
 
 const formatTime = (seconds: number): string => {
@@ -13,8 +15,8 @@ const formatTime = (seconds: number): string => {
     return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
-export const RoomPlayer = ({ onSkip, onClose }: Props) => {
-    const { room, listenerCount, isCreator } = useRoomStore();
+export const RoomPlayer = ({ onSkip, onClose, onReact }: Props) => {
+    const { room, listenerCount, isCreator, reactions } = useRoomStore();
     const { currentSongIndex, currentTimeMs, isSynced } = usePlayerStore();
 
     const currentSong = room?.playlist?.[currentSongIndex];
@@ -53,22 +55,36 @@ export const RoomPlayer = ({ onSkip, onClose }: Props) => {
             </div>
 
             {/* Song info + controls */}
-            <div className="p-5">
-                <div className="mono text-[9px] uppercase tracking-[0.25em] mb-2" style={{ color: 'var(--fg-3)' }}>Now playing</div>
-                <h2 className="serif text-[28px] leading-[1.05] text-white truncate">
+            <div className="px-5 pt-4 pb-4">
+                <div className="flex items-center gap-2 mb-2 select-none">
+                    <span className="mono text-[9px] uppercase tracking-[0.25em]" style={{ color: 'var(--fg-3)' }}>Now playing</span>
+                    {/* Sync pill moved up next to the label — saves a row */}
+                    <span className="ml-auto inline-flex items-center gap-1 text-[10px] mono">
+                        {isSynced ? (
+                            <span className="flex items-center gap-1 text-[oklch(0.74_0.14_160)]">
+                                <Wifi className="size-3" /> Synced
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-1 text-[oklch(0.88_0.12_75)]">
+                                <WifiOff className="size-3" /> Syncing…
+                            </span>
+                        )}
+                    </span>
+                </div>
+                <h2 className="serif text-[26px] leading-[1.05] text-white truncate">
                     {currentSong?.title ?? 'No song playing'}
                 </h2>
-                <p className="text-[13px] mt-0.5 truncate" style={{ color: 'var(--fg-2)' }}>
+                <p className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--fg-2)' }}>
                     {currentSong?.artist ?? room.title}
                 </p>
 
                 {/* Progress bar */}
-                <div className="mt-5">
+                <div className="mt-4">
                     <div className="h-[3px] bg-white/10 rounded-full overflow-hidden">
                         <div className="h-full rounded-full transition-all duration-1000"
                              style={{ width: `${progress}%`, background: 'linear-gradient(90deg, oklch(0.88 0.12 75), oklch(0.7 0.2 295))' }} />
                     </div>
-                    <div className="flex justify-between mt-1.5">
+                    <div className="flex justify-between mt-1">
                         <span className="mono text-[10px] tabular-nums" style={{ color: 'var(--fg-3)' }}>
                             {formatTime(currentTimeMs / 1000)}
                         </span>
@@ -78,34 +94,46 @@ export const RoomPlayer = ({ onSkip, onClose }: Props) => {
                     </div>
                 </div>
 
-                {/* Controls row */}
-                <div className="mt-4 flex items-center justify-between">
-                    {/* Sync status */}
-                    <div className="flex items-center gap-1.5 text-[11px] mono">
-                        {isSynced ? (
-                            <span className="flex items-center gap-1 text-[oklch(0.74_0.14_160)]">
-                                <Wifi className="size-3.5" /> Synced
-                            </span>
-                        ) : (
-                            <span className="flex items-center gap-1 text-[oklch(0.88_0.12_75)]">
-                                <WifiOff className="size-3.5" /> Syncing…
-                            </span>
+                {/* Actions row — reactions + creator controls inline */}
+                <div className="mt-3 flex items-center gap-1.5">
+                    <button onClick={() => onReact('like')}
+                        className={cn(
+                            'flex items-center gap-1.5 h-8 px-2.5 rounded-lg ring-1 text-[11px] press transition-colors',
+                            reactions.likes > 0
+                                ? 'ring-[oklch(0.74_0.14_160_/_0.4)] bg-[oklch(0.74_0.14_160_/_0.12)] text-[oklch(0.82_0.14_160)]'
+                                : 'ring-white/10 bg-white/4 hover:bg-white/8',
                         )}
-                    </div>
+                        style={reactions.likes > 0 ? undefined : { color: 'var(--fg-2)' }}
+                        aria-label="Like this song">
+                        <ThumbsUp className="size-3.5" />
+                        <span className="tabular-nums">{reactions.likes}</span>
+                    </button>
+                    <button onClick={() => onReact('dislike')}
+                        className={cn(
+                            'flex items-center gap-1.5 h-8 px-2.5 rounded-lg ring-1 text-[11px] press transition-colors',
+                            reactions.dislikes > 0
+                                ? 'ring-[oklch(0.72_0.22_20_/_0.35)] bg-[oklch(0.72_0.22_20_/_0.08)] text-[oklch(0.82_0.17_20)]'
+                                : 'ring-white/10 bg-white/4 hover:bg-white/8',
+                        )}
+                        style={reactions.dislikes > 0 ? undefined : { color: 'var(--fg-2)' }}
+                        aria-label="Dislike this song">
+                        <ThumbsDown className="size-3.5" />
+                        <span className="tabular-nums">{reactions.dislikes}</span>
+                    </button>
 
                     {isCreator && (
-                        <button onClick={onSkip}
-                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl ring-1 ring-white/15 text-[12px] hover:bg-white/8 press transition-colors"
-                            style={{ color: 'var(--fg-1)' }}>
-                            <SkipForward className="size-3.5" /> Skip
-                        </button>
-                    )}
-
-                    {isCreator && (
-                        <button onClick={onClose}
-                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl ring-1 ring-[oklch(0.72_0.22_20_/_0.35)] bg-[oklch(0.72_0.22_20_/_0.1)] text-[oklch(0.82_0.17_20)] text-[12px] press hover:bg-[oklch(0.72_0.22_20_/_0.2)]">
-                            <X className="size-3.5" /> Go offline
-                        </button>
+                        <>
+                            <span className="flex-1" />
+                            <button onClick={onSkip}
+                                className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg ring-1 ring-white/12 text-[11px] hover:bg-white/8 press transition-colors"
+                                style={{ color: 'var(--fg-1)' }}>
+                                <SkipForward className="size-3.5" /> Skip
+                            </button>
+                            <button onClick={onClose}
+                                className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg ring-1 ring-[oklch(0.72_0.22_20_/_0.35)] bg-[oklch(0.72_0.22_20_/_0.1)] text-[oklch(0.82_0.17_20)] text-[11px] press hover:bg-[oklch(0.72_0.22_20_/_0.2)]">
+                                <X className="size-3.5" /> End
+                            </button>
+                        </>
                     )}
                 </div>
             </div>

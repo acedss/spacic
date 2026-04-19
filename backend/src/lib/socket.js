@@ -782,11 +782,17 @@ export const initializeSocket = (httpServer) => {
                 // Don't advance if a game timer is already blocking this room
                 if (gameTimers.has(roomId)) return;
 
-                const roomDoc   = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
-                if (!roomDoc) return;
-                const serverIndex = roomDoc.playback?.currentSongIndex ?? 0;
-                if (currentSongIndex !== serverIndex) return;
+                // Claim the debounce lock BEFORE any await. Without this, two
+                // simultaneous song_ended events from different clients both pass
+                // the check above (because neither has set the timestamp yet),
+                // then both await Room.findById, then both advance — producing
+                // the "3 random songs in rapid succession" bug.
                 songEndedDebounce.set(roomId, Date.now());
+
+                const roomDoc   = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
+                if (!roomDoc) { songEndedDebounce.delete(roomId); return; }
+                const serverIndex = roomDoc.playback?.currentSongIndex ?? 0;
+                if (currentSongIndex !== serverIndex) { songEndedDebounce.delete(roomId); return; }
                 await clearPerSongState(roomId);
 
                 const playlist    = await socketManager.getCachedPlaylist(roomId);

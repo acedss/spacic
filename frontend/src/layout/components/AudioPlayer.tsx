@@ -19,14 +19,20 @@ const AudioPlayer = () => {
     // Whether we *want* the audio playing — used by onCanPlay to auto-play
     // after a new src finishes loading (avoids "interrupted by new load" error)
     const wantPlayRef = useRef(false);
+    // Guards onEnded from firing during src change. When we swap src while the
+    // previous track is still at the end, some browsers re-fire 'ended' on the
+    // old buffer before the new src loads, causing a duplicate room:song_ended.
+    const songChangingRef = useRef(false);
 
     const currentSong = room?.playlist?.[currentSongIndex];
 
     // Load new song when track changes OR when audioUrl becomes available
     useEffect(() => {
         if (!audioRef.current || !currentSong?.audioUrl) return;
+        const isTrackChange = prevSongIdRef.current !== currentSong._id;
         prevSongIdRef.current = currentSong._id;
 
+        if (isTrackChange) songChangingRef.current = true;
         audioRef.current.src = currentSong.audioUrl;
         skipNextSeekEmitRef.current = true;
         // Use currentTimeMs for all cases:
@@ -80,6 +86,9 @@ const AudioPlayer = () => {
         <audio
             ref={audioRef}
             onCanPlay={() => {
+                // New src is loaded — release the song-change guard so genuine
+                // end-of-track events on this new src can advance the queue.
+                songChangingRef.current = false;
                 // Audio has buffered enough to play. If we wanted to play but
                 // couldn't because the src was still loading, start now.
                 if (wantPlayRef.current && !usePlayerStore.getState().listenerLocalPaused) {
@@ -132,6 +141,9 @@ const AudioPlayer = () => {
                 setListenerLocalPaused(true);
             }}
             onEnded={() => {
+                // Suppress 'ended' fired as a side effect of src swapping
+                // (old buffer reaching end before new src finishes loading).
+                if (songChangingRef.current) return;
                 songEndedCallbackRef.current?.();
             }}
         />
