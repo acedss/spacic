@@ -23,6 +23,10 @@ const AudioPlayer = () => {
     // previous track is still at the end, some browsers re-fire 'ended' on the
     // old buffer before the new src loads, causing a duplicate room:song_ended.
     const songChangingRef = useRef(false);
+    // Safety timeout — clears songChangingRef after 8s if onCanPlay never fires
+    // (e.g. expired S3 URL, network stall). Without this, onEnded stays blocked
+    // permanently and the queue never advances on the next natural end.
+    const songChangingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const currentSong = room?.playlist?.[currentSongIndex];
 
@@ -32,7 +36,13 @@ const AudioPlayer = () => {
         const isTrackChange = prevSongIdRef.current !== currentSong._id;
         prevSongIdRef.current = currentSong._id;
 
-        if (isTrackChange) songChangingRef.current = true;
+        if (isTrackChange) {
+            songChangingRef.current = true;
+            if (songChangingTimeoutRef.current) clearTimeout(songChangingTimeoutRef.current);
+            songChangingTimeoutRef.current = setTimeout(() => {
+                songChangingRef.current = false;
+            }, 8000);
+        }
         audioRef.current.src = currentSong.audioUrl;
         skipNextSeekEmitRef.current = true;
         // Use currentTimeMs for all cases:
@@ -89,6 +99,10 @@ const AudioPlayer = () => {
                 // New src is loaded — release the song-change guard so genuine
                 // end-of-track events on this new src can advance the queue.
                 songChangingRef.current = false;
+                if (songChangingTimeoutRef.current) {
+                    clearTimeout(songChangingTimeoutRef.current);
+                    songChangingTimeoutRef.current = null;
+                }
                 // Audio has buffered enough to play. If we wanted to play but
                 // couldn't because the src was still loading, start now.
                 if (wantPlayRef.current && !usePlayerStore.getState().listenerLocalPaused) {
