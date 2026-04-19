@@ -453,7 +453,7 @@ const StepTuned = ({ genres, moods, liked, referral, onBack, onFinish, rooms }: 
 
 /* ─── Main OnboardingPage ──────────────────────────────────────────────── */
 const OnboardingPage = () => {
-    const { user } = useUser()
+    useUser()
     const navigate = useNavigate()
     const [step, setStep] = useState(0)
     const [genres, setGenres]       = useState<Set<GenreId>>(new Set(['ambient', 'lofi']))

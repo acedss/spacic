@@ -21,7 +21,6 @@ const AuthCallbackPage = () => {
                 })
 
                 // Backend returns isNew (first-ever login) and onboardingCompleted (DB flag)
-                const isNew = data?.isNew === true
                 const onboardingDone = data?.onboardingCompleted === true
 
                 if (!onboardingDone) {

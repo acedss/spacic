@@ -1,5 +1,5 @@
-import { useEffect, useRef, useCallback, useState, useMemo } from 'react'
-import { Bell, Share2, X, Radio, UserPlus, Users as UsersIcon, Zap, Clock } from 'lucide-react'
+import { useEffect, useRef, useCallback, useState } from 'react'
+import { Bell, Share2, X, Radio, UserPlus, Clock } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
@@ -174,7 +174,6 @@ const timeAgo = (date: string) => {
 
 export const FriendsActivity = () => {
     const { userId } = useAuth()
-    const navigate = useNavigate()
     const socket     = useSocialSocket()
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const { activity, pendingInvites, fetchActivity, addPendingInvite, sendInvite } = useFriendStore()
