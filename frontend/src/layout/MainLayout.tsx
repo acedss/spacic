@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 const MainLayout = () => {
     const location = useLocation();
     const hideRightSidebar = location.pathname.startsWith('/studio') || location.pathname.startsWith('/room');
+    const isRoomPage = location.pathname.startsWith('/rooms/');
 
     const [isMobile, setIsMobile]           = useState(false);
     const [isSidebarHovered, setSidebarHov] = useState(false);
@@ -86,7 +87,7 @@ const MainLayout = () => {
                     </>
                 )}
 
-                <main className='flex-1 overflow-y-auto hide-scrollbar pb-28'>
+                <main className={cn('flex-1 overflow-y-auto hide-scrollbar', isRoomPage ? 'overflow-hidden' : 'pb-28')}>
                     <Outlet />
                 </main>
 
@@ -115,7 +116,10 @@ const MainLayout = () => {
             </Sheet>
 
             {/* Bottom playback bar */}
-            <footer className='fixed bottom-0 left-0 right-0 h-24 border-t hair z-40 glass'
+            <footer className={cn(
+                'fixed bottom-0 right-0 h-24 border-t hair z-40 glass',
+                isMobile ? 'left-0' : 'left-16'
+            )}
                     style={{ background: 'oklch(0.1 0.015 285 / 0.85)' }}>
                 <PlaybackControls />
             </footer>

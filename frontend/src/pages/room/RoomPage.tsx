@@ -44,7 +44,7 @@ const Constellation = ({ room, listenerCount }: { room: RoomInfo; listenerCount:
     const creator = (room as any).creatorId as { fullName?: string; imageUrl?: string } | undefined;
 
     return (
-        <div className="rounded-2xl ring-1 ring-white/10 p-5 glass relative overflow-hidden">
+        <div className="rounded-2xl ring-1 ring-white/10 p-5 h-fit glass relative overflow-hidden">
             <div className="flex items-center justify-between mb-4">
                 <div>
                     <div className="mono text-[9px] uppercase tracking-[0.25em]" style={{ color: 'var(--fg-3)' }}>Listening together</div>
@@ -70,12 +70,12 @@ const Constellation = ({ room, listenerCount }: { room: RoomInfo; listenerCount:
                     <div className="relative">
                         {creator?.imageUrl ? (
                             <img src={creator.imageUrl}
-                                 className="w-14 h-14 rounded-full object-cover ring-2 ring-[oklch(0.88_0.12_75)]"
-                                 style={{ boxShadow: '0 0 30px oklch(0.88 0.12 75 / 0.6)' }}
-                                 alt="" />
+                                className="w-14 h-14 rounded-full object-cover ring-2 ring-[oklch(0.88_0.12_75)]"
+                                style={{ boxShadow: '0 0 30px oklch(0.88 0.12 75 / 0.6)' }}
+                                alt="" />
                         ) : (
                             <div className="w-14 h-14 rounded-full ring-2 ring-[oklch(0.88_0.12_75)]"
-                                 style={{ background: 'oklch(0.3 0.08 295)', boxShadow: '0 0 30px oklch(0.88 0.12 75 / 0.6)' }} />
+                                style={{ background: 'oklch(0.3 0.08 295)', boxShadow: '0 0 30px oklch(0.88 0.12 75 / 0.6)' }} />
                         )}
                         <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[8px] mono uppercase bg-[oklch(0.88_0.12_75)] text-[var(--ink-0)] font-semibold tracking-wider">Host</span>
                     </div>
@@ -84,14 +84,14 @@ const Constellation = ({ room, listenerCount }: { room: RoomInfo; listenerCount:
                 {/* Listener avatar dots */}
                 {nodes.map(n => (
                     <div key={n.i} className="absolute drift"
-                         style={{
-                             left: `${n.x}%`, top: `${n.y}%`,
-                             transform: 'translate(-50%,-50%)',
-                             '--dx': `${n.dx}px`, '--dy': `${n.dy}px`,
-                             animationDelay: `${n.delay}s`,
-                         } as React.CSSProperties}>
+                        style={{
+                            left: `${n.x}%`, top: `${n.y}%`,
+                            transform: 'translate(-50%,-50%)',
+                            '--dx': `${n.dx}px`, '--dy': `${n.dy}px`,
+                            animationDelay: `${n.delay}s`,
+                        } as React.CSSProperties}>
                         <div className="w-8 h-8 rounded-full ring-2 ring-white/20"
-                             style={{ background: `oklch(0.5 0.12 ${n.hue})` }} />
+                            style={{ background: `oklch(0.5 0.12 ${n.hue})` }} />
                         {n.i === 3 && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[oklch(0.72_0.22_20)] ring-2 ring-[var(--ink-0)]" />}
                     </div>
                 ))}
@@ -268,7 +268,7 @@ const ReactionsRow = ({ onReact, onSendEmoji, onVoteSkip, onDonate }: {
             <div className="absolute inset-0 pointer-events-none">
                 {bursts.map(b => (
                     <span key={b.id} className="absolute text-[28px] animate-float-up"
-                          style={{ left: `${b.x}%`, bottom: 10 }}>{b.emoji}</span>
+                        style={{ left: `${b.x}%`, bottom: 10 }}>{b.emoji}</span>
                 ))}
             </div>
         </div>
@@ -295,7 +295,7 @@ const RightRail = ({
             <div className="flex border-b hair flex-shrink-0">
                 {([
                     { id: 'chat' as RightTab, label: 'Chat', icon: MessageSquare },
-                    { id: 'tip'  as RightTab, label: 'Tip',  icon: Gem },
+                    { id: 'tip' as RightTab, label: 'Tip', icon: Gem },
                     { id: 'goal' as RightTab, label: 'Goal', icon: Music2 },
                 ] as const).map(({ id, label, icon: Icon }) => {
                     const on = tab === id;
@@ -315,7 +315,7 @@ const RightRail = ({
 
             <div className="flex-1 min-h-0 overflow-hidden">
                 {tab === 'chat' && <ChatPanel onSendMessage={onSendChat} onPinMessage={onPinMessage} isCreator={isCreator} />}
-                {tab === 'tip'  && <DonationPanel onDonate={onDonate} onUpdateGoal={onUpdateGoal} isCreator={isCreator} />}
+                {tab === 'tip' && <DonationPanel onDonate={onDonate} onUpdateGoal={onUpdateGoal} isCreator={isCreator} />}
                 {tab === 'goal' && (
                     <div className="p-5 overflow-auto h-full hide-scrollbar">
                         <div className="mono text-[9px] uppercase tracking-widest mb-2" style={{ color: 'var(--fg-3)' }}>Tonight's goal</div>
@@ -348,7 +348,7 @@ const RightRail = ({
                                     'w-6 h-6 rounded-full grid place-items-center text-[10px] mono ring-1',
                                     m.done ? 'bg-[oklch(0.74_0.14_160)] ring-[oklch(0.74_0.14_160)] text-[var(--ink-0)]'
                                         : m.here ? 'bg-[oklch(0.82_0.15_75_/_0.2)] ring-[oklch(0.82_0.15_75)] text-[oklch(0.88_0.12_75)]'
-                                        : 'bg-white/4 ring-white/12 text-[var(--fg-3)]',
+                                            : 'bg-white/4 ring-white/12 text-[var(--fg-3)]',
                                 )}>
                                     {m.done ? '✓' : m.at}
                                 </span>
@@ -385,11 +385,11 @@ export const RoomPage = () => {
 
     // Track referral
     useEffect(() => {
-        const ref  = searchParams.get('ref');
+        const ref = searchParams.get('ref');
         const type = searchParams.get('type') ?? 'link';
         if (!ref || !roomId) return;
-        axiosInstance.post(`/rooms/${roomId}/referral`, { ref, type }).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        axiosInstance.post(`/rooms/${roomId}/referral`, { ref, type }).catch(() => { });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId]);
 
     // Show guest dialog when not signed in
@@ -416,7 +416,7 @@ export const RoomPage = () => {
             })
             .catch((err) => roomStore.setError(err.message))
             .finally(() => roomStore.setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, isSignedIn]);
 
     const handleGoOffline = useCallback(async () => {
@@ -455,7 +455,7 @@ export const RoomPage = () => {
     const coverUrl = (roomStore.room as any)?.coverUrl ?? '';
 
     return (
-        <div className="relative min-h-full" style={{ background: 'var(--ink-0)' }}>
+        <div className="relative h-full flex flex-col" style={{ background: 'var(--ink-0)' }}>
             {/* Atmospheric cover blur */}
             {coverUrl && (
                 <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -464,7 +464,7 @@ export const RoomPage = () => {
                 </div>
             )}
 
-            <div className="relative flex flex-col h-full">
+            <div className="relative flex flex-col flex-1 min-h-0">
                 {/* Header bar */}
                 <div className="flex items-center justify-between px-8 h-16 border-b hair flex-shrink-0 glass">
                     <div className="flex items-center gap-3">
@@ -503,10 +503,10 @@ export const RoomPage = () => {
                 </div>
 
                 {/* ── 3-column grid ──────────────────────────────────────── */}
-                <div className="grid grid-cols-12 gap-6 p-6 flex-1 min-h-0">
+                <div className="grid grid-cols-12 gap-4 p-6 flex-1 min-h-0 overflow-hidden">
 
                     {/* Col 1–4: Player + Constellation */}
-                    <div className="col-span-4 flex flex-col gap-4">
+                    <div className="col-span-4 flex flex-col gap-4 overflow-y-auto hide-scrollbar">
                         {creatorAway && !roomStore.isCreator && (
                             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl ring-1 ring-[oklch(0.78_0.18_75_/_0.3)] bg-[oklch(0.78_0.18_75_/_0.08)] text-[oklch(0.88_0.12_75)] text-[12px]">
                                 <WifiOff className="size-3 flex-shrink-0" />
@@ -520,7 +520,7 @@ export const RoomPage = () => {
                     </div>
 
                     {/* Col 5–9: NowMoment + Reactions + Queue */}
-                    <div className="col-span-5 flex flex-col gap-4">
+                    <div className="col-span-5 flex flex-col gap-4 overflow-y-auto hide-scrollbar">
                         {roomStore.room && (
                             <NowMoment room={roomStore.room} />
                         )}
@@ -587,12 +587,12 @@ const toHours = (minutes: number) => {
 const RoomOfflineView = ({ room, onBack }: { room: RoomInfo; onBack: () => void }) => {
     const s = room.stats;
     const stats = [
-        { icon: Users, label: 'Listeners',       value: s?.totalListeners?.toLocaleString() ?? '0' },
-        { icon: Clock, label: 'Hours Listened',   value: toHours(s?.totalMinutesListened ?? 0) },
-        { icon: Gem,   label: 'Coins Earned',     value: s?.totalCoinsEarned?.toLocaleString() ?? '0' },
-        { icon: Users, label: 'Unique Donors',    value: s?.totalDonors?.toLocaleString() ?? '0' },
-        { icon: Heart, label: 'Favorites',        value: room.favoriteCount?.toLocaleString() ?? '0' },
-        { icon: Radio, label: 'Sessions Hosted',  value: s?.totalSessions?.toLocaleString() ?? '0' },
+        { icon: Users, label: 'Listeners', value: s?.totalListeners?.toLocaleString() ?? '0' },
+        { icon: Clock, label: 'Hours Listened', value: toHours(s?.totalMinutesListened ?? 0) },
+        { icon: Gem, label: 'Coins Earned', value: s?.totalCoinsEarned?.toLocaleString() ?? '0' },
+        { icon: Users, label: 'Unique Donors', value: s?.totalDonors?.toLocaleString() ?? '0' },
+        { icon: Heart, label: 'Favorites', value: room.favoriteCount?.toLocaleString() ?? '0' },
+        { icon: Radio, label: 'Sessions Hosted', value: s?.totalSessions?.toLocaleString() ?? '0' },
     ];
 
     return (
