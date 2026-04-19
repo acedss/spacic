@@ -366,6 +366,13 @@ export const initializeSocket = (httpServer) => {
                     currentSongPresignedUrl = await getPresignedUrl(playbackState.currentSongS3Key);
                 }
 
+                // Fetch current song index + metadata for rejoin sync.
+                // playbackState only has s3Key/id; index and metadata need DB + cache.
+                const roomPlaybackDoc = await Room.findById(roomId).select('playback.currentSongIndex').lean();
+                const currentSongIndex = roomPlaybackDoc?.playback?.currentSongIndex ?? 0;
+                const cachedPlaylist   = await socketManager.getCachedPlaylist(roomId);
+                const currentSongData  = cachedPlaylist?.[currentSongIndex] ?? null;
+
                 const isCreator = roomSession.creatorId === user.userId;
 
                 // Creator page-reload: cancel the shutdown countdown automatically
@@ -417,7 +424,12 @@ export const initializeSocket = (httpServer) => {
 
                 socket.emit('room:joined', {
                     roomId,
-                    playback: playbackState ? { ...playbackState, currentSongPresignedUrl } : null,
+                    playback: playbackState ? {
+                        ...playbackState,
+                        currentSongPresignedUrl,
+                        currentSongIndex,
+                        currentSong: currentSongData,
+                    } : null,
                     serverTimestamp: Date.now(),
                     listenerCount:   roomSession.listenerCount,
                     isCreator,
@@ -901,6 +913,10 @@ export const initializeSocket = (httpServer) => {
 
                 const timer = setTimeout(async () => {
                     gameTimers.delete(roomId);
+                    // 300ms grace period: allows any in-flight recordAnswer DB saves
+                    // to complete before we snapshot winner state. Without this, a
+                    // correct answer submitted in the last few ms races the timer.
+                    await new Promise(r => setTimeout(r, 300));
                     const completed = await completeGame(game._id);
                     await settleGamePrize(completed).catch(err => console.error('[settleGamePrize]', err.message));
                     io.to(roomId).emit('room:game_result', {
@@ -940,9 +956,12 @@ export const initializeSocket = (httpServer) => {
 
                     const completed = await completeGame(minigameId);
                     await settleGamePrize(completed).catch(err => console.error('[settleGamePrize]', err.message));
+                    // Use in-memory winner from recordAnswer — more reliable than
+                    // re-fetching completed doc which may lag behind the save.
+                    const winnerData = result.game.winner;
                     io.to(roomId).emit('room:game_result', {
                         roomId, minigameId,
-                        winner:           completed?.winner?.userId ? completed.winner : null,
+                        winner:           winnerData?.userId ? winnerData : null,
                         participantCount: completed?.participantCount ?? 0,
                     });
 

@@ -2,7 +2,7 @@ import { useEffect, useCallback, useState, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { axiosInstance } from '@/lib/axios';
-import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Vote, WifiOff, Mic, Sparkles } from 'lucide-react';
+import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Vote, WifiOff, Mic, Sparkles, ChevronDown } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useRoomSession } from '@/providers/RoomSessionProvider';
@@ -189,7 +189,7 @@ const NowMoment = ({ room }: { room: RoomInfo }) => {
                         const nearHead = Math.abs(barPct - progressPct) < 4;
                         return (
                             <span key={i} className={nearHead ? 'animate-pulse' : ''} style={{
-                                height: `${h * 100}%`, flex: 1, minWidth: 2, maxWidth: 5,
+                                height: `${h * 100}%`, flex: 1, minWidth: 1,
                                 background: past
                                     ? `linear-gradient(180deg, oklch(0.88 0.12 ${75 + i * 0.8}), oklch(0.65 0.18 295))`
                                     : 'oklch(1 0 0 / 0.12)',
@@ -378,6 +378,7 @@ export const RoomPage = () => {
 
     const [guestDialogOpen, setGuestDialogOpen] = useState(false);
     const [rightTab, setRightTab] = useState<RightTab>('chat');
+    const [queueOpen, setQueueOpen] = useState(true);
 
     const roomStore = useRoomStore();
     const { creatorAway } = useRoomStore();
@@ -534,17 +535,22 @@ export const RoomPage = () => {
                             />
                         )}
 
-                        {/* Queue — nominations/vote */}
-                        <div className="rounded-2xl ring-1 ring-white/10 glass flex-1 min-h-[280px] overflow-hidden">
-                            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b hair">
+                        {/* Queue — nominations/vote (collapsible) */}
+                        <div className={cn('rounded-2xl ring-1 ring-white/10 glass overflow-hidden', queueOpen ? 'flex-1 min-h-[280px]' : 'flex-shrink-0')}>
+                            <button
+                                onClick={() => setQueueOpen(o => !o)}
+                                className="flex items-center justify-between w-full px-5 pt-4 pb-3 border-b hair hover:bg-white/4 transition-colors text-left">
                                 <div className="flex items-center gap-2">
                                     <Music2 className="size-3.5" style={{ color: 'var(--fg-2)' }} />
                                     <span className="mono text-[9px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>Up next · Queue</span>
                                 </div>
-                            </div>
-                            <div className="overflow-auto">
-                                <NominationsPanel onNominate={nominateSong} onVote={voteForSong} />
-                            </div>
+                                <ChevronDown className={cn('size-3.5 transition-transform', queueOpen ? 'rotate-180' : '')} style={{ color: 'var(--fg-3)' }} />
+                            </button>
+                            {queueOpen && (
+                                <div className="overflow-auto">
+                                    <NominationsPanel onNominate={nominateSong} onVote={voteForSong} />
+                                </div>
+                            )}
                         </div>
                     </div>
 

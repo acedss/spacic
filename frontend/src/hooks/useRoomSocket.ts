@@ -145,6 +145,8 @@ export const useRoomSocket = (roomId: string) => {
                 startTimeUnix: number | null;
                 pausedAtMs: number | null;
                 currentSongPresignedUrl?: string;
+                currentSongIndex?: number;
+                currentSong?: { _id: string; title: string; artist: string; duration: number; imageUrl?: string; s3Key: string; albumId?: string | null };
             };
             listenerCount: number;
             serverTimestamp: number;
@@ -183,11 +185,24 @@ export const useRoomSocket = (roomId: string) => {
                     syncInProgressRef.current = false;
                 }, 1200);
 
-                if (playback.currentSongPresignedUrl) {
-                    roomStore.updatePlaylistSongUrl(
-                        usePlayerStore.getState().currentSongIndex,
-                        playback.currentSongPresignedUrl,
-                    );
+                // Sync the current song index — critical for listeners who rejoin
+                // after the room has advanced to a song beyond the original playlist.
+                if (playback.currentSongIndex !== undefined) {
+                    playerStore.setCurrentSongIndex(playback.currentSongIndex);
+                }
+
+                // Hydrate the playlist slot so RoomPlayer shows the correct song.
+                // If the server sent full song metadata, write it; otherwise just update URL.
+                const joinIdx = playback.currentSongIndex ?? usePlayerStore.getState().currentSongIndex;
+                const room = useRoomStore.getState().room;
+                if (room && playback.currentSong && playback.currentSongPresignedUrl) {
+                    const playlist = [...room.playlist];
+                    const songWithUrl = { ...playback.currentSong, audioUrl: playback.currentSongPresignedUrl, albumId: playback.currentSong.albumId ?? null, imageUrl: playback.currentSong.imageUrl ?? '' };
+                    while (playlist.length <= joinIdx) playlist.push(songWithUrl);
+                    playlist[joinIdx] = songWithUrl;
+                    roomStore.setRoom({ ...room, playlist });
+                } else if (playback.currentSongPresignedUrl) {
+                    roomStore.updatePlaylistSongUrl(joinIdx, playback.currentSongPresignedUrl);
                 }
             }
 
@@ -296,8 +311,8 @@ export const useRoomSocket = (roomId: string) => {
             const liveTimeMs = audioRef.current ? audioRef.current.currentTime * 1000 : usePlayerStore.getState().currentTimeMs;
             const drift = Math.abs(liveTimeMs - expectedMs);
 
-            // Only hard-correct on major drift (>2s) to avoid audible skipping
-            if (drift > 2000) {
+            // Hard-correct on drift >500ms — tighter sync without audible skipping
+            if (drift > 500) {
                 playerStore.setCurrentTimeMs(expectedMs);
                 playerStore.setSynced(false);
                 if (audioRef.current) {
@@ -406,7 +421,10 @@ export const useRoomSocket = (roomId: string) => {
             streamGoalCurrent: number;
             donor: { name: string; amount: number } | null;
         }) => {
-            const current = roomStore.room;
+            // Must read from getState() — the closure captures roomStore at mount time
+            // and would overwrite the live playlist with a stale snapshot if songs
+            // were dynamically appended after the socket was set up.
+            const current = useRoomStore.getState().room;
             if (current) roomStore.setRoom({ ...current, streamGoal, streamGoalCurrent });
             // Floating donor notification
             if (donor?.name) {
