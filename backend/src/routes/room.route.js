@@ -17,9 +17,10 @@ router.get("/me/favorites",     protectRoute, roomController.getFavoriteRooms);
 router.get("/:roomId", roomController.getRoomById);
 
 // Creator channel management
-router.post("/",                  protectRoute, roomController.upsertRoom);
-router.post("/:roomId/go-live",   protectRoute, roomController.goLive);
-router.post("/:roomId/go-offline",protectRoute, roomController.goOffline);
+router.post("/",                        protectRoute, roomController.upsertRoom);
+router.post("/:roomId/go-live",         protectRoute, roomController.goLive);
+router.post("/:roomId/go-offline",      protectRoute, roomController.goOffline);
+router.patch("/me/feature-flags",       protectRoute, roomController.updateFeatureFlags);
 
 // Session actions (auth required)
 router.post("/:roomId/join",  protectRoute, roomController.joinRoom);

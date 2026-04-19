@@ -53,6 +53,9 @@ const userSchema = new mongoose.Schema({
         match: [/^[a-z0-9_]{3,20}$/, 'Username must be 3-20 lowercase letters, numbers, or underscores'],
     },
 
+    // Whether the user has completed the onboarding flow
+    onboardingCompleted: { type: Boolean, default: false },
+
     // ── Win Points ────────────────────────────────────────────────────────────
     // Earned-only currency: minigame prizes + creator stream payouts.
     // Cannot be purchased. Withdrawable to fiat once minimums are met.

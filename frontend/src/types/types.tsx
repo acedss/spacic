@@ -44,6 +44,16 @@ export interface RoomSession {
     topDonors: { name: string; totalCoins: number }[];
 }
 
+export interface RoomFeatureFlags {
+    liveMic:    boolean;
+    chat:       boolean;
+    donations:  boolean;
+    voting:     boolean;
+    minigames:  boolean;
+    voteQueue:  boolean;
+    broadcasts: boolean;
+}
+
 export interface RoomInfo {
     _id: string;
     creatorId: string;
@@ -62,6 +72,26 @@ export interface RoomInfo {
     stats: RoomStats;
     sessions?: RoomSession[];
     listenerCount?: number;
+    featureFlags?: RoomFeatureFlags;
+}
+
+// ── Broadcast Assets ───────────────────────────────────────────────────────────
+
+export type BroadcastAssetType   = 'recording' | 'file';
+export type BroadcastAssetStatus = 'pending' | 'ready';
+
+export interface BroadcastAsset {
+    _id:             string;
+    creatorId:       string;
+    roomId:          string;
+    type:            BroadcastAssetType;
+    label:           string;
+    s3Key:           string;
+    mimeType:        string;
+    durationSeconds: number | null;
+    sizeBytes:       number | null;
+    status:          BroadcastAssetStatus;
+    createdAt:       string;
 }
 
 export interface CreatorRoomAnalytics {

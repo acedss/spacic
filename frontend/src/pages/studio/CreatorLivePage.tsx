@@ -5,19 +5,20 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { io as connectSocket, Socket } from 'socket.io-client';
 import {
-    Radio, Users, Gem, Loader2, SkipForward, Crown, Clock, Send,
+    Radio, Users, Gem, Loader2, SkipForward, Crown, Clock, Send, Mic, Gamepad2, Coins,
 } from 'lucide-react';
 import { getMyRoom, goOffline } from '@/lib/roomService';
 import { getMinigamesForRoom } from '@/lib/minigameService';
-import type { RoomInfo, ChatMessage, Minigame, ActiveGame, Song } from '@/types/types';
+import { listBroadcastAssets } from '@/lib/broadcastService';
+import type { RoomInfo, ChatMessage, Minigame, ActiveGame, Song, BroadcastAsset } from '@/types/types';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { CreatorMicButton } from './components/CreatorMicButton';
 import { EditPlaylistDialog } from './components/EditPlaylistDialog';
 import { StreamGoalPanel } from './components/StreamGoalPanel';
 import { MinigamePanel } from './components/MinigamePanel';
 import { DonationFeed } from './components/DonationFeed';
+import { BroadcastPanel } from './components/BroadcastPanel';
 import { useWalletStore } from '@/stores/useWalletStore';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? 'http://localhost:4000';
@@ -78,6 +79,13 @@ const CreatorLivePage = () => {
     const [gameSecondsLeft, setGameSecondsLeft] = useState(0);
     const gameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+    // Broadcast assets
+    const [broadcastAssets, setBroadcastAssets] = useState<BroadcastAsset[]>([]);
+
+    // Right panel tab
+    type RightTab = 'broadcast' | 'games' | 'goal';
+    const [rightTab, setRightTab] = useState<RightTab>('broadcast');
+
     const currentSong = room ? room.playlist[room.playback.currentSongIndex] : null;
 
     // ── Load room ──
@@ -96,6 +104,9 @@ const CreatorLivePage = () => {
             .then(games => { if (games) setMinigames(games); })
             .catch(() => { toast.error('Failed to load room'); navigate('/studio'); })
             .finally(() => setLoading(false));
+
+        // Load broadcast assets in parallel (non-blocking)
+        listBroadcastAssets().then(setBroadcastAssets).catch(() => {});
     }, [navigate]);
 
     // ── Session duration ticker ──
@@ -270,12 +281,6 @@ const CreatorLivePage = () => {
                     <div className="flex items-center justify-between flex-shrink-0">
                         <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Playlist</h2>
                         <div className="flex items-center gap-2">
-                            {/* 🎤 Speak — always visible */}
-                            <CreatorMicButton
-                                socket={socketRef.current}
-                                roomId={room._id}
-                                disabled={!connected}
-                            />
                             <button
                                 onClick={() => setEditPlaylistOpen(true)}
                                 className="text-xs text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-2.5 py-1.5 transition-colors"
@@ -395,35 +400,61 @@ const CreatorLivePage = () => {
                     </div>
                 </div>
 
-                {/* ─── RIGHT: Controls ─── */}
-                <div className="flex flex-col p-5 gap-5 overflow-y-auto">
-                    <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex-shrink-0">
-                        Controls
-                    </h2>
+                {/* ─── RIGHT: Tabbed Controls ─── */}
+                <div className="flex flex-col overflow-hidden">
+                    {/* Tab bar */}
+                    <div className="flex items-center gap-1 px-4 pt-4 pb-0 border-b border-white/10 flex-shrink-0">
+                        {([
+                            { id: 'broadcast' as const, icon: Mic,      label: 'Broadcast' },
+                            { id: 'games'     as const, icon: Gamepad2, label: 'Games'     },
+                            { id: 'goal'      as const, icon: Coins,    label: 'Goal & Tips'},
+                        ]).map(({ id, icon: Icon, label }) => (
+                            <button
+                                key={id}
+                                onClick={() => setRightTab(id)}
+                                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg transition-colors border-b-2 -mb-px ${
+                                    rightTab === id
+                                        ? 'text-white border-violet-500 bg-white/5'
+                                        : 'text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-white/5'
+                                }`}
+                            >
+                                <Icon className="size-3.5" />
+                                {label}
+                            </button>
+                        ))}
+                    </div>
 
-                    {/* Stream goal */}
-                    <StreamGoalPanel
-                        roomId={room._id}
-                        streamGoal={room.streamGoal}
-                        streamGoalCurrent={stats.coinsThisSession}
-                        onGoalChanged={newGoal => setRoom(prev => prev ? { ...prev, streamGoal: newGoal } : null)}
-                    />
-
-                    {/* Donation feed */}
-                    <DonationFeed socket={socketRef.current} className="flex-shrink-0" />
-
-                    {/* Minigames */}
-                    <div>
-                        <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">Minigames</h3>
-                        <MinigamePanel
-                            roomId={room._id}
-                            creatorBalance={creatorBalance}
-                            minigames={minigames}
-                            activeGame={activeGame}
-                            gameSecondsLeft={gameSecondsLeft}
-                            onTrigger={handleTriggerGame}
-                            onGameAdded={game => setMinigames(prev => [...prev, game])}
-                        />
+                    <div className="flex-1 overflow-y-auto p-5">
+                        {rightTab === 'broadcast' && (
+                            <BroadcastPanel
+                                socket={socketRef.current}
+                                roomId={room._id}
+                                assets={broadcastAssets}
+                                connected={connected}
+                            />
+                        )}
+                        {rightTab === 'games' && (
+                            <MinigamePanel
+                                roomId={room._id}
+                                creatorBalance={creatorBalance}
+                                minigames={minigames}
+                                activeGame={activeGame}
+                                gameSecondsLeft={gameSecondsLeft}
+                                onTrigger={handleTriggerGame}
+                                onGameAdded={game => setMinigames(prev => [...prev, game])}
+                            />
+                        )}
+                        {rightTab === 'goal' && (
+                            <div className="space-y-5">
+                                <StreamGoalPanel
+                                    roomId={room._id}
+                                    streamGoal={room.streamGoal}
+                                    streamGoalCurrent={stats.coinsThisSession}
+                                    onGoalChanged={newGoal => setRoom(prev => prev ? { ...prev, streamGoal: newGoal } : null)}
+                                />
+                                <DonationFeed socket={socketRef.current} />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

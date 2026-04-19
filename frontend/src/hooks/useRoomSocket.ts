@@ -92,6 +92,10 @@ export const useRoomSocket = (roomId: string) => {
         emit('room:vote_queue', { roomId, songId });
     }, [roomId, emit]);
 
+    const pinMessage = useCallback((messageId: string, message: string, userId: string, userName: string) => {
+        emit('room:pin_message', { roomId, messageId, message, userId, userName });
+    }, [roomId, emit]);
+
     useEffect(() => {
         if (!userId || !roomId) return;
 
@@ -262,7 +266,8 @@ export const useRoomSocket = (roomId: string) => {
             }, 400);
         });
 
-        // Lightweight heartbeat — re-anchors any client that drifted
+        // Lightweight heartbeat — updates listener count + stores server anchors.
+        // Time is calculated client-side from startTimeUnix; only hard-correct on major drift (>2s).
         socket.on('room:sync_checkpoint', ({
             startTimeUnix,
             pausedAtMs,
@@ -277,16 +282,21 @@ export const useRoomSocket = (roomId: string) => {
             listenerCount?: number;
         }) => {
             if (listenerCount !== undefined) roomStore.setListenerCount(listenerCount);
-            const { listenerLocalPaused } = usePlayerStore.getState();
 
-            // Skip drift correction if listener is locally paused (they're in control)
+            // Keep server anchors fresh for client-side calculation
+            if (startTimeUnix !== undefined) playerStore.setStartTimeUnix(startTimeUnix);
+            if (pausedAtMs !== undefined) playerStore.setPausedAtMs(pausedAtMs ?? null);
+            playerStore.setPlaying(isPlaying);
+
+            const { listenerLocalPaused } = usePlayerStore.getState();
             if (listenerLocalPaused) return;
 
             const expectedMs = computePositionFromSync(isPlaying, startTimeUnix, pausedAtMs, serverTimestamp);
             const liveTimeMs = audioRef.current ? audioRef.current.currentTime * 1000 : usePlayerStore.getState().currentTimeMs;
             const drift = Math.abs(liveTimeMs - expectedMs);
 
-            if (drift > 300) {
+            // Only hard-correct on major drift (>2s) to avoid audible skipping
+            if (drift > 2000) {
                 playerStore.setCurrentTimeMs(expectedMs);
                 playerStore.setSynced(false);
                 if (audioRef.current) {
@@ -340,28 +350,30 @@ export const useRoomSocket = (roomId: string) => {
             roomStore.addChatMessage(msg);
         });
 
-        socket.on('room:creator_disconnected', ({ countdownSeconds }: { countdownSeconds: number }) => {
-            playerStore.setPlaying(false);
-            roomStore.setCreatorDisconnectCountdown(countdownSeconds);
-
-            let remaining = countdownSeconds;
-            countdownRef.current = setInterval(() => {
-                remaining -= 1;
-                roomStore.setCreatorDisconnectCountdown(remaining);
-                if (remaining <= 0 && countdownRef.current) {
-                    clearInterval(countdownRef.current);
-                    countdownRef.current = null;
-                }
-            }, 1000);
+        // Creator lost connection — room stays alive, music keeps playing
+        socket.on('room:creator_away', () => {
+            roomStore.setCreatorAway(true);
+            toast.info('Creator lost connection — music continues', { duration: 4000 });
         });
 
         socket.on('room:creator_reconnected', () => {
+            roomStore.setCreatorAway(false);
             roomStore.setCreatorDisconnectCountdown(null);
-            playerStore.setPlaying(true);
             if (countdownRef.current) {
                 clearInterval(countdownRef.current);
                 countdownRef.current = null;
             }
+        });
+
+        // Creator is manually ending the stream — give listeners a countdown
+        socket.on('room:ending_soon', ({ seconds }: { seconds: number }) => {
+            let remaining = seconds;
+            toast.warning(`Stream ending in ${remaining}s…`, { id: 'ending-soon', duration: seconds * 1000 });
+            const tick = setInterval(() => {
+                remaining -= 1;
+                if (remaining <= 0) { clearInterval(tick); return; }
+                toast.warning(`Stream ending in ${remaining}s…`, { id: 'ending-soon', duration: remaining * 1000 });
+            }, 1000);
         });
 
         socket.on('room:offline', () => {
@@ -378,14 +390,21 @@ export const useRoomSocket = (roomId: string) => {
             walletStore.setBalance(balance);
         });
 
-        socket.on('room:goal_updated', ({ streamGoal, streamGoalCurrent }: {
+        socket.on('room:goal_updated', ({ streamGoal, streamGoalCurrent, donor }: {
             roomId: string;
             streamGoal: number;
             streamGoalCurrent: number;
-            donor: { name: string; amount: number };
+            donor: { name: string; amount: number } | null;
         }) => {
             const current = roomStore.room;
             if (current) roomStore.setRoom({ ...current, streamGoal, streamGoalCurrent });
+            // Floating donor notification
+            if (donor?.name) {
+                toast(`🪙 ${donor.name} donated ${donor.amount.toLocaleString()} coins!`, {
+                    duration: 5000,
+                    style: { background: '#18181b', border: '1px solid #a78bfa', color: '#fff' },
+                });
+            }
         });
 
         socket.on('room:playlist_updated', ({ playlist }: { playlist: Array<{ _id: string; title: string; artist: string; duration: number; imageUrl: string; s3Key: string; albumId: string | null }> }) => {
@@ -445,6 +464,10 @@ export const useRoomSocket = (roomId: string) => {
             roomStore.setNominations(nominations);
         });
 
+        socket.on('room:message_pinned', (msg: { id: string; userId: string; userName: string; message: string; pinnedAt: string }) => {
+            roomStore.setPinnedMessage(msg);
+        });
+
         socket.on('room:queue_song_added', ({ title }: { title?: string }) => {
             toast.success(`"${title ?? 'Song'}" was voted into the queue!`);
         });
@@ -484,6 +507,21 @@ export const useRoomSocket = (roomId: string) => {
             roomStore.setCreatorAudioDone();
         });
 
+        // ── Broadcast asset playback (pre-recorded / uploaded file) ──────────
+        // Server already fetched a presigned GET URL — just play it directly.
+        socket.on('room:asset_broadcast', ({
+            label, url, durationSeconds,
+        }: { assetId: string; label: string; url: string; durationSeconds: number | null }) => {
+            const { isCreator } = useRoomStore.getState();
+            if (isCreator) return; // creator knows what they triggered
+            roomStore.setBroadcastAsset({ url, label, durationSeconds });
+        });
+
+        // ── Feature flag live updates ─────────────────────────────────────────
+        socket.on('room:flags_updated', ({ featureFlags }: { featureFlags: Record<string, boolean> }) => {
+            roomStore.updateFeatureFlags(featureFlags);
+        });
+
         socket.on('room:error', ({ message }: { message: string }) => {
             console.error('[Socket] << RECV room:error |', message);
             roomStore.setError(message);
@@ -509,5 +547,5 @@ export const useRoomSocket = (roomId: string) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, userId]);
 
-    return { sendChat, skipSong, leaveRoom, donate, updateGoal, submitAnswer, voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong };
+    return { sendChat, skipSong, leaveRoom, donate, updateGoal, submitAnswer, voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong, pinMessage };
 };

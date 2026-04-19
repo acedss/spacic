@@ -1,8 +1,8 @@
-// CreatorSpeakingOverlay — shown to listeners when creator broadcasts voice
-// Reads audio state from useRoomStore (populated by useRoomSocket event handlers)
-// Plays back assembled base64 audio via AudioContext once room:creator_done fires
+// CreatorSpeakingOverlay — shown to listeners during two types of creator broadcast:
+//   1. Live mic: base64 audio chunks assembled via AudioContext (room:creator_done)
+//   2. Broadcast asset: presigned S3 URL played via <audio> element (room:asset_broadcast)
 import { useEffect, useRef, useState } from 'react'
-import { Mic } from 'lucide-react'
+import { Mic, Radio } from 'lucide-react'
 import { useRoomStore } from '@/stores/useRoomStore'
 import { cn } from '@/lib/utils'
 
@@ -11,9 +11,11 @@ interface Props {
 }
 
 export const CreatorSpeakingOverlay = ({ creatorName = 'Creator' }: Props) => {
-    const { creatorAudio, clearCreatorAudio } = useRoomStore()
+    const { creatorAudio, clearCreatorAudio, broadcastAsset, clearBroadcastAsset } = useRoomStore()
     const [playing, setPlaying] = useState(false)
+    const [assetPlaying, setAssetPlaying] = useState(false)
     const audioCtxRef = useRef<AudioContext | null>(null)
+    const assetAudioRef = useRef<HTMLAudioElement | null>(null)
 
     const getCtx = () => {
         if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
@@ -61,11 +63,65 @@ export const CreatorSpeakingOverlay = ({ creatorName = 'Creator' }: Props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [creatorAudio.state])
 
-    const visible  = creatorAudio.state === 'receiving' || playing
+    // ── Broadcast asset: play presigned URL directly ──────────────────────────
+    useEffect(() => {
+        if (!broadcastAsset) return
+
+        const audio = new Audio(broadcastAsset.url)
+        assetAudioRef.current = audio
+        setAssetPlaying(true)
+
+        audio.play().catch(err => console.warn('[BroadcastAsset] play failed:', err))
+        audio.onended = () => {
+            setAssetPlaying(false)
+            clearBroadcastAsset()
+        }
+        audio.onerror = () => {
+            setAssetPlaying(false)
+            clearBroadcastAsset()
+        }
+
+        return () => {
+            audio.pause()
+            audio.src = ''
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [broadcastAsset])
+
+    const micVisible   = creatorAudio.state === 'receiving' || playing
+    const assetVisible = assetPlaying || !!broadcastAsset
+
+    if (!micVisible && !assetVisible) return null
+
+    // ── Broadcast asset overlay ──────────────────────────────────────────────
+    if (assetVisible) {
+        return (
+            <div className={cn(
+                'fixed bottom-36 left-1/2 -translate-x-1/2 z-50 pointer-events-none',
+                'flex items-center gap-3 px-5 py-3 rounded-2xl border shadow-2xl backdrop-blur-md',
+                'bg-blue-900/80 border-blue-500/40 text-blue-200',
+            )}>
+                <div className="size-8 rounded-full flex items-center justify-center flex-shrink-0 bg-blue-500/30">
+                    <Radio className="size-4 text-blue-300 animate-pulse" />
+                </div>
+                <div>
+                    <p className="text-sm font-semibold leading-none">
+                        {broadcastAsset?.label ?? 'Broadcast'}
+                    </p>
+                    <p className="text-xs opacity-60 mt-0.5">Playing from {creatorName}</p>
+                </div>
+                <div className="flex items-end gap-0.5 h-5 flex-shrink-0">
+                    {[0.4, 0.7, 1, 0.7, 0.4].map((h, i) => (
+                        <div key={i} className="w-0.5 rounded-full bg-blue-400"
+                            style={{ height: `${h * 100}%`, animation: `pulse ${0.5 + i * 0.1}s ease-in-out infinite alternate` }} />
+                    ))}
+                </div>
+            </div>
+        )
+    }
+
+    // ── Live mic overlay ─────────────────────────────────────────────────────
     const isPlaying = playing
-
-    if (!visible) return null
-
     return (
         <div className={cn(
             'fixed bottom-36 left-1/2 -translate-x-1/2 z-50 pointer-events-none',
@@ -88,7 +144,6 @@ export const CreatorSpeakingOverlay = ({ creatorName = 'Creator' }: Props) => {
                     {isPlaying ? 'Creator broadcast' : 'Preparing audio'}
                 </p>
             </div>
-            {/* Animated waveform bars */}
             <div className="flex items-end gap-0.5 h-5 flex-shrink-0">
                 {[0.4, 0.7, 1, 0.7, 0.4].map((h, i) => (
                     <div

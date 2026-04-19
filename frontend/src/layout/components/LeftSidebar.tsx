@@ -1,18 +1,15 @@
-import { Home, Search, Users, Target, Wallet, User, Crown, Radio, UserPlus, Zap, Heart } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Home, Search, Users, Target, Wallet, User, Crown, Radio, UserPlus, Heart, Zap, LayoutDashboard } from 'lucide-react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useWalletStore } from '@/stores/useWalletStore'
 import { useRoomStore } from '@/stores/useRoomStore'
+import { useSubscriptionStore } from '@/stores/useSubscriptionStore'
 import { axiosInstance } from '@/lib/axios'
 import { useSocialSocket } from '@/providers/SocialSocketProvider'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
-
-// CreatorLiveSheet has been removed.
-// Clicking "Live Now" now navigates to /studio/live — the dedicated monitoring page.
 
 interface LeftSidebarProps {
     isCollapsed: boolean
@@ -21,24 +18,25 @@ interface LeftSidebarProps {
 type RoomState = 'none' | 'offline' | 'live'
 
 const navItems = [
-    { to: '/', icon: Home, label: 'Home' },
-    { to: '/search', icon: Search, label: 'Search' },
-    { to: '/rooms', icon: Users, label: 'Co-listening Rooms' },
-    { to: '/friends', icon: UserPlus, label: 'Friends' },
-    { to: '/favorites', icon: Heart, label: 'Favorites' },
-    { to: '/goal', icon: Target, label: 'Album Goals' },
-    { to: '/studio', icon: Radio, label: 'Creator Studio' },
-    { to: '/wallet', icon: Wallet, label: 'Wallet', isWallet: true },
-    { to: '/subscription', icon: Crown, label: 'Subscription' },
-    { to: '/profile', icon: User, label: 'Profile' },
+    { to: '/',             icon: Home,          label: 'Home'            },
+    { to: '/search',       icon: Search,        label: 'Search'          },
+    { to: '/rooms',        icon: Users,         label: 'Live Rooms'      },
+    { to: '/friends',      icon: UserPlus,      label: 'Friends'         },
+    { to: '/favorites',    icon: Heart,         label: 'Favorites'       },
+    { to: '/goal',         icon: Target,        label: 'Album Goals'     },
+    { to: '/studio',       icon: Radio,         label: 'Creator Studio'  },
+    { to: '/wallet',       icon: Wallet,        label: 'Wallet',  isWallet: true },
+    { to: '/subscription', icon: Crown,         label: 'Subscription'   },
+    { to: '/admin',        icon: LayoutDashboard, label: 'Admin', isAdmin: true },
+    { to: '/profile',      icon: User,          label: 'Profile'         },
 ]
-
-// ── Main Sidebar ──────────────────────────────────────────────────────────────
 
 export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
     const { user } = useUser()
     const { isAdmin } = useAuthStore()
     const { balance } = useWalletStore()
+    const { subStatus, fetchSubStatus } = useSubscriptionStore()
+    const location = useLocation()
     const navigate = useNavigate()
     const socket = useSocialSocket()
     const [roomState, setRoomState] = useState<RoomState>('none')
@@ -49,7 +47,8 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
         ? storeListenerCount
         : listenerCount
 
-    // Load initial room state on mount
+    useEffect(() => { fetchSubStatus() }, [fetchSubStatus])
+
     useEffect(() => {
         axiosInstance.get('/rooms/me/room')
             .then(({ data }) => {
@@ -61,141 +60,122 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
             .catch(() => {})
     }, [])
 
-    // Live socket updates for room status
     useEffect(() => {
         if (!socket) return
-        const onLive = () => { setRoomState('live'); setListenerCount(0) }
+        const onLive    = () => { setRoomState('live');    setListenerCount(0) }
         const onOffline = () => { setRoomState('offline'); setListenerCount(0) }
-        socket.on('creator:room_live', onLive)
+        socket.on('creator:room_live',    onLive)
         socket.on('creator:room_offline', onOffline)
         return () => {
-            socket.off('creator:room_live', onLive)
+            socket.off('creator:room_live',    onLive)
             socket.off('creator:room_offline', onOffline)
         }
     }, [socket])
 
-    // Live → /studio/live monitoring dashboard. Offline/none → /studio setup page.
     const handleGoLiveCta = () => {
         navigate(roomState === 'live' ? '/studio/live' : '/studio')
     }
 
-    const ctaLabel = roomState === 'live' ? 'Live Now' : roomState === 'offline' ? 'Go Live' : 'Create Room'
-    const ctaColor = roomState === 'live'
-        ? 'bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25'
-        : 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30'
+    const visibleNav = navItems.filter(n => !n.isAdmin || isAdmin)
 
     return (
         <TooltipProvider delayDuration={200}>
-            <div className='flex flex-col h-full pt-4'>
+            <div className='flex flex-col h-full' style={{ background: 'var(--ink-1)' }}>
 
-                {/* Logo */}
-                <div className='flex items-center mb-8'>
-                    <div className='w-16 flex justify-center shrink-0'>
-                        <img src="/spotify.svg" className="size-10 border rounded-4xl border-indigo-900" />
-                    </div>
-                    {!isCollapsed && (
-                        <span className='whitespace-nowrap text-purple-300 pr-8'>Spacic</span>
+                {/* Brand */}
+                <div className={cn('border-b hair shrink-0', isCollapsed ? 'px-4 py-5' : 'px-6 pt-7 pb-6')}>
+                    {isCollapsed ? (
+                        <div className='flex justify-center'>
+                            <span className='serif italic text-white text-[22px] leading-none'>s</span>
+                        </div>
+                    ) : (
+                        <>
+                            <div className='flex items-baseline gap-1.5'>
+                                <span className='serif italic text-[28px] leading-none text-white'>spacic</span>
+                                <span className='mono text-[9px] text-[var(--fg-3)] uppercase tracking-widest'>fm</span>
+                            </div>
+                            <p className='mt-1 text-[11px] text-[var(--fg-3)] whitespace-nowrap'>Listening, together.</p>
+                        </>
                     )}
                 </div>
 
                 {/* Nav */}
-                <nav className='flex-1 space-y-1'>
-                    {navItems.map(({ to, icon: Icon, label, isWallet }) => {
-                        const isProfile = to === '/profile'
-                        const badge = isWallet && balance > 0 ? `${balance.toLocaleString()} 🪙` : undefined
+                <nav className='flex-1 overflow-y-auto hide-scrollbar px-3 pt-4 space-y-0.5'>
+                    {visibleNav.map(({ to, icon: Icon, label, isWallet }) => {
+                        const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to))
+                        const badge = isWallet && balance > 0 ? balance.toLocaleString() : undefined
 
-                        const linkEl = (
+                        const inner = (
                             <Link
                                 key={to}
                                 to={to}
-                                className='flex items-center py-3 text-white hover:text-purple-300 transition-colors'
+                                className={cn(
+                                    'flex items-center gap-3 px-3 py-2 rounded-xl text-left press transition-all',
+                                    isActive
+                                        ? 'bg-white/8 text-white ring-1 ring-white/10'
+                                        : 'text-[var(--fg-2)] hover:bg-white/4 hover:text-white'
+                                )}
                             >
-                                <div className='w-16 flex justify-center shrink-0 m-0.5'>
-                                    <Icon className='size-5' />
-                                </div>
+                                <Icon className='size-4 shrink-0' />
                                 {!isCollapsed && (
-                                    <div className='flex items-center flex-1 pr-4 whitespace-nowrap'>
-                                        <span>{label}</span>
+                                    <>
+                                        <span className='text-[13px] flex-1 whitespace-nowrap'>{label}</span>
                                         {badge && (
-                                            <span className='ml-auto bg-purple-600 text-white text-xs px-2 py-1 rounded-full'>
+                                            <span className='mono text-[10px] bg-white/8 text-[var(--fg-2)] px-1.5 py-0.5 rounded-md'>
                                                 {badge}
                                             </span>
                                         )}
-                                    </div>
+                                        {isActive && (
+                                            <span className='mono text-[9px] text-[var(--fg-3)]'>
+                                                {String(visibleNav.findIndex(n => n.to === to) + 1).padStart(2, '0')}
+                                            </span>
+                                        )}
+                                    </>
                                 )}
                             </Link>
                         )
 
-                        if (isProfile) {
+                        if (isCollapsed) {
                             return (
-                                <Popover key={to}>
-                                    <PopoverTrigger asChild>{linkEl}</PopoverTrigger>
-                                    <PopoverContent side="right" sideOffset={12} className="p-0 w-56 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl">
-                                        <div className="p-4 space-y-3">
-                                            <div className="flex items-center gap-3">
-                                                {user?.imageUrl ? (
-                                                    <img src={user.imageUrl} alt={user.fullName ?? 'User'} className="size-10 rounded-full object-cover shrink-0" />
-                                                ) : (
-                                                    <div className="size-10 rounded-full bg-zinc-800 flex items-center justify-center shrink-0">
-                                                        <User className="size-4 text-zinc-400" />
-                                                    </div>
-                                                )}
-                                                <div className="min-w-0">
-                                                    <p className="text-sm font-bold text-white truncate">{user?.fullName ?? 'User'}</p>
-                                                    <p className="text-[11px] text-zinc-400 truncate">{user?.primaryEmailAddress?.emailAddress}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2 flex-wrap">
-                                                {isAdmin && (
-                                                    <span className="text-[10px] bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">Admin</span>
-                                                )}
-                                                <span className="text-[10px] bg-white/5 text-zinc-400 px-2 py-0.5 rounded-full">Free tier</span>
-                                            </div>
-                                            <div className="pt-2 border-t border-white/5">
-                                                <Link to="/profile" className="block text-center text-[11px] font-semibold py-1.5 bg-white/5 hover:bg-white/10 rounded-lg transition-colors">
-                                                    View Profile
-                                                </Link>
-                                            </div>
-                                        </div>
-                                    </PopoverContent>
-                                </Popover>
+                                <Tooltip key={to}>
+                                    <TooltipTrigger asChild>{inner}</TooltipTrigger>
+                                    <TooltipContent side='right' sideOffset={12}>
+                                        <span>{label}</span>
+                                        {badge && <span className='ml-2'>{badge} coins</span>}
+                                    </TooltipContent>
+                                </Tooltip>
                             )
                         }
-
-                        if (!isCollapsed) return linkEl
-
-                        return (
-                            <Tooltip key={to}>
-                                <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
-                                <TooltipContent side="right" sideOffset={12}>
-                                    <span>{label}</span>
-                                    {badge && <span className="ml-2 bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded-full">{badge}</span>}
-                                </TooltipContent>
-                            </Tooltip>
-                        )
+                        return inner
                     })}
                 </nav>
 
-                {/* Go Live / Create Room CTA */}
-                <div className='pb-6 px-2'>
+                {/* Go Live CTA */}
+                <div className='px-3 pb-3 pt-2 border-t hair shrink-0'>
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <button
                                 onClick={handleGoLiveCta}
-                                className={`w-full flex items-center rounded-xl py-2.5 transition-all ${ctaColor}`}
+                                className={cn(
+                                    'w-full flex items-center rounded-xl py-2.5 px-3 gap-3 press transition-all',
+                                    roomState === 'live'
+                                        ? 'bg-[oklch(0.72_0.22_20_/_0.12)] text-[oklch(0.82_0.17_20)] ring-1 ring-[oklch(0.72_0.22_20_/_0.35)]'
+                                        : 'bg-white/5 text-[var(--fg-1)] ring-1 ring-white/10 hover:bg-white/8 hover:text-white'
+                                )}
                             >
-                                <div className='w-12 flex justify-center shrink-0'>
-                                    {roomState === 'live'
-                                        ? <span className={cn('w-2 h-2 rounded-full animate-pulse bg-red-400')} />
-                                        : <Zap className='size-4' />
-                                    }
-                                </div>
+                                {roomState === 'live' ? (
+                                    <span className='live-dot shrink-0' />
+                                ) : (
+                                    <Zap className='size-4 shrink-0' />
+                                )}
                                 {!isCollapsed && (
-                                    <div className='flex flex-col pr-4'>
-                                        <span className='text-sm font-semibold whitespace-nowrap leading-tight'>{ctaLabel}</span>
+                                    <div className='flex flex-col min-w-0'>
+                                        <span className='text-[12px] font-semibold whitespace-nowrap leading-tight'>
+                                            {roomState === 'live' ? 'Live Now' : roomState === 'offline' ? 'Go Live' : 'Create Room'}
+                                        </span>
                                         {roomState === 'live' && effectiveListenerCount > 0 && (
-                                            <span className='text-[10px] text-red-400/70 leading-tight'>
-                                                {effectiveListenerCount} listener{effectiveListenerCount !== 1 ? 's' : ''}
+                                            <span className='mono text-[10px] text-[oklch(0.72_0.22_20)] leading-tight'>
+                                                {effectiveListenerCount} listening
                                             </span>
                                         )}
                                     </div>
@@ -203,11 +183,50 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
                             </button>
                         </TooltipTrigger>
                         {isCollapsed && (
-                            <TooltipContent side="right" sideOffset={12}>
-                                <span>{ctaLabel}</span>
+                            <TooltipContent side='right' sideOffset={12}>
+                                {roomState === 'live' ? 'Live Now' : 'Create Room'}
                             </TooltipContent>
                         )}
                     </Tooltip>
+                </div>
+
+                {/* Premium upgrade card — hidden if already subscribed */}
+                {!isCollapsed && subStatus?.tier === 'FREE' && (
+                    <div className='px-3 pb-4 shrink-0'>
+                        <div className='rounded-xl p-3 ring-1 ring-white/10'
+                             style={{ background: 'linear-gradient(145deg, oklch(0.25 0.06 295 / 0.6), oklch(0.2 0.04 60 / 0.4))' }}>
+                            <div className='flex items-center gap-2 mb-1.5'>
+                                <Crown className='size-3.5 text-[oklch(0.88_0.12_75)]' />
+                                <span className='mono text-[10px] tracking-wider uppercase text-white/80'>Premium</span>
+                            </div>
+                            <p className='text-[11px] text-white/60 leading-snug'>Unlimited rooms · higher tip cap · exclusive rooms</p>
+                            <Link to='/subscription'
+                                  className='mt-2.5 w-full h-7 rounded-lg bg-white text-[var(--ink-0)] text-[11px] font-semibold press flex items-center justify-center'>
+                                Upgrade · $7/mo
+                            </Link>
+                        </div>
+                    </div>
+                )}
+
+                {/* User avatar */}
+                <div className={cn('px-3 pb-4 border-t hair shrink-0 pt-3', isCollapsed && 'flex justify-center')}>
+                    {user && (
+                        <Link to='/profile' className='flex items-center gap-2.5 press rounded-xl hover:bg-white/5 px-1.5 py-1.5'>
+                            <img
+                                src={user.imageUrl}
+                                alt={user.fullName ?? ''}
+                                className='w-8 h-8 rounded-full object-cover ring-1 ring-white/15 shrink-0'
+                            />
+                            {!isCollapsed && (
+                                <div className='min-w-0'>
+                                    <p className='text-[12px] text-white truncate leading-tight'>{user.fullName ?? user.firstName}</p>
+                                    <p className='mono text-[10px] text-[var(--fg-3)] truncate'>
+                                        {isAdmin ? 'Admin' : 'Member'}
+                                    </p>
+                                </div>
+                            )}
+                        </Link>
+                    )}
                 </div>
             </div>
         </TooltipProvider>

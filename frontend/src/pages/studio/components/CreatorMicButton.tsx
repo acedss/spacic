@@ -45,10 +45,13 @@ export const CreatorMicButton = ({ socket, roomId, disabled }: Props) => {
         if (recordingLimitRef.current) clearTimeout(recordingLimitRef.current)
     }, [])
 
-    // Calculate seconds until song ends
+    // Calculate seconds until song ends.
+    // duration is NaN when the audio element has no loaded src (creator's Live page
+    // doesn't play audio locally), so guard before arithmetic.
     const getSecsUntilSongEnd = useCallback(() => {
         if (!audioRef.current) return 0
         const duration = audioRef.current.duration
+        if (!isFinite(duration)) return 0
         const current = currentTimeMs / 1000
         return Math.max(0, Math.round(duration - current))
     }, [audioRef, currentTimeMs])

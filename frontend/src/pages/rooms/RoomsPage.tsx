@@ -1,6 +1,6 @@
 // RoomsPage — public browsable listing of live and offline rooms
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Users, Gem, Radio, Loader2, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import { getPublicRooms } from '@/lib/roomService'
 import type { RoomInfo } from '@/types/types'
@@ -96,14 +96,22 @@ const RoomGridCard = ({ room }: { room: RoomInfo }) => {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const RoomsPage = () => {
+    const [searchParams] = useSearchParams()
+    const moodParam = searchParams.get('mood') ?? ''
+
     const [rooms, setRooms]         = useState<RoomInfo[]>([])
     const [loading, setLoading]     = useState(true)
     const [loadingMore, setLoadingMore] = useState(false)
     const [hasMore, setHasMore]     = useState(false)
     const [offset, setOffset]       = useState(0)
-    const [search, setSearch]       = useState('')
+    const [search, setSearch]       = useState(moodParam)
     const [sort, setSort]           = useState<SortOption>('listeners')
-    const [debouncedSearch, setDebouncedSearch] = useState('')
+    const [debouncedSearch, setDebouncedSearch] = useState(moodParam)
+
+    // Sync mood param to search when URL changes
+    useEffect(() => {
+        if (moodParam) { setSearch(moodParam); setDebouncedSearch(moodParam); }
+    }, [moodParam])
 
     // Debounce search input
     useEffect(() => {

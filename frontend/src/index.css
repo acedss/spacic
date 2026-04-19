@@ -113,12 +113,137 @@
     --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* ─── Spacic Design System ─────────────────────────────────────────────── */
+
+/* Typography */
+.serif { font-family: 'Instrument Serif', Georgia, serif; }
+.mono  { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
+
+/* Ink/surface hierarchy */
+:root {
+  --ink-0: oklch(0.08 0.015 285);
+  --ink-1: oklch(0.12 0.018 285);
+  --ink-2: oklch(0.17 0.02 285);
+  --fg-1:  oklch(0.82 0.01 240);
+  --fg-2:  oklch(0.65 0.01 240);
+  --fg-3:  oklch(0.48 0.01 240);
+}
+
+/* Hairline borders */
+.hair { border-color: oklch(1 0 0 / 0.08); }
+
+/* Glass effects */
+.glass        { background: oklch(1 0 0 / 0.04); backdrop-filter: blur(16px) saturate(180%); }
+.glass-strong { background: oklch(1 0 0 / 0.07); backdrop-filter: blur(24px) saturate(200%); }
+
+/* Chip pills */
+.chip    { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.04em; color: var(--fg-1); transition: all 0.15s; }
+.chip:hover { background: oklch(1 0 0 / 0.08); color: white; }
+.chip-on { background: oklch(1 0 0 / 0.1); color: white; }
+
+/* Press feedback */
+.press { cursor: pointer; transition: transform 0.1s, opacity 0.1s; }
+.press:active { transform: scale(0.97); opacity: 0.85; }
+
+/* Equalizer bars */
+.eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.eq i { display: block; width: 2px; border-radius: 1px; background: currentColor; animation: wf 1.2s ease-in-out infinite alternate; }
+.eq i:nth-child(1) { animation-delay: 0s; }
+.eq i:nth-child(2) { animation-delay: 0.2s; }
+.eq i:nth-child(3) { animation-delay: 0.4s; }
+.eq i:nth-child(4) { animation-delay: 0.6s; }
+
+/* Live dot */
+.live-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: oklch(0.72 0.22 20);
+  box-shadow: 0 0 6px oklch(0.72 0.22 20);
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+/* Aurora gradient */
+.aurora {
+  pointer-events: none;
+  position: absolute;
+  inset: -60px;
+  background: radial-gradient(ellipse 80% 60% at 50% -10%, oklch(0.55 0.2 295 / 0.35), transparent),
+              radial-gradient(ellipse 60% 50% at 80% 30%, oklch(0.65 0.22 330 / 0.2), transparent),
+              radial-gradient(ellipse 70% 50% at 20% 60%, oklch(0.6 0.18 240 / 0.15), transparent);
+  filter: blur(40px);
+}
+.aurora-breathe { animation: aurora-drift 12s ease-in-out infinite alternate; }
+
+/* Grain texture */
+.grain {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity: 0.4;
+}
+
+/* Ticker marquee */
+.ticker-track { animation: ticker 30s linear infinite; display: inline-block; }
+@keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* Progress shimmer */
+.line-scan { position: relative; overflow: hidden; }
+.line-scan::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 40px;
+  right: 0;
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.3));
+  animation: line-sweep 2s ease-in-out infinite;
+}
+@keyframes line-sweep { 0%,100% { opacity:0; } 50% { opacity:1; } }
+
+/* ─── Keyframes ─────────────────────────────────────────────────────────── */
+@keyframes wf {
+  from { transform: scaleY(0.3); }
+  to   { transform: scaleY(1);   }
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px oklch(0.72 0.22 20); }
+  50%       { opacity: 0.5; box-shadow: 0 0 12px oklch(0.72 0.22 20 / 0.5); }
+}
+
+@keyframes aurora-drift {
+  from { transform: scale(1) rotate(0deg); }
+  to   { transform: scale(1.08) rotate(3deg); }
+}
+
+@keyframes drift {
+  0%   { transform: translate(-50%, -50%) translate(0px, 0px); }
+  50%  { transform: translate(-50%, -50%) translate(calc(var(--dx, 0px) * 0.6), calc(var(--dy, 0px) * 0.6)); }
+  100% { transform: translate(-50%, -50%) translate(var(--dx, 0px), var(--dy, 0px)); }
+}
+.drift { animation: drift 6s ease-in-out infinite alternate; }
+
+@keyframes orbit-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes float-up-new {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-180px) scale(1.5); }
+}
+
+/* ─── shadcn base ─────────────────────────────────────────────────────────── */
 @layer base {
     * {
         @apply border-border outline-ring/50;
     }
     body {
         @apply bg-background text-foreground;
+        font-family: 'Figtree', system-ui, sans-serif;
+        background: var(--ink-0);
+        color: var(--fg-1);
     }
 }
 

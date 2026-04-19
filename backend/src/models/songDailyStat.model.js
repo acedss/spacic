@@ -19,7 +19,7 @@ const songDailyStatSchema = new mongoose.Schema({
 
     peakHour:    { type: Number, default: null },    // 0–23, hour with most streams
     avgListenMs: { type: Number, default: 0 },       // avg listenedMs across all events
-}, { timestamps: false });
+}, { timestamps: false, suppressReservedKeysWarning: true });
 
 songDailyStatSchema.index({ songId: 1, date: -1 }, { unique: true });
 songDailyStatSchema.index({ date: -1, streams: -1 }); // "top songs on date X"

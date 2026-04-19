@@ -19,6 +19,8 @@ import friendRoutes from './routes/friend.route.js';
 import playlistRoutes from './routes/playlist.route.js';
 import minigameRoutes from './routes/minigame.route.js';
 import recsysRoutes from './routes/recsys.route.js';
+import broadcastAssetRoutes from './routes/broadcastAsset.route.js';
+import notificationRoutes from './routes/notification.route.js';
 import { handleWebhook } from './controllers/wallet.controller.js';
 import { handleClerkWebhook } from './controllers/auth.controller.js';
 
@@ -36,7 +38,7 @@ initializeSocket(httpServer);
 app.use(helmet());
 
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim());
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:5174').split(',').map(s => s.trim());
 
 app.use(cors({
     origin: (origin, cb) => {
@@ -137,6 +139,8 @@ app.use('/api/friends', friendRoutes);
 app.use('/api/playlists', playlistRoutes);
 app.use('/api/minigames', minigameRoutes);
 app.use('/api/recs', recsysRoutes);
+app.use('/api/broadcast-assets', broadcastAssetRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 //  Error handler
 app.use((error, req, res, next) => {

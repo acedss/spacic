@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import AuthCallbackPage from "./pages/auth-callback/AuthCallbackPage";
+import OnboardingPage from "./pages/onboarding/OnboardingPage";
 import HomePage from "./pages/home/HomePage";
 import { RoomPage } from "./pages/room/RoomPage";
 import MainLayout from "./layout/MainLayout";
@@ -22,6 +23,7 @@ export default function App() {
     <>
       <Routes>
         <Route path="/auth-callback" element={<AuthCallbackPage />} />
+        <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route element={<MainLayout />}>
           <Route path="/" element={<HomePage />} />

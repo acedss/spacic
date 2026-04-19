@@ -1,8 +1,6 @@
 import { SkipForward, Users, Wifi, WifiOff, Music2, X } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 
 interface Props {
     onSkip: () => void;
@@ -21,86 +19,95 @@ export const RoomPlayer = ({ onSkip, onClose }: Props) => {
 
     const currentSong = room?.playlist?.[currentSongIndex];
     const duration = currentSong?.duration ?? 0;
-    const progress = duration > 0 ? (currentTimeMs / 1000 / duration) * 100 : 0;
+    const progress = duration > 0 ? Math.min(100, (currentTimeMs / 1000 / duration) * 100) : 0;
 
     if (!room) return null;
 
     return (
-        <div className="flex flex-col bg-zinc-950 rounded-2xl border border-white/5 overflow-hidden md:h-full">
-            {/* Album Art */}
-            <div className="relative aspect-square bg-zinc-900 flex-shrink-0 max-h-64 md:max-h-none">
+        <div className="flex flex-col rounded-2xl overflow-hidden ring-1 ring-white/10"
+             style={{ background: 'oklch(1 0 0 / 0.07)', backdropFilter: 'blur(24px) saturate(200%)' }}>
+
+            {/* Album art */}
+            <div className="relative aspect-square overflow-hidden">
                 {currentSong?.imageUrl ? (
-                    <img
-                        src={currentSong.imageUrl}
-                        alt={currentSong.title}
-                        className="w-full h-full object-cover"
-                    />
+                    <img src={currentSong.imageUrl} alt={currentSong.title} className="w-full h-full object-cover" />
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                        <Music2 className="size-16 text-zinc-700" />
+                    <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--ink-2)' }}>
+                        <Music2 className="size-14 opacity-20 text-white" />
                     </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent" />
+                <div className="absolute inset-0" style={{ background: 'radial-gradient(circle at 30% 20%, transparent 40%, oklch(0.1 0.015 285 / 0.6))' }} />
+
+                {/* Rotating disc ring */}
+                <div className="absolute inset-4 rounded-full ring-1 ring-white/10 pointer-events-none"
+                     style={{ animation: 'orbit-slow 40s linear infinite' }}>
+                    <span className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-[oklch(0.88_0.12_75)]" />
+                </div>
+
+                {/* Listener count chip */}
+                <div className="absolute top-3 left-3">
+                    <span className="inline-flex items-center gap-1.5 rounded-full text-[11px] font-medium px-2.5 py-1 bg-black/50 text-white/80 ring-1 ring-white/15">
+                        <Users className="size-3" /> {listenerCount}
+                    </span>
+                </div>
             </div>
 
-            {/* Song Info */}
-            <div className="px-5 pt-4 pb-2">
-                <h2 className="text-lg font-bold truncate">
+            {/* Song info + controls */}
+            <div className="p-5">
+                <div className="mono text-[9px] uppercase tracking-[0.25em] mb-2" style={{ color: 'var(--fg-3)' }}>Now playing</div>
+                <h2 className="serif text-[28px] leading-[1.05] text-white truncate">
                     {currentSong?.title ?? 'No song playing'}
                 </h2>
-                <p className="text-zinc-400 text-sm mt-0.5 truncate">
+                <p className="text-[13px] mt-0.5 truncate" style={{ color: 'var(--fg-2)' }}>
                     {currentSong?.artist ?? room.title}
                 </p>
-            </div>
 
-            {/* Progress Bar */}
-            <div className="px-5 pb-3">
-                <Progress value={Math.min(progress, 100)} className="h-1 bg-white/10 [&>div]:bg-white [&>div]:transition-all [&>div]:duration-1000" />
-                <div className="flex justify-between text-xs text-zinc-600 mt-1">
-                    <span>{formatTime(currentTimeMs / 1000)}</span>
-                    <span>{formatTime(duration)}</span>
-                </div>
-            </div>
-
-            {/* Controls Row */}
-            <div className="px-5 pb-4 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 text-zinc-400 text-xs">
-                    <Users className="size-3.5" />
-                    <span>{listenerCount}</span>
-                </div>
-
-                {isCreator && (
-                    <Button onClick={onSkip} variant="ghost" size="sm" className="bg-white/10 hover:bg-white/20 text-xs h-7 px-3">
-                        <SkipForward className="size-3.5" />
-                        Skip
-                    </Button>
-                )}
-
-                <div className="flex items-center gap-1.5 text-xs">
-                    {isSynced ? (
-                        <span className="flex items-center gap-1 text-emerald-400">
-                            <Wifi className="size-3.5" />Synced
+                {/* Progress bar */}
+                <div className="mt-5">
+                    <div className="h-[3px] bg-white/10 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-1000"
+                             style={{ width: `${progress}%`, background: 'linear-gradient(90deg, oklch(0.88 0.12 75), oklch(0.7 0.2 295))' }} />
+                    </div>
+                    <div className="flex justify-between mt-1.5">
+                        <span className="mono text-[10px] tabular-nums" style={{ color: 'var(--fg-3)' }}>
+                            {formatTime(currentTimeMs / 1000)}
                         </span>
-                    ) : (
-                        <span className="flex items-center gap-1 text-yellow-400">
-                            <WifiOff className="size-3.5" />Syncing
+                        <span className="mono text-[10px] tabular-nums" style={{ color: 'var(--fg-3)' }}>
+                            {formatTime(duration)}
                         </span>
+                    </div>
+                </div>
+
+                {/* Controls row */}
+                <div className="mt-4 flex items-center justify-between">
+                    {/* Sync status */}
+                    <div className="flex items-center gap-1.5 text-[11px] mono">
+                        {isSynced ? (
+                            <span className="flex items-center gap-1 text-[oklch(0.74_0.14_160)]">
+                                <Wifi className="size-3.5" /> Synced
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-1 text-[oklch(0.88_0.12_75)]">
+                                <WifiOff className="size-3.5" /> Syncing…
+                            </span>
+                        )}
+                    </div>
+
+                    {isCreator && (
+                        <button onClick={onSkip}
+                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl ring-1 ring-white/15 text-[12px] hover:bg-white/8 press transition-colors"
+                            style={{ color: 'var(--fg-1)' }}>
+                            <SkipForward className="size-3.5" /> Skip
+                        </button>
+                    )}
+
+                    {isCreator && (
+                        <button onClick={onClose}
+                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl ring-1 ring-[oklch(0.72_0.22_20_/_0.35)] bg-[oklch(0.72_0.22_20_/_0.1)] text-[oklch(0.82_0.17_20)] text-[12px] press hover:bg-[oklch(0.72_0.22_20_/_0.2)]">
+                            <X className="size-3.5" /> Go offline
+                        </button>
                     )}
                 </div>
-            </div>
-
-            {/* Room Footer */}
-            <div className="mt-auto px-5 py-3 border-t border-white/5 flex items-center justify-between">
-                <div>
-                    <span className="text-xs text-zinc-500 truncate block max-w-32">{room.title}</span>
-                    <span className="text-xs text-zinc-700 capitalize">{room.status}</span>
-                </div>
-                {isCreator && (
-                    <Button onClick={onClose} variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-400/10 text-xs h-7 px-2">
-                        <X className="size-3.5" />
-                        Go Offline
-                    </Button>
-                )}
             </div>
         </div>
     );

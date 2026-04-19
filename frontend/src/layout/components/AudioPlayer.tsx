@@ -34,8 +34,11 @@ const AudioPlayer = () => {
         //   - URL refresh: preserves live position
         //   - Initial join: server-computed offset from room:joined
         audioRef.current.currentTime = currentTimeMs / 1000;
-        // Don't auto-play here — let the play/pause effect handle it
-        // (prevents race where we play stale position before sync completes)
+        // Set wantPlay so onCanPlay fires auto-play when the new src finishes loading.
+        // Without this, isPlaying stays true but the play effect doesn't re-run (no dep change),
+        // so the new track never starts after song-end advance.
+        const { isPlaying: playing, listenerLocalPaused: paused } = usePlayerStore.getState();
+        wantPlayRef.current = playing && !paused;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentSong?._id, currentSong?.audioUrl]);
 

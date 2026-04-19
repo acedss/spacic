@@ -1,6 +1,9 @@
 // Controller: Room - thin handlers, delegates to room.service
 
 import * as roomService from "../services/room.service.js";
+import { Room } from '../models/room.model.js';
+import { User } from '../models/user.model.js';
+import { getIo } from '../lib/io.js';
 
 const getClerkId = (req) => req.devBypass ? req.devClerkId : req.auth().userId;
 
@@ -183,6 +186,46 @@ export const updateQueueWhileLive = async (req, res, next) => {
         res.json({ success: true, data: result });
     } catch (error) {
         next(error);
+    }
+};
+
+// ── Feature flags ─────────────────────────────────────────────────────────────
+// PATCH /rooms/me/feature-flags
+// Body: Partial<{ liveMic, chat, donations, voting, minigames, voteQueue, broadcasts }>
+// If room is live, broadcasts room:flags_updated to all listeners in real time.
+
+export const updateFeatureFlags = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const user = await User.findOne({ clerkId }).select('_id');
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const allowed = ['liveMic', 'chat', 'donations', 'voting', 'minigames', 'voteQueue', 'broadcasts'];
+        const updates = {};
+        for (const key of allowed) {
+            if (typeof req.body[key] === 'boolean') {
+                updates[`featureFlags.${key}`] = req.body[key];
+            }
+        }
+
+        const room = await Room.findOneAndUpdate(
+            { creatorId: user._id },
+            { $set: updates },
+            { new: true },
+        );
+        if (!room) return res.status(404).json({ message: 'Room not found' });
+
+        // Notify live listeners immediately so they can update their UI
+        if (room.status === 'live') {
+            try {
+                const io = getIo();
+                io.to(room._id.toString()).emit('room:flags_updated', { featureFlags: room.featureFlags });
+            } catch { /* io may not be ready in tests */ }
+        }
+
+        res.json({ success: true, data: room.featureFlags });
+    } catch (err) {
+        next(err);
     }
 };
 

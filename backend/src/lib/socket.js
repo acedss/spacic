@@ -52,7 +52,7 @@ const startSyncCheckpoint = (io, roomId) => {
             serverTimestamp: Date.now(),
             listenerCount: room.listenerCount,
         });
-    }, 2000);
+    }, 5000);
     syncIntervals.set(roomId, interval);
 };
 
@@ -314,7 +314,7 @@ const canControlRoom = (userSession, roomSession) =>
 // ── Socket Server ────────────────────────────────────────────────────────────
 
 export const initializeSocket = (httpServer) => {
-    const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim());
+    const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:5174').split(',').map(s => s.trim());
     const io = new Server(httpServer, {
         cors: { origin: allowedOrigins, methods: ['GET', 'POST'], credentials: true },
     });
@@ -754,6 +754,26 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
+        // ── Pin Chat Message (creator only) ─────────────────────────────────────
+        socket.on('room:pin_message', async ({ roomId, messageId, message, userId, userName }) => {
+            try {
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+                const roomSession = await socketManager.getRoomById(roomId);
+                if (!roomSession || roomSession.creatorId !== userSession.userId) return;
+
+                io.to(roomId).emit('room:message_pinned', {
+                    id: messageId,
+                    userId,
+                    userName,
+                    message,
+                    pinnedAt: new Date().toISOString(),
+                });
+            } catch (error) {
+                console.error('[room:pin_message]', error.message);
+            }
+        });
+
 
         socket.on('room:song_ended', async ({ roomId, currentSongIndex }) => {
             try {
@@ -987,6 +1007,38 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
+        // ── Broadcast Asset Playback ───────────────────────────────────────────
+        // Creator triggers a pre-recorded/uploaded asset. Server fetches a short-lived
+        // presigned GET URL and fans it out — listeners play it directly from S3.
+        // This avoids relaying audio bytes through the server (unlike live mic chunks).
+        socket.on('room:asset_play', async ({ roomId, assetId }) => {
+            try {
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+
+                const roomSession = await socketManager.getRoomById(roomId);
+                if (!roomSession || roomSession.creatorId !== userSession.userId) return;
+
+                // Import lazily to avoid circular dep at module init time
+                const { BroadcastAsset } = await import('../models/broadcastAsset.model.js');
+                const { getPlaybackUrl }  = await import('../controllers/broadcastAsset.controller.js');
+
+                const asset = await BroadcastAsset.findOne({ _id: assetId, status: 'ready' }).lean();
+                if (!asset) return;
+
+                const url = await getPlaybackUrl(asset.s3Key);
+
+                io.to(roomId).emit('room:asset_broadcast', {
+                    assetId:         asset._id.toString(),
+                    label:           asset.label,
+                    url,
+                    durationSeconds: asset.durationSeconds ?? null,
+                });
+            } catch (err) {
+                console.error('[room:asset_play]', err.message);
+            }
+        });
+
         // Creator finishes speaking — resume music
         socket.on('room:creator_done', async ({ roomId }) => {
             try {
@@ -1012,25 +1064,11 @@ export const initializeSocket = (httpServer) => {
                 const roomSession = await socketManager.getRoomById(roomId);
 
                 if (roomSession && roomSession.creatorId === userSession.userId) {
-                    const SILENT_MS = 30_000;  // silent reconnect window — no notification shown (covers page reload)
-                    const GRACE_MS  = 300_000; // 5 min total before room closes (matches tier policy)
-
-                    // Delay notification by SILENT_MS so a quick page reload never shows
-                    // the countdown to listeners at all.
-                    const notifyTimer = setTimeout(() => {
-                        notifyTimers.delete(roomId);
-                        const remaining = Math.floor((GRACE_MS - SILENT_MS) / 1000);
-                        io.to(roomId).emit('room:creator_disconnected', {
-                            roomId,
-                            countdownSeconds: remaining,
-                            message:   'Creator disconnected. Room going offline soon...',
-                            closingAt: new Date(Date.now() + (GRACE_MS - SILENT_MS)),
-                        });
-                    }, SILENT_MS);
-                    notifyTimers.set(roomId, notifyTimer);
-
-                    const timer = setTimeout(() => goOfflineAndNotify(io, roomId, 'creator_disconnected'), GRACE_MS);
-                    disconnectTimers.set(roomId, timer);
+                    // Creator disconnected (network drop / page reload).
+                    // Room stays alive — playlist is in Redis, music keeps playing for listeners.
+                    // Room only closes via manual goOffline (REST) or session time limit.
+                    // Emit a non-scary "creator away" indicator; no countdown, no panic.
+                    io.to(roomId).emit('room:creator_away', { roomId });
                 } else {
                     await socketManager.removeRoomListener(roomId, userSession.userId);
                     const updatedRoom = await socketManager.getRoomById(roomId);

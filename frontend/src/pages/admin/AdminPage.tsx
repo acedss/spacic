@@ -2347,16 +2347,21 @@ export const AdminPage = () => {
     }, [appliedGranularity, appliedFrom, appliedTo, analyticsRefreshTick]);
 
     if (isLoading) return (
-        <div className="min-h-screen flex items-center justify-center bg-zinc-950">
-            <Loader className="size-6 animate-spin text-zinc-400" />
+        <div className="flex items-center justify-center h-full" style={{ background: 'var(--ink-0)' }}>
+            <Loader className="size-6 animate-spin text-[oklch(0.88_0.12_75)]" />
         </div>
     );
 
     if (!isAdmin) return (
-        <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-400">
-            Unauthorized
+        <div className="flex items-center justify-center h-full" style={{ background: 'var(--ink-0)', color: 'var(--fg-3)' }}>
+            <div className="text-center">
+                <p className="serif text-[28px] text-white italic">Access denied.</p>
+                <p className="mt-2 text-[13px]" style={{ color: 'var(--fg-3)' }}>You don't have admin privileges.</p>
+            </div>
         </div>
     );
+
+    const todayStr = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
     return (
         <AnalyticsCtx.Provider
@@ -2376,30 +2381,61 @@ export const AdminPage = () => {
                 },
             }}
         >
-            <div className="min-h-screen bg-zinc-950 flex">
-                {/* Sidebar */}
-                <aside className="w-56 border-r border-white/5 p-4 flex flex-col gap-1 shrink-0">
-                    <p className="text-xs font-semibold text-zinc-600 uppercase tracking-widest px-3 mb-3">Admin</p>
-                    {NAV.map(({ id, label, icon: Icon }) => (
-                        <button
-                            key={id}
-                            onClick={() => setSection(id)}
-                            className={cn(
-                                'flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-colors text-left',
-                                section === id
-                                    ? 'bg-white/10 text-white font-medium'
-                                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5',
-                            )}
-                        >
-                            <Icon className="size-4" />
-                            {label}
-                        </button>
-                    ))}
-                </aside>
+            <div className="min-h-full" style={{ background: 'var(--ink-0)' }}>
+                {/* ── Editorial header ─────────────────────────────────── */}
+                <div className="border-b hair">
+                    <div className="flex items-end justify-between px-10 pt-10 pb-6">
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <span className="mono text-[10px] uppercase tracking-[0.25em]" style={{ color: 'var(--fg-3)' }}>Platform Control · v2.4</span>
+                                <span className="inline-flex items-center gap-1.5 rounded-full text-[11px] font-medium px-2.5 py-1 bg-[oklch(0.74_0.14_160_/_0.15)] text-[oklch(0.78_0.14_160)] ring-1 ring-[oklch(0.74_0.14_160_/_0.35)]">
+                                    ● All systems operational
+                                </span>
+                            </div>
+                            <h1 className="serif text-white mt-3 tracking-[-0.02em] leading-[1.02]" style={{ fontSize: 56 }}>
+                                The night in <em className="italic">numbers.</em>
+                            </h1>
+                            <p className="text-[14px] mt-2" style={{ color: 'var(--fg-2)' }}>{todayStr} · Auto-refresh 30s</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <select className="h-9 px-3 rounded-lg text-[12px] text-white outline-none ring-1 ring-white/10"
+                                    style={{ background: 'var(--ink-2)' }}>
+                                <option>Last 30 days</option>
+                                <option>Last 7 days</option>
+                                <option>Today</option>
+                                <option>Custom range</option>
+                            </select>
+                            <button className="inline-flex items-center gap-1.5 h-9 px-4 rounded-xl ring-1 ring-white/15 text-[12px] hover:bg-white/5 press"
+                                    style={{ color: 'var(--fg-1)' }}
+                                    onClick={() => { setAnalyticsLoading(true); setAnalyticsRefreshTick(v => v + 1); }}>
+                                <RefreshCw className="size-3.5" /> Refresh
+                            </button>
+                            <button className="inline-flex items-center gap-1.5 h-9 px-4 rounded-xl bg-white text-[var(--ink-0)] text-[12px] font-semibold press">
+                                <Zap className="size-3.5" /> Live mode
+                            </button>
+                        </div>
+                    </div>
 
-                {/* Content */}
-                <main className="flex-1 p-8 overflow-y-auto">
-                    <div className="max-w-7xl mx-auto">
+                    {/* Tab nav */}
+                    <div className="px-10 flex gap-1">
+                        {NAV.map(({ id, label }) => (
+                            <button key={id} onClick={() => setSection(id)}
+                                className={cn(
+                                    'px-4 py-3 text-[13px] border-b-2 -mb-px press transition-colors',
+                                    section === id
+                                        ? 'text-white border-[oklch(0.88_0.12_75)]'
+                                        : 'border-transparent hover:text-white',
+                                )}
+                                style={{ color: section === id ? 'white' : 'var(--fg-3)' }}>
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* ── Content ──────────────────────────────────────────── */}
+                <div className="p-10">
+                    <div className="max-w-[1400px] mx-auto space-y-8">
                         {section === 'overview' && <OverviewSection />}
                         {section === 'plans'    && <PlansSection />}
                         {section === 'topup'    && <TopupSection />}
@@ -2408,7 +2444,7 @@ export const AdminPage = () => {
                         {section === 'recsys'   && <RecSysSection />}
                         {section === 'config'   && <PlatformConfigSection />}
                     </div>
-                </main>
+                </div>
             </div>
         </AnalyticsCtx.Provider>
     );

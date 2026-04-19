@@ -1,18 +1,12 @@
 import { useState } from 'react';
-import { Heart, Zap, Trophy, ChevronRight } from 'lucide-react';
+import { Gem, Trophy, Zap, ChevronRight } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
-const QUICK_AMOUNTS = [100, 500, 1000, 2500]; // in credits
-
-const toCoins = (credits: number) => `${credits.toLocaleString()} coins`;
+const QUICK_AMOUNTS = [100, 500, 1000, 2500]; // in coins
 
 interface DonationPanelProps {
     onDonate: (amount: number) => void;
@@ -25,16 +19,14 @@ export const DonationPanel = ({ onDonate, onUpdateGoal, isCreator }: DonationPan
     const { balance } = useWalletStore();
     const [selected, setSelected] = useState<number | null>(null);
     const [donating, setDonating] = useState(false);
-
-    // Goal increase modal state (creator only)
     const [showGoalModal, setShowGoalModal] = useState(false);
-    const [newGoalDollars, setNewGoalDollars] = useState('');
+    const [newGoalValue, setNewGoalValue] = useState('');
 
     if (!room || room.streamGoal <= 0) return (
-        <div className="flex flex-col items-center justify-center h-full gap-2 text-center p-8">
-            <Zap className="size-6 text-zinc-700" />
-            <p className="text-zinc-600 text-xs">No stream goal set.</p>
-            <p className="text-zinc-700 text-xs">The creator hasn't set a donation goal yet.</p>
+        <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
+            <Zap className="size-6 opacity-20 text-white" />
+            <p className="text-[13px] text-white">No stream goal set</p>
+            <p className="text-[12px]" style={{ color: 'var(--fg-3)' }}>The creator hasn't set a goal yet.</p>
         </div>
     );
 
@@ -53,143 +45,134 @@ export const DonationPanel = ({ onDonate, onUpdateGoal, isCreator }: DonationPan
     };
 
     const handleGoalSubmit = () => {
-        const newGoal = parseInt(newGoalDollars, 10);
+        const newGoal = parseInt(newGoalValue, 10);
         if (!newGoal || newGoal <= room.streamGoalCurrent) {
             toast.error(`New goal must be above ${room.streamGoalCurrent.toLocaleString()} coins`);
             return;
         }
         onUpdateGoal(newGoal);
         setShowGoalModal(false);
-        setNewGoalDollars('');
+        setNewGoalValue('');
     };
 
     return (
         <>
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
-                {/* Goal header */}
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        {goalReached
-                            ? <Trophy className="size-4 text-yellow-400" />
-                            : <Zap className="size-4 text-yellow-400" />
-                        }
-                        <span className="text-sm font-medium">
-                            {goalReached ? 'Goal Reached! 🎉' : 'Stream Goal'}
-                        </span>
+            <div className="p-5 flex flex-col gap-5 h-full overflow-auto hide-scrollbar">
+                {/* Wallet balance card */}
+                <div className="rounded-xl p-4 ring-1 ring-[oklch(0.82_0.15_75_/_0.3)]"
+                     style={{ background: 'linear-gradient(145deg, oklch(0.22 0.05 75 / 0.5), oklch(0.14 0.03 60))' }}>
+                    <div className="flex items-center justify-between">
+                        <span className="mono text-[9px] uppercase tracking-widest text-[oklch(0.88_0.12_75)]">Wallet balance</span>
+                        <Gem className="size-3.5 text-[oklch(0.88_0.12_75)]" />
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-zinc-400">
-                            {toCoins(room.streamGoalCurrent)} / {toCoins(room.streamGoal)}
-                        </span>
-                        {/* Creator: raise goal after it's been reached */}
-                        {goalReached && isCreator && (
-                            <button
-                                onClick={() => setShowGoalModal(true)}
-                                className="flex items-center gap-0.5 text-xs text-purple-400 hover:text-purple-300 font-medium transition-colors"
-                            >
-                                Raise <ChevronRight className="size-3" />
-                            </button>
-                        )}
-                    </div>
+                    <p className="mono text-[28px] text-white mt-2 tabular-nums leading-none">
+                        {balance.toLocaleString()} <span className="text-[12px]" style={{ color: 'var(--fg-3)' }}>coins</span>
+                    </p>
                 </div>
 
-                {/* Progress bar */}
-                <Progress
-                    value={progress}
-                    className={cn(
-                        'h-2 bg-white/10',
-                        goalReached ? '[&>div]:bg-gradient-to-r [&>div]:from-yellow-400 [&>div]:to-yellow-300'
-                                    : '[&>div]:bg-gradient-to-r [&>div]:from-yellow-500 [&>div]:to-orange-500'
-                    )}
-                />
+                {/* Goal progress */}
+                <div>
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            {goalReached ? <Trophy className="size-4 text-[oklch(0.88_0.12_75)]" /> : <Zap className="size-4 text-[oklch(0.88_0.12_75)]" />}
+                            <span className="text-[13px] text-white font-medium">
+                                {goalReached ? 'Goal Reached! 🎉' : 'Stream Goal'}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="mono text-[10px] tabular-nums" style={{ color: 'var(--fg-3)' }}>
+                                {room.streamGoalCurrent.toLocaleString()} / {room.streamGoal.toLocaleString()}
+                            </span>
+                            {goalReached && isCreator && (
+                                <button onClick={() => setShowGoalModal(true)}
+                                    className="flex items-center gap-0.5 text-[11px] text-[oklch(0.68_0.21_295)] hover:text-white transition-colors">
+                                    Raise <ChevronRight className="size-3" />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full line-scan transition-all duration-500"
+                             style={{ width: `${progress}%`, background: 'linear-gradient(90deg, oklch(0.88 0.12 75), oklch(0.7 0.2 295))' }} />
+                    </div>
+                    <span className="mono text-[10px] tabular-nums mt-1 block text-right text-[oklch(0.88_0.12_75)]">
+                        {progress.toFixed(0)}%
+                    </span>
+                </div>
 
-                {/* Quick donate buttons — hidden when goal reached */}
+                {/* Quick donate amounts */}
                 {!goalReached && (
                     <>
-                        <div className="grid grid-cols-4 gap-2">
-                            {QUICK_AMOUNTS.map((amount) => (
-                                <button
-                                    key={amount}
-                                    onClick={() => setSelected(amount === selected ? null : amount)}
-                                    className={cn(
-                                        'text-xs py-1.5 rounded-lg border transition-colors',
-                                        selected === amount
-                                            ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300'
-                                            : 'bg-white/5 border-white/10 text-zinc-400 hover:border-white/20 hover:text-white'
-                                    )}
-                                >
-                                    {toCoins(amount)}
-                                </button>
-                            ))}
+                        <div>
+                            <div className="mono text-[9px] uppercase tracking-widest mb-2" style={{ color: 'var(--fg-3)' }}>
+                                Donate to creator
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                {QUICK_AMOUNTS.map((amount) => (
+                                    <button key={amount}
+                                        onClick={() => setSelected(amount === selected ? null : amount)}
+                                        className={cn(
+                                            'h-12 rounded-xl text-[13px] mono tabular-nums press ring-1 transition-all',
+                                            selected === amount
+                                                ? 'text-[oklch(0.18_0.02_80)] bg-[oklch(0.88_0.12_75)] ring-[oklch(0.88_0.12_75)]'
+                                                : 'text-white bg-white/5 ring-white/10 hover:bg-white/10',
+                                        )}>
+                                        {amount.toLocaleString()} coins
+                                    </button>
+                                ))}
+                            </div>
                         </div>
 
-                        <Button
-                            onClick={handleDonate}
+                        <button onClick={handleDonate}
                             disabled={!selected || donating}
                             className={cn(
-                                'w-full text-sm font-medium',
+                                'w-full h-11 rounded-xl text-[13px] font-semibold press transition-all ring-1',
                                 selected && !donating
-                                    ? 'bg-yellow-500 hover:bg-yellow-400 text-black'
-                                    : 'bg-white/5 text-zinc-600 cursor-not-allowed'
-                            )}
-                        >
-                            <Heart className={cn('size-4', donating && 'animate-pulse')} />
-                            {donating ? 'Sending...' : selected ? `Donate ${toCoins(selected)}` : 'Select an amount'}
-                        </Button>
-
-                        <p className="text-center text-xs text-zinc-600">
-                            Your balance: {toCoins(balance)}
-                        </p>
+                                    ? 'bg-[oklch(0.88_0.12_75)] text-[oklch(0.18_0.02_80)] ring-[oklch(0.88_0.12_75)]'
+                                    : 'bg-white/5 text-white/30 ring-white/8 cursor-not-allowed',
+                            )}>
+                            <Gem className={cn('inline size-3.5 mr-1.5 -mt-0.5', donating && 'animate-pulse')} />
+                            {donating ? 'Sending…' : selected ? `Donate ${selected.toLocaleString()} coins` : 'Select an amount'}
+                        </button>
                     </>
                 )}
 
-                {/* Goal reached state for non-creators */}
                 {goalReached && !isCreator && (
-                    <p className="text-center text-xs text-zinc-500">
+                    <p className="text-center text-[12px]" style={{ color: 'var(--fg-3)' }}>
                         The stream goal has been reached. Thank you for your support!
                     </p>
                 )}
             </div>
 
-            {/* ── Increase Goal Dialog (creator only) ────────────────────────── */}
-            <Dialog open={showGoalModal} onOpenChange={(open) => { if (!open) { setShowGoalModal(false); setNewGoalDollars(''); } }}>
-                <DialogContent className="bg-zinc-900 border-white/10 text-white max-w-sm">
+            {/* Raise Goal Dialog (creator only) */}
+            <Dialog open={showGoalModal} onOpenChange={(open) => { if (!open) { setShowGoalModal(false); setNewGoalValue(''); } }}>
+                <DialogContent className="border-white/10 text-white max-w-sm" style={{ background: 'var(--ink-1)' }}>
                     <DialogHeader>
-                        <DialogTitle>Raise Stream Goal</DialogTitle>
-                        <p className="text-xs text-zinc-500 mt-1">
-                            Current: {toCoins(room.streamGoalCurrent)} raised. New goal must be higher.
+                        <DialogTitle className="serif text-[22px] text-white italic">Raise the goal.</DialogTitle>
+                        <p className="text-[12px] mt-1" style={{ color: 'var(--fg-3)' }}>
+                            Current: {room.streamGoalCurrent.toLocaleString()} raised. New goal must be higher.
                         </p>
                     </DialogHeader>
-
                     <div className="space-y-2">
-                        <Label htmlFor="new-goal" className="text-zinc-400">New goal (coins)</Label>
-                        <Input
-                            id="new-goal"
+                        <input
                             type="number"
                             min={room.streamGoalCurrent + 1}
-                            step="1"
-                            autoFocus
-                            value={newGoalDollars}
-                            onChange={(e) => setNewGoalDollars(e.target.value)}
+                            value={newGoalValue}
+                            onChange={(e) => setNewGoalValue(e.target.value)}
                             placeholder={`More than ${room.streamGoalCurrent.toLocaleString()} coins`}
-                            className="bg-zinc-800 border-white/10 text-white placeholder:text-zinc-600 focus-visible:ring-purple-500"
+                            className="w-full h-10 px-3 rounded-xl bg-white/6 ring-1 ring-white/10 text-[13px] text-white placeholder:text-[var(--fg-3)] outline-none focus:ring-[oklch(0.68_0.21_295_/_0.5)]"
                         />
                     </div>
-
-                    <DialogFooter className="gap-3">
-                        <Button
-                            variant="ghost"
-                            onClick={() => { setShowGoalModal(false); setNewGoalDollars(''); }}
-                            className="flex-1 bg-white/5 hover:bg-white/10 text-zinc-400"
-                        >
+                    <DialogFooter className="gap-2">
+                        <button onClick={() => { setShowGoalModal(false); setNewGoalValue(''); }}
+                            className="flex-1 h-10 rounded-xl ring-1 ring-white/12 text-[12px] hover:bg-white/5 press"
+                            style={{ color: 'var(--fg-2)' }}>
                             Cancel
-                        </Button>
-                        <Button
-                            onClick={handleGoalSubmit}
-                            className="flex-1 bg-purple-600 hover:bg-purple-500 text-white"
-                        >
+                        </button>
+                        <button onClick={handleGoalSubmit}
+                            className="flex-1 h-10 rounded-xl bg-[oklch(0.68_0.21_295)] text-white text-[12px] font-semibold press">
                             Raise Goal
-                        </Button>
+                        </button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

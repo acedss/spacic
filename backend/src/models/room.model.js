@@ -52,6 +52,18 @@ const roomSchema = new mongoose.Schema({
     streamGoalCurrent: { type: Number, default: 0 },
     escrow:            { type: Number, default: 0 },
 
+    // Feature flags — creator toggles these in Studio Settings.
+    // Affect what listeners see/can do in the room.
+    featureFlags: {
+        liveMic:    { type: Boolean, default: true },  // creator can broadcast voice
+        chat:       { type: Boolean, default: true },  // chat panel shown
+        donations:  { type: Boolean, default: true },  // donation panel shown
+        voting:     { type: Boolean, default: true },  // vote-to-skip shown
+        minigames:  { type: Boolean, default: true },  // minigame panel shown
+        voteQueue:  { type: Boolean, default: true },  // vote-to-queue shown
+        broadcasts: { type: Boolean, default: true },  // creator can play broadcast assets
+    },
+
     // All-time engagement counter (never resets)
     favoriteCount: { type: Number, default: 0 },
 

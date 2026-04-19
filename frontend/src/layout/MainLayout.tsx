@@ -5,88 +5,94 @@ import { PlaybackControls } from "./components/PlaybackControls";
 import AudioPlayer from "./components/AudioPlayer";
 import { RoomSessionProvider } from "@/providers/RoomSessionProvider";
 import { SocialSocketProvider } from "@/providers/SocialSocketProvider";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Menu, Users } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
 const MainLayout = () => {
     const location = useLocation();
-    // Studio pages get full width — no FriendsActivity sidebar distracting the creator
-    const hideRightSidebar = location.pathname.startsWith('/studio');
+    const hideRightSidebar = location.pathname.startsWith('/studio') || location.pathname.startsWith('/room');
 
-    const [isMobile, setIsMobile] = useState(false);
-    const [isSidebarHovered, setIsSidebarHovered] = useState(false);
+    const [isMobile, setIsMobile]           = useState(false);
+    const [isSidebarHovered, setSidebarHov] = useState(false);
+    // Separate expanded state — lags 220ms behind hover so text fades before width collapses
+    const [isSidebarExpanded, setSidebarExp] = useState(false);
+    const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
-    const [mobileFriendsOpen, setMobileFriendsOpen] = useState(false);
+    const [mobileFriendsOpen, setMobFriends]= useState(false);
 
     useEffect(() => {
-        const checkMobile = () => setIsMobile(window.innerWidth < 768);
-        checkMobile();
-        window.addEventListener("resize", checkMobile);
-        return () => window.removeEventListener("resize", checkMobile);
+        const check = () => setIsMobile(window.innerWidth < 768);
+        check();
+        window.addEventListener("resize", check);
+        return () => window.removeEventListener("resize", check);
     }, []);
 
     return (
-        <SocialSocketProvider><RoomSessionProvider><div className='h-screen flex flex-col bg-[#080c10] text-white overflow-hidden relative'>
+        <SocialSocketProvider>
+        <RoomSessionProvider>
+        <div className='h-screen flex flex-col overflow-hidden relative' style={{ background: 'var(--ink-0)', color: 'var(--fg-1)', fontFamily: "'Figtree', system-ui, sans-serif" }}>
             <AudioPlayer />
-
-            {/* Ambient glow blobs */}
-            <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-                <div className="absolute -top-1/4 -right-1/4 size-[800px] bg-blue-500/5 rounded-full blur-[120px]" />
-                <div className="absolute -bottom-1/4 -left-1/4 size-[700px] bg-blue-500/5 rounded-full blur-[120px]" />
-            </div>
 
             {/* Mobile top bar */}
             {isMobile && (
-                <div className="flex items-center justify-between px-4 pt-4 pb-2 shrink-0">
-                    <Button
-                        variant="ghost"
-                        size="icon-sm"
+                <div className="flex items-center justify-between px-4 pt-3 pb-2 shrink-0 border-b hair">
+                    <button
                         onClick={() => setMobileNavOpen(true)}
-                        className="bg-white/10 hover:bg-white/20 rounded-xl"
+                        className="h-8 w-8 rounded-xl grid place-items-center bg-white/8 ring-1 ring-white/10"
                     >
-                        <Menu className="size-5" />
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setMobileFriendsOpen(true)}
-                        className="bg-white/10 hover:bg-white/20 rounded-xl"
+                        <Menu className="size-4 text-white" />
+                    </button>
+                    <span className="serif italic text-white text-[22px]">spacic</span>
+                    <button
+                        onClick={() => setMobFriends(true)}
+                        className="h-8 w-8 rounded-xl grid place-items-center bg-white/8 ring-1 ring-white/10"
                     >
-                        <Users className="size-5" />
-                    </Button>
+                        <Users className="size-4 text-white" />
+                    </button>
                 </div>
             )}
 
-            <div className='flex-1 flex overflow-hidden gap-0 p-4 pb-0'>
+            <div className='flex-1 flex overflow-hidden'>
 
-                {/* LEFT SIDEBAR — desktop only */}
+                {/* LEFT SIDEBAR — collapsed spacer + floating overlay */}
                 {!isMobile && (
-                    <div
-                        className='w-16 shrink-0 relative mr-4 z-100'
-                        onMouseEnter={() => setIsSidebarHovered(true)}
-                        onMouseLeave={() => setIsSidebarHovered(false)}
-                    >
-                        <aside className={cn(
-                            'h-full liquid-glass rounded-2xl overflow-hidden transition-all duration-300',
-                            isSidebarHovered
-                                ? 'absolute inset-y-0 left-0 w-60 shadow-2xl'
-                                : 'w-full'
-                        )}>
-                            <LeftSidebar isCollapsed={!isSidebarHovered} />
-                        </aside>
-                    </div>
+                    <>
+                        {/* Fixed-width spacer keeps main content offset */}
+                        <div className='w-16 shrink-0' />
+                        {/* Floating sidebar overlays on hover */}
+                        <div
+                            className='absolute top-0 bottom-0 left-0 z-50 border-r hair'
+                            style={{
+                                width: isSidebarHovered ? 220 : 64,
+                                transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
+                                background: 'var(--ink-1)',
+                            }}
+                            onMouseEnter={() => {
+                                if (collapseTimer.current) clearTimeout(collapseTimer.current);
+                                setSidebarHov(true);
+                                setSidebarExp(true);
+                            }}
+                            onMouseLeave={() => {
+                                setSidebarHov(false);
+                                collapseTimer.current = setTimeout(() => setSidebarExp(false), 220);
+                            }}
+                        >
+                            <div className='h-full overflow-hidden'>
+                                <LeftSidebar isCollapsed={!isSidebarExpanded} />
+                            </div>
+                        </div>
+                    </>
                 )}
 
-                <main className='flex-1 overflow-y-auto hide-scrollbar pb-32'>
+                <main className='flex-1 overflow-y-auto hide-scrollbar pb-28'>
                     <Outlet />
                 </main>
 
-                {/* RIGHT SIDEBAR — desktop only, hidden on studio pages */}
+                {/* RIGHT SIDEBAR */}
                 {!isMobile && !hideRightSidebar && (
-                    <aside className='w-72 shrink-0 liquid-glass rounded-2xl ml-4 overflow-hidden'>
+                    <aside className='w-72 shrink-0 border-l hair overflow-hidden' style={{ background: 'var(--ink-1)' }}>
                         <FriendsActivity />
                     </aside>
                 )}
@@ -94,24 +100,28 @@ const MainLayout = () => {
 
             {/* Mobile nav Sheet */}
             <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-                <SheetContent side="left" className="w-64 bg-zinc-950 border-white/10 p-0">
+                <SheetContent side="left" className="w-64 p-0 border-white/10" style={{ background: 'var(--ink-1)' }}>
                     <SheetTitle className="sr-only">Navigation</SheetTitle>
                     <LeftSidebar isCollapsed={false} />
                 </SheetContent>
             </Sheet>
 
             {/* Mobile friends Sheet */}
-            <Sheet open={mobileFriendsOpen} onOpenChange={setMobileFriendsOpen}>
-                <SheetContent side="right" className="w-80 bg-zinc-950 border-white/10 p-0">
+            <Sheet open={mobileFriendsOpen} onOpenChange={setMobFriends}>
+                <SheetContent side="right" className="w-80 p-0 border-white/10" style={{ background: 'var(--ink-1)' }}>
                     <SheetTitle className="sr-only">Friends Activity</SheetTitle>
                     <FriendsActivity />
                 </SheetContent>
             </Sheet>
 
-            <footer className='fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-4rem)] max-w-7xl h-24 liquid-glass rounded-2xl z-50 shadow-2xl'>
+            {/* Bottom playback bar */}
+            <footer className='fixed bottom-0 left-0 right-0 h-24 border-t hair z-40 glass'
+                    style={{ background: 'oklch(0.1 0.015 285 / 0.85)' }}>
                 <PlaybackControls />
             </footer>
-        </div></RoomSessionProvider></SocialSocketProvider>
+        </div>
+        </RoomSessionProvider>
+        </SocialSocketProvider>
     );
 };
 

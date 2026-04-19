@@ -1,5 +1,5 @@
-import { useEffect, useRef, useCallback } from 'react'
-import { Bell, Share2, X, Radio, UserPlus } from 'lucide-react'
+import { useEffect, useRef, useCallback, useState } from 'react'
+import { Bell, Share2, X, Radio, UserPlus, Users as UsersIcon, Zap } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
@@ -7,13 +7,14 @@ import { toast } from 'sonner'
 import { useFriendStore } from '@/stores/useFriendStore'
 import { useRoomStore } from '@/stores/useRoomStore'
 import { useSocialSocket } from '@/providers/SocialSocketProvider'
+import { useNotificationStore, type Notification } from '@/stores/useNotificationStore'
 import type { FriendInvite, FriendActivityItem } from '@/types/types'
 
 // ── Online dot ────────────────────────────────────────────────────────────────
 
 const OnlineDot = ({ online }: { online: boolean }) => (
-    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-zinc-950 ${
-        online ? 'bg-green-500' : 'bg-zinc-600'
+    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 ${
+        online ? 'bg-[oklch(0.74_0.14_160)] border-[var(--ink-1)]' : 'bg-white/20 border-[var(--ink-1)]'
     }`} />
 )
 
@@ -76,7 +77,7 @@ const FriendRow = ({ friend, listening, currentRoomId, onInvite }: FriendRowProp
     return (
         <div className='flex items-center gap-3 py-2'>
             <div className='relative shrink-0'>
-                <Avatar className='w-10 h-10'>
+                <Avatar className='w-9 h-9'>
                     <AvatarImage src={friend.imageUrl} alt={friend.fullName} />
                     <AvatarFallback className='text-xs'>{friend.fullName.slice(0, 2).toUpperCase()}</AvatarFallback>
                 </Avatar>
@@ -84,31 +85,29 @@ const FriendRow = ({ friend, listening, currentRoomId, onInvite }: FriendRowProp
             </div>
 
             <div className='flex-1 min-w-0'>
-                <p className='text-sm font-semibold truncate'>{friend.fullName}</p>
+                <p className='text-[13px] text-white truncate'>{friend.fullName}</p>
                 {friend.room ? (
-                    <p className='text-[11px] text-zinc-400 truncate'>
-                        Listening to <span className='text-zinc-200'>{friend.room.title}</span>
+                    <p className='text-[11px] truncate' style={{ color: 'var(--fg-3)' }}>
+                        in <span className='text-white/80 serif italic'>{friend.room.title}</span>
                     </p>
                 ) : (
-                    <p className='text-[11px] text-zinc-400'>Online</p>
+                    <p className='text-[11px]' style={{ color: 'var(--fg-3)' }}>Online</p>
                 )}
             </div>
 
-            {/* Join Room — ref=friend.userId logs as 'activity_join' in InviteLog */}
             {listening && friend.room && (
                 <button
                     onClick={() => navigate(`/rooms/${friend.room!._id}?ref=${friend.userId}&type=activity_join`)}
-                    className='shrink-0 px-2.5 py-1 text-[10px] font-semibold border border-white/20 hover:bg-white/10 rounded-full transition-colors whitespace-nowrap'
+                    className='shrink-0 h-7 px-2.5 text-[10px] font-semibold ring-1 ring-white/15 hover:bg-white/8 rounded-full press whitespace-nowrap text-white'
                 >
-                    Join Room
+                    Join
                 </button>
             )}
 
-            {/* Invite — if viewer is in a room and this friend is only online (not already in a room) */}
             {!listening && currentRoomId && onInvite && (
                 <button
                     onClick={() => onInvite(friend.userId)}
-                    className='shrink-0 p-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors'
+                    className='shrink-0 h-7 w-7 rounded-lg grid place-items-center bg-[oklch(0.68_0.21_295_/_0.15)] text-[oklch(0.82_0.14_295)] ring-1 ring-[oklch(0.68_0.21_295_/_0.35)] press hover:bg-[oklch(0.68_0.21_295_/_0.25)]'
                     title={`Invite ${friend.fullName}`}
                 >
                     <UserPlus className='size-3.5' />
@@ -138,15 +137,35 @@ const OfflineRow = ({ friend }: { friend: FriendActivityItem }) => (
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const NOTIF_ICONS: Record<string, string> = {
+    friend_request: '👤',
+    friend_accepted: '🤝',
+    room_invite: '🎧',
+    room_live: '🔴',
+    system: '📢',
+}
+
+const timeAgo = (date: string) => {
+    const d = Math.floor((Date.now() - Date.parse(date)) / 1000)
+    if (d < 60) return 'just now'
+    if (d < 3600) return `${Math.floor(d / 60)}m ago`
+    if (d < 86400) return `${Math.floor(d / 3600)}h ago`
+    return `${Math.floor(d / 86400)}d ago`
+}
+
 export const FriendsActivity = () => {
     const { userId } = useAuth()
+    const navigate = useNavigate()
     const socket     = useSocialSocket()
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const { activity, pendingInvites, fetchActivity, addPendingInvite, sendInvite } = useFriendStore()
     const currentRoom = useRoomStore((s) => s.room)
     const liveRoomId = currentRoom?.status === 'live' ? currentRoom._id : undefined
+    const { notifications, unreadCount, fetchNotifications, fetchUnreadCount, markAllRead } = useNotificationStore()
+    const [showNotifs, setShowNotifs] = useState(false)
 
     useEffect(() => { fetchActivity() }, [fetchActivity])
+    useEffect(() => { if (userId) fetchUnreadCount() }, [userId, fetchUnreadCount])
 
     // Debounced refresh — collapses burst events into one fetch
     const debouncedFetch = useCallback(() => {
@@ -160,12 +179,14 @@ export const FriendsActivity = () => {
 
     const handleInvite = useCallback((invite: FriendInvite) => {
         addPendingInvite(invite)
+        fetchUnreadCount()
         toast.info(`${invite.from.fullName} invited you to ${invite.room.title}`)
-    }, [addPendingInvite])
+    }, [addPendingInvite, fetchUnreadCount])
 
     const handleRequestReceived = useCallback(() => {
         toast.info('You have a new friend request')
-    }, [])
+        fetchUnreadCount()
+    }, [fetchUnreadCount])
 
     // Attach/detach listeners on the shared socket
     useEffect(() => {
@@ -175,6 +196,7 @@ export const FriendsActivity = () => {
         socket.on('friend:request_received', handleRequestReceived)
         socket.on('friend:request_accepted', () => {
             debouncedFetch()
+            fetchUnreadCount()
             toast.success('A friend request was accepted!')
         })
         socket.on('friend:activity_changed', debouncedFetch)
@@ -215,13 +237,62 @@ export const FriendsActivity = () => {
     const hasActivity = listening.length > 0 || online.length > 0 || offline.length > 0
 
     return (
-        <div className='flex flex-col h-full'>
+        <div className='flex flex-col h-full' style={{ background: 'var(--ink-1)' }}>
 
             {/* Header */}
-            <div className='px-5 py-4 border-b border-white/5 flex items-center justify-between shrink-0'>
-                <h3 className='font-bold text-sm tracking-tight'>Friends Activity</h3>
-                <Bell className='size-4 text-zinc-500' />
+            <div className='px-5 py-4 border-b hair flex items-center justify-between shrink-0'>
+                <div>
+                    <span className='mono text-[9px] uppercase tracking-widest block mb-0.5' style={{ color: 'var(--fg-3)' }}>Your circle</span>
+                    <h3 className='serif italic text-[18px] text-white leading-tight'>Friends</h3>
+                </div>
+                <button
+                    className='relative p-1.5 rounded-lg hover:bg-white/8 transition-colors'
+                    onClick={() => {
+                        setShowNotifs(!showNotifs)
+                        if (!showNotifs) { fetchNotifications(); markAllRead() }
+                    }}
+                >
+                    <Bell className='size-4' style={{ color: showNotifs ? 'var(--fg-1)' : 'var(--fg-3)' }} />
+                    {unreadCount > 0 && (
+                        <span className='absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white'>
+                            {unreadCount > 99 ? '99+' : unreadCount}
+                        </span>
+                    )}
+                </button>
             </div>
+
+            {/* Notification dropdown */}
+            {showNotifs && (
+                <div className='border-b hair max-h-72 overflow-y-auto'>
+                    <div className='px-4 py-2 flex items-center justify-between'>
+                        <p className='text-[9px] font-bold uppercase tracking-widest' style={{ color: 'var(--fg-3)' }}>Notifications</p>
+                        <button onClick={() => setShowNotifs(false)} className='text-zinc-500 hover:text-zinc-300'>
+                            <X className='size-3' />
+                        </button>
+                    </div>
+                    {notifications.length === 0 ? (
+                        <p className='px-4 pb-4 text-[11px]' style={{ color: 'var(--fg-3)' }}>No notifications yet.</p>
+                    ) : (
+                        <div className='px-3 pb-3 space-y-1'>
+                            {notifications.map((n: Notification) => (
+                                <div
+                                    key={n._id}
+                                    className={`flex items-start gap-2.5 p-2.5 rounded-lg transition-colors ${
+                                        n.read ? 'opacity-50' : 'bg-white/5'
+                                    }`}
+                                >
+                                    <span className='text-sm mt-0.5 shrink-0'>{NOTIF_ICONS[n.type] ?? '📢'}</span>
+                                    <div className='flex-1 min-w-0'>
+                                        <p className='text-[11px] font-semibold text-white truncate'>{n.title}</p>
+                                        <p className='text-[10px] truncate' style={{ color: 'var(--fg-3)' }}>{n.message}</p>
+                                        <p className='text-[9px] mt-0.5' style={{ color: 'var(--fg-3)' }}>{timeAgo(n.createdAt)}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className='flex-1 overflow-y-auto px-4 py-4 space-y-1'>
 
@@ -287,8 +358,8 @@ export const FriendsActivity = () => {
                 {/* Empty state */}
                 {!hasActivity && pendingInvites.length === 0 && (
                     <div className='flex flex-col items-center gap-3 py-12 text-center'>
-                        <Radio className='size-8 text-zinc-700' />
-                        <p className='text-[11px] text-zinc-500 leading-relaxed'>
+                        <Radio className='size-8 opacity-20 text-white' />
+                        <p className='text-[11px] leading-relaxed' style={{ color: 'var(--fg-3)' }}>
                             No friends active right now.<br />
                             Add friends to see their activity.
                         </p>

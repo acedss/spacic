@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RoomInfo, ChatMessage, ActiveGame } from '@/types/types';
+import type { RoomInfo, ChatMessage, ActiveGame, RoomFeatureFlags } from '@/types/types';
 
 interface CreatorAudio {
     state:    'idle' | 'receiving' | 'done';
@@ -35,11 +35,15 @@ interface RoomStore {
     listenerCount:              number;
     isCreator:                  boolean;
     creatorDisconnectCountdown: number | null;
+    creatorAway:                boolean; // true while creator is disconnected but room still alive
     loading:                    boolean;
     error:                      string | null;
 
     // Creator mic audio relay
     creatorAudio: CreatorAudio;
+
+    // Broadcast asset playback (pre-recorded/uploaded, played via presigned URL)
+    broadcastAsset: { url: string; label: string; durationSeconds: number | null } | null;
 
     // Active minigame visible to all room members
     activeGame:      ActiveGame | null;
@@ -52,12 +56,16 @@ interface RoomStore {
     emojiBursts: EmojiBurst[];
     sessionInfo: SessionInfo | null;
 
+    // Creator pinned message
+    pinnedMessage: { id: string; userId: string; userName: string; message: string; pinnedAt: string } | null;
+
     setRoom:                      (room: RoomInfo) => void;
     setIsCreator:                 (isCreator: boolean) => void;
     setListenerCount:             (count: number) => void;
     updatePlaylistSongUrl:        (index: number, audioUrl: string) => void;
     addChatMessage:               (msg: ChatMessage) => void;
     setCreatorDisconnectCountdown:(seconds: number | null) => void;
+    setCreatorAway:               (away: boolean) => void;
     setLoading:                   (loading: boolean) => void;
     setError:                     (error: string | null) => void;
     reset:                        () => void;
@@ -67,6 +75,13 @@ interface RoomStore {
     addCreatorAudioChunk:     (chunk: string, mimeType?: string) => void;
     setCreatorAudioDone:      () => void;
     clearCreatorAudio:        () => void;
+
+    // Broadcast asset actions
+    setBroadcastAsset:   (asset: { url: string; label: string; durationSeconds: number | null }) => void;
+    clearBroadcastAsset: () => void;
+
+    // Feature flag live updates
+    updateFeatureFlags: (flags: Partial<RoomFeatureFlags>) => void;
 
     // Minigame actions
     setActiveGame:      (game: ActiveGame | null) => void;
@@ -78,6 +93,7 @@ interface RoomStore {
     setNominations:  (n: Nomination[]) => void;
     addEmojiBurst:   (burst: EmojiBurst) => void;
     setSessionInfo:  (info: SessionInfo | null) => void;
+    setPinnedMessage:(msg: { id: string; userId: string; userName: string; message: string; pinnedAt: string } | null) => void;
 }
 
 const DEFAULT_AUDIO: CreatorAudio = { state: 'idle', chunks: [], mimeType: 'audio/webm' };
@@ -88,9 +104,11 @@ export const useRoomStore = create<RoomStore>((set) => ({
     listenerCount:              0,
     isCreator:                  false,
     creatorDisconnectCountdown: null,
+    creatorAway:                false,
     loading:                    false,
     error:                      null,
     creatorAudio:               { ...DEFAULT_AUDIO },
+    broadcastAsset:             null,
     activeGame:                 null,
     gameSecondsLeft:            0,
     skipVotes:                  { count: 0, needed: 1 },
@@ -98,6 +116,7 @@ export const useRoomStore = create<RoomStore>((set) => ({
     nominations:                [],
     emojiBursts:                [],
     sessionInfo:                null,
+    pinnedMessage:              null,
 
     setRoom:          (room) => set({ room }),
     setIsCreator:     (isCreator) => set({ isCreator }),
@@ -116,6 +135,7 @@ export const useRoomStore = create<RoomStore>((set) => ({
 
     setCreatorDisconnectCountdown: (creatorDisconnectCountdown) =>
         set({ creatorDisconnectCountdown }),
+    setCreatorAway: (creatorAway) => set({ creatorAway }),
 
     setLoading: (loading) => set({ loading }),
     setError:   (error)   => set({ error }),
@@ -129,6 +149,7 @@ export const useRoomStore = create<RoomStore>((set) => ({
         loading:                    false,
         error:                      null,
         creatorAudio:               { ...DEFAULT_AUDIO },
+        broadcastAsset:             null,
         activeGame:                 null,
         gameSecondsLeft:            0,
         skipVotes:                  { count: 0, needed: 1 },
@@ -136,6 +157,7 @@ export const useRoomStore = create<RoomStore>((set) => ({
         nominations:                [],
         emojiBursts:                [],
         sessionInfo:                null,
+        pinnedMessage:              null,
     }),
 
     // Creator audio
@@ -157,6 +179,20 @@ export const useRoomStore = create<RoomStore>((set) => ({
     clearCreatorAudio: () =>
         set({ creatorAudio: { ...DEFAULT_AUDIO } }),
 
+    // Broadcast asset
+    setBroadcastAsset:   (broadcastAsset) => set({ broadcastAsset }),
+    clearBroadcastAsset: () => set({ broadcastAsset: null }),
+
+    // Feature flags live update
+    updateFeatureFlags: (flags) => set((s) => {
+        if (!s.room) return {};
+        const current: RoomFeatureFlags = s.room.featureFlags ?? {
+            liveMic: true, chat: true, donations: true, voting: true,
+            minigames: true, voteQueue: true, broadcasts: true,
+        };
+        return { room: { ...s.room, featureFlags: { ...current, ...flags } } };
+    }),
+
     // Minigame
     setActiveGame:      (activeGame) => set({ activeGame }),
     setGameSecondsLeft: (gameSecondsLeft) => set({ gameSecondsLeft }),
@@ -168,5 +204,6 @@ export const useRoomStore = create<RoomStore>((set) => ({
     addEmojiBurst:  (burst) => set((s) => ({
         emojiBursts: [...s.emojiBursts.slice(-19), burst],
     })),
-    setSessionInfo: (sessionInfo) => set({ sessionInfo }),
+    setSessionInfo:    (sessionInfo) => set({ sessionInfo }),
+    setPinnedMessage:  (pinnedMessage) => set({ pinnedMessage }),
 }));

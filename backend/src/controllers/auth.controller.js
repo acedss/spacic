@@ -9,13 +9,15 @@ export const authCallback = async (req, res, next) => {
         const update = { fullName, imageUrl };
         if (username) update.username = username.toLowerCase();
 
-        await User.findOneAndUpdate(
+        const result = await User.findOneAndUpdate(
             { clerkId },
             { $setOnInsert: { clerkId, role: role ?? 'USER', balance: 0 }, $set: update },
-            { upsert: true }
+            { upsert: true, new: true, rawResult: true }
         );
+        const isNew = !!result?.lastErrorObject?.upserted;
+        const onboardingCompleted = result?.value?.onboardingCompleted ?? false;
 
-        res.status(200).json({ success: true });
+        res.status(200).json({ success: true, isNew, onboardingCompleted });
     } catch (error) {
         next(error);
     }
@@ -48,6 +50,31 @@ export const updateUsername = async (req, res, next) => {
             const msg = error.errors?.[0]?.longMessage ?? 'Username already taken';
             return res.status(422).json({ message: msg });
         }
+        next(error);
+    }
+};
+
+// POST /auth/onboarding/complete — marks onboarding as done
+export const completeOnboarding = async (req, res, next) => {
+    try {
+        const clerkId = req.auth().userId;
+        await User.findOneAndUpdate(
+            { clerkId },
+            { $set: { onboardingCompleted: true }, $inc: { balance: 50 } }
+        );
+        res.json({ success: true });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// GET /auth/onboarding/status — check if onboarding is done
+export const getOnboardingStatus = async (req, res, next) => {
+    try {
+        const clerkId = req.auth().userId;
+        const user = await User.findOne({ clerkId }).select('onboardingCompleted').lean();
+        res.json({ onboardingCompleted: user?.onboardingCompleted ?? false });
+    } catch (error) {
         next(error);
     }
 };

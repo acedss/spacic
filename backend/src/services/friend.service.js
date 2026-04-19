@@ -8,6 +8,7 @@ import { Room }       from '../models/room.model.js';
 import { Listener }   from '../models/listener.model.js';
 import { InviteLog }  from '../models/inviteLog.model.js';
 import { getIo }      from '../lib/io.js';
+import { createNotification } from '../controllers/notification.controller.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ export const sendRequest = async (clerkId, targetUserId) => {
         throw new Error('Cannot send a friend request to yourself');
     }
 
-    const target = await User.findById(targetUserId).select('_id fullName imageUrl');
+    const target = await User.findById(targetUserId).select('_id fullName imageUrl clerkId');
     if (!target) throw new Error('User not found');
 
     // Check all existing relationships in one query
@@ -81,6 +82,13 @@ export const sendRequest = async (clerkId, targetUserId) => {
         friendshipId: friendship._id,
         from: { userId: me._id, fullName: me.fullName, imageUrl: me.imageUrl },
     });
+
+    createNotification(
+        target.clerkId, 'friend_request',
+        'New friend request',
+        `${me.fullName} sent you a friend request`,
+        { friendshipId: friendship._id.toString(), fromUserId: me._id.toString() }
+    ).catch(() => {});
 
     return friendship;
 };
@@ -335,4 +343,15 @@ export const sendInvite = async (clerkId, friendId, roomId) => {
         { $setOnInsert: { referrerId: me._id, joinerId: friendId, roomId: room._id, type: 'invite_sent' } },
         { upsert: true }
     ).catch(() => {});
+
+    // Persist notification for the invited friend
+    const friendUser = await User.findById(friendId).select('clerkId').lean();
+    if (friendUser?.clerkId) {
+        createNotification(
+            friendUser.clerkId, 'room_invite',
+            'Room invitation',
+            `${me.fullName} invited you to "${room.title}"`,
+            { roomId: room._id.toString(), fromUserId: me._id.toString() }
+        ).catch(() => {});
+    }
 };

@@ -23,7 +23,7 @@ export const PlaybackControls = () => {
     const { room, isCreator, listenerCount } = useRoomStore();
     const { isAdmin } = useAuthStore();
     const { userId } = useAuth();
-    const { currentSongIndex, currentTimeMs, isPlaying, isSynced, setPlaying } = usePlayerStore();
+    const { currentSongIndex, currentTimeMs, isPlaying, isSynced, setPlaying, listenerLocalPaused, setListenerLocalPaused } = usePlayerStore();
     const { activeRoomId } = useActiveRoomStore();
     const location = useLocation();
     const canSeek = isCreator || isAdmin;
@@ -50,8 +50,10 @@ export const PlaybackControls = () => {
 
     if (!room) {
         return (
-            <div className="flex items-center justify-center h-full text-slate-500 text-xs">
-                Join a room to start listening
+            <div className="flex items-center justify-center h-full">
+                <span className="mono text-[11px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>
+                    Join a room to start listening
+                </span>
             </div>
         );
     }
@@ -61,10 +63,26 @@ export const PlaybackControls = () => {
     const duration = (audioDuration && isFinite(audioDuration)) ? audioDuration : (currentSong?.duration ?? 0);
     const progress = duration > 0 ? (currentTimeMs / 1000 / duration) * 100 : 0;
 
+    // Effective playing state: room says playing, but listener may have locally paused
+    const effectivelyPlaying = canSeek ? isPlaying : (isPlaying && !listenerLocalPaused);
+
     const togglePlay = () => {
         if (!audioRef.current) return;
-        if (isPlaying) { audioRef.current.pause(); } else { audioRef.current.play().catch(() => {}); }
-        if (canSeek) setPlaying(!isPlaying);
+        if (canSeek) {
+            // Creator/admin: toggle room playback
+            if (isPlaying) audioRef.current.pause();
+            else audioRef.current.play().catch(() => {});
+            setPlaying(!isPlaying);
+        } else {
+            // Listener: toggle local pause without affecting room state
+            if (listenerLocalPaused) {
+                setListenerLocalPaused(false);
+                audioRef.current.play().catch(() => {});
+            } else {
+                setListenerLocalPaused(true);
+                audioRef.current.pause();
+            }
+        }
     };
 
     const handleFavorite = async () => {
@@ -104,9 +122,9 @@ export const PlaybackControls = () => {
     );
 
     return (
-        <div className="flex flex-col justify-center h-full px-4 md:px-8 gap-1.5">
+        <div className="flex flex-col justify-center h-full px-5 md:px-8 gap-2">
 
-            {/* Row 1: thumbnail + song info + controls */}
+            {/* Row 1: thumbnail + info + controls */}
             <div className="flex items-center gap-3">
 
                 {/* Thumbnail */}
@@ -114,20 +132,21 @@ export const PlaybackControls = () => {
                     <img
                         src={currentSong.imageUrl}
                         alt={currentSong.title}
-                        className="size-10 md:size-14 rounded-xl object-cover flex-shrink-0 shadow-lg"
+                        className="w-10 h-10 md:w-12 md:h-12 rounded-xl object-cover flex-shrink-0"
                     />
                 ) : (
-                    <div className="size-10 md:size-14 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
-                        <span className="text-slate-500 text-lg">♪</span>
+                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex-shrink-0 grid place-items-center"
+                         style={{ background: 'var(--ink-2)' }}>
+                        <span className="text-white/30 text-lg">♪</span>
                     </div>
                 )}
 
                 {/* Song info */}
                 <div className="flex-1 min-w-0">
-                    <p className="text-slate-100 font-bold text-xs sm:text-sm truncate leading-tight">
+                    <p className="text-white text-[13px] font-medium truncate leading-tight">
                         {currentSong?.title ?? '—'}
                     </p>
-                    <p className="text-slate-400 text-[10px] sm:text-xs truncate">
+                    <p className="text-[11px] truncate" style={{ color: 'var(--fg-3)' }}>
                         {currentSong?.artist ?? room.title}
                     </p>
                 </div>
@@ -136,40 +155,36 @@ export const PlaybackControls = () => {
                 <button
                     onClick={handleFavorite}
                     className={cn(
-                        'hidden sm:block transition-colors flex-shrink-0',
-                        isFavorited ? 'text-red-400' : 'text-slate-400 hover:text-red-400'
+                        'hidden sm:block transition-colors flex-shrink-0 press',
+                        isFavorited ? 'text-[oklch(0.82_0.17_20)]' : 'hover:text-white'
                     )}
+                    style={{ color: isFavorited ? undefined : 'var(--fg-3)' }}
                 >
-                    <Heart className={cn('size-4', isFavorited && 'fill-red-400')} />
+                    <Heart className={cn('size-4', isFavorited && 'fill-[oklch(0.82_0.17_20)]')} />
                 </button>
 
                 {/* Play/Pause */}
                 <button
                     onClick={togglePlay}
-                    className="size-10 md:size-12 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform flex-shrink-0"
+                    className="w-10 h-10 rounded-full bg-white text-[var(--ink-0)] grid place-items-center press flex-shrink-0"
                 >
-                    {isPlaying
-                        ? <Pause className="size-4 md:size-5 fill-black stroke-none" />
-                        : <Play  className="size-4 md:size-5 fill-black stroke-none ml-0.5" />
+                    {effectivelyPlaying
+                        ? <Pause className="size-4 fill-[var(--ink-0)] stroke-none" />
+                        : <Play  className="size-4 fill-[var(--ink-0)] stroke-none ml-0.5" />
                     }
                 </button>
 
-                {/* Volume — desktop only */}
+                {/* Volume */}
                 <div className="hidden md:flex items-center gap-2 w-28 flex-shrink-0">
                     <button
                         onClick={() => setVolume(v => v === 0 ? 80 : 0)}
-                        className="text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                        className="press transition-colors flex-shrink-0"
+                        style={{ color: 'var(--fg-3)' }}
                     >
-                        {volume === 0
-                            ? <VolumeX className="size-4" />
-                            : <Volume2 className="size-4" />
-                        }
+                        {volume === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
                     </button>
                     <Slider
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={[volume]}
+                        min={0} max={100} step={1} value={[volume]}
                         onValueChange={(vals) => setVolume(vals[0])}
                         className="flex-1"
                     />
@@ -182,34 +197,43 @@ export const PlaybackControls = () => {
                 {isBackgrounded && (
                     <Link
                         to={`/rooms/${activeRoomId}`}
-                        className="hidden sm:flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 px-2.5 py-1 rounded-full text-xs font-bold transition-colors flex-shrink-0"
+                        className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium press flex-shrink-0 bg-[oklch(0.72_0.22_20_/_0.12)] text-[oklch(0.82_0.17_20)] ring-1 ring-[oklch(0.72_0.22_20_/_0.35)]"
                     >
-                        <span className="size-1.5 bg-red-400 rounded-full animate-pulse" />
+                        <span className="live-dot" style={{ width: 5, height: 5 }} />
                         <span className="hidden md:inline">{room?.title ?? 'Live Room'}</span>
-                        <span className="md:hidden">Live</span>
                         {listenerCount > 0 && (
-                            <span className="text-red-400/60 hidden md:inline">· {listenerCount}</span>
+                            <span className="opacity-60 hidden md:inline">· {listenerCount}</span>
                         )}
                     </Link>
                 )}
             </div>
 
             {/* Row 2: seek bar */}
-            <div className="flex items-center gap-2">
-                <span className="text-[9px] font-medium text-slate-500 w-7 text-right tabular-nums flex-shrink-0">
+            <div className="flex items-center gap-3">
+                <span className="mono text-[10px] tabular-nums flex-shrink-0" style={{ color: 'var(--fg-3)' }}>
                     {formatTime(displayTime)}
                 </span>
-                <Slider
-                    min={0}
-                    max={100}
-                    step={0.01}
-                    value={[isSeeking.current ? (seekPreview! / duration * 100) : Math.min(progress, 100)]}
-                    onValueChange={handleSeekChange}
-                    onValueCommit={handleSeekCommit}
-                    disabled={!canSeek}
-                    className={cn('flex-1', !canSeek && 'opacity-100 [&_[data-slot=slider-thumb]]:hidden')}
-                />
-                <span className="text-[9px] font-medium text-slate-500 w-7 tabular-nums flex-shrink-0">
+                <div className="flex-1 relative">
+                    <div className="h-[3px] bg-white/10 rounded-full overflow-hidden">
+                        <div
+                            className="h-full rounded-full"
+                            style={{
+                                width: `${Math.min(isSeeking.current ? (seekPreview! / duration * 100) : progress, 100)}%`,
+                                background: 'linear-gradient(90deg, oklch(0.88 0.12 75), oklch(0.7 0.2 295))',
+                            }}
+                        />
+                    </div>
+                    {canSeek && (
+                        <Slider
+                            min={0} max={100} step={0.01}
+                            value={[isSeeking.current ? (seekPreview! / duration * 100) : Math.min(progress, 100)]}
+                            onValueChange={handleSeekChange}
+                            onValueCommit={handleSeekCommit}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                        />
+                    )}
+                </div>
+                <span className="mono text-[10px] tabular-nums flex-shrink-0" style={{ color: 'var(--fg-3)' }}>
                     {formatTime(duration)}
                 </span>
             </div>
@@ -218,9 +242,9 @@ export const PlaybackControls = () => {
             {isBackgrounded && (
                 <Link
                     to={`/rooms/${activeRoomId}`}
-                    className="sm:hidden w-full flex items-center justify-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 py-1 rounded-lg text-xs font-bold"
+                    className="sm:hidden w-full flex items-center justify-center gap-2 py-1 rounded-lg text-[12px] font-medium bg-[oklch(0.72_0.22_20_/_0.12)] text-[oklch(0.82_0.17_20)] ring-1 ring-[oklch(0.72_0.22_20_/_0.3)]"
                 >
-                    <span className="size-1.5 bg-red-400 rounded-full animate-pulse" />
+                    <span className="live-dot" style={{ width: 5, height: 5 }} />
                     Return to {room?.title ?? 'Live Room'}
                 </Link>
             )}

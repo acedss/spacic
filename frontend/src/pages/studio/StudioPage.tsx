@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Save, Loader2,
-    ListMusic, Gamepad2, Settings, BarChart3, Trash2, Play, Radio, Plus,
+    ListMusic, Gamepad2, Settings, BarChart3, Trash2, Play, Radio, Plus, Mic,
 } from 'lucide-react';
 import {
     Area, AreaChart, Bar, BarChart, CartesianGrid, Cell,
@@ -11,10 +11,12 @@ import {
 import { getMyRoom, upsertRoom, goLive, goOffline, getSongs, getCreatorRoomAnalytics } from '@/lib/roomService';
 import { getMyPlaylists, createPlaylist, deletePlaylist } from '@/lib/playlistService';
 import { getMinigamesForRoom, createMinigame, deleteMinigame } from '@/lib/minigameService';
+import { listBroadcastAssets, updateFeatureFlags } from '@/lib/broadcastService';
 import type {
     CreatorRoomAnalytics, RoomInfo, RoomSession, Song,
-    SavedPlaylist, Minigame, MinigameType, MinigameTriggerType,
+    SavedPlaylist, Minigame, MinigameType, MinigameTriggerType, BroadcastAsset, RoomFeatureFlags,
 } from '@/types/types';
+import { BroadcastAssetsTab } from './components/BroadcastAssetsTab';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -45,13 +47,14 @@ const fmtDateLong  = (v: string) => { const d = toDate(v); return d ? d.toLocale
 const sortByDateAsc = <T extends { date: string }>(arr: T[]) =>
     [...arr].sort((a, b) => (toDate(a.date)?.getTime() ?? 0) - (toDate(b.date)?.getTime() ?? 0));
 
-type Tab = 'overview' | 'playlists' | 'minigames' | 'settings';
+type Tab = 'overview' | 'playlists' | 'broadcasts' | 'minigames' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: 'overview',  label: 'Overview',  icon: BarChart3  },
-    { id: 'playlists', label: 'Playlists', icon: ListMusic  },
-    { id: 'minigames', label: 'Minigames', icon: Gamepad2   },
-    { id: 'settings',  label: 'Settings',  icon: Settings   },
+    { id: 'overview',   label: 'Overview',   icon: BarChart3  },
+    { id: 'playlists',  label: 'Playlists',  icon: ListMusic  },
+    { id: 'broadcasts', label: 'Broadcasts', icon: Mic        },
+    { id: 'minigames',  label: 'Minigames',  icon: Gamepad2   },
+    { id: 'settings',   label: 'Settings',   icon: Settings   },
 ];
 
 // ── Minigame type meta ────────────────────────────────────────────────────────
@@ -119,6 +122,17 @@ const StudioPage = () => {
     const [creatingPlaylist, setCreatingPlaylist] = useState(false);
     const [showPlaylistForm, setShowPlaylistForm] = useState(false);
 
+    // ── Broadcasts tab ──
+    const [broadcastAssets, setBroadcastAssets] = useState<BroadcastAsset[]>([]);
+    const [broadcastsLoading, setBroadcastsLoading] = useState(false);
+
+    // ── Feature flags (settings) ──
+    const [featureFlags, setFeatureFlags] = useState<RoomFeatureFlags>({
+        liveMic: true, chat: true, donations: true, voting: true,
+        minigames: true, voteQueue: true, broadcasts: true,
+    });
+    const [savingFlags, setSavingFlags] = useState(false);
+
     // ── Minigames tab ──
     const [minigames, setMinigames] = useState<Minigame[]>([]);
     const [minigamesLoading, setMinigamesLoading] = useState(false);
@@ -150,6 +164,7 @@ const StudioPage = () => {
                     setIsPublic(myRoom.isPublic);
                     setStreamGoal(myRoom.streamGoal > 0 ? String(myRoom.streamGoal) : '');
                     setSelectedIds(myRoom.playlist.map(s => s._id));
+                    if (myRoom.featureFlags) setFeatureFlags(myRoom.featureFlags);
                 }
             })
             .catch(() => { setError('Failed to load room data'); setSongsLoading(false); });
@@ -181,6 +196,16 @@ const StudioPage = () => {
             .then(setPlaylists)
             .catch(() => toast.error('Failed to load playlists'))
             .finally(() => setPlaylistsLoading(false));
+    }, [activeTab]);
+
+    // Load broadcast assets when tab opens
+    useEffect(() => {
+        if (activeTab !== 'broadcasts') return;
+        setBroadcastsLoading(true);
+        listBroadcastAssets()
+            .then(setBroadcastAssets)
+            .catch(() => toast.error('Failed to load broadcast assets'))
+            .finally(() => setBroadcastsLoading(false));
     }, [activeTab]);
 
     // Load minigames when tab opens and room is ready
@@ -302,6 +327,16 @@ const StudioPage = () => {
             toast.success('Minigame saved');
         } catch { toast.error('Failed to save minigame'); }
         finally { setSavingGame(false); }
+    };
+
+    const handleSaveFeatureFlags = async () => {
+        setSavingFlags(true);
+        try {
+            const updated = await updateFeatureFlags(featureFlags);
+            setFeatureFlags(updated);
+            toast.success('Room settings saved');
+        } catch { toast.error('Failed to save settings'); }
+        finally { setSavingFlags(false); }
     };
 
     const handleDeleteMinigame = async (id: string) => {
@@ -610,6 +645,15 @@ const StudioPage = () => {
                 </div>
             )}
 
+            {/* ── BROADCASTS TAB ── */}
+            {activeTab === 'broadcasts' && (
+                <BroadcastAssetsTab
+                    assets={broadcastAssets}
+                    loading={broadcastsLoading}
+                    onAssetsChange={setBroadcastAssets}
+                />
+            )}
+
             {/* ── MINIGAMES TAB ── */}
             {activeTab === 'minigames' && (
                 <div className="space-y-5">
@@ -799,6 +843,45 @@ const StudioPage = () => {
                             {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
                             {hasRoom ? 'Save Changes' : 'Create Channel'}
                         </button>
+                    )}
+
+                    {/* ── Feature Flags ── */}
+                    {hasRoom && (
+                        <div className="pt-4 border-t border-white/10 space-y-3">
+                            <div>
+                                <h3 className="text-sm font-semibold text-zinc-300">Room Features</h3>
+                                <p className="text-xs text-zinc-500 mt-0.5">Toggle what listeners can see and do. Changes take effect immediately for live rooms.</p>
+                            </div>
+                            {([
+                                { key: 'liveMic',    label: 'Live Mic',       desc: 'You can broadcast voice between songs' },
+                                { key: 'broadcasts', label: 'Broadcast Assets', desc: 'You can play pre-recorded clips' },
+                                { key: 'chat',       label: 'Live Chat',      desc: 'Listeners can send chat messages' },
+                                { key: 'voting',     label: 'Vote to Skip',   desc: 'Listeners can vote to skip songs' },
+                                { key: 'voteQueue',  label: 'Vote Queue',     desc: 'Listeners can nominate & vote songs into queue' },
+                                { key: 'donations',  label: 'Donations',      desc: 'Listeners can send you coins' },
+                                { key: 'minigames',  label: 'Minigames',      desc: 'Listeners see minigame panels' },
+                            ] as { key: keyof RoomFeatureFlags; label: string; desc: string }[]).map(({ key, label, desc }) => (
+                                <div key={key} className="flex items-center justify-between py-1">
+                                    <div>
+                                        <p className="text-sm text-zinc-300">{label}</p>
+                                        <p className="text-xs text-zinc-600">{desc}</p>
+                                    </div>
+                                    <Switch
+                                        checked={featureFlags[key]}
+                                        onCheckedChange={val => setFeatureFlags(f => ({ ...f, [key]: val }))}
+                                    />
+                                </div>
+                            ))}
+                            <button
+                                type="button"
+                                onClick={handleSaveFeatureFlags}
+                                disabled={savingFlags}
+                                className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-xl text-sm text-white transition-colors"
+                            >
+                                {savingFlags ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                                Save Features
+                            </button>
+                        </div>
                     )}
                 </form>
             )}

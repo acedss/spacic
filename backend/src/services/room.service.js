@@ -14,6 +14,7 @@ import { ListenEvent } from "../models/listenEvent.model.js";
 import { redis } from "../lib/redis.js";
 import { socketManager } from "../lib/socket-manager.js";
 import { getIo } from "../lib/io.js";
+import { createNotification } from "../controllers/notification.controller.js";
 import { getPresignedUrl } from "./s3.services.js";
 
 // ── Song Transition Analytics ─────────────────────────────────────────────────
@@ -408,12 +409,22 @@ export const goLive = async (roomId, clerkId) => {
         const fans = await RoomFavorite.find({ roomId: room._id }).select('userId').lean();
         for (const fan of fans) {
             const fanId = fan.userId.toString();
-            if (fanId === user._id.toString()) continue; // skip creator if they favorited themselves
+            if (fanId === user._id.toString()) continue;
             io.to(fanId).emit('room:favorite_live', {
                 roomId:      room._id.toString(),
                 title:       room.title,
                 creatorName: user.fullName,
             });
+            // Persist notification
+            const fanUser = await User.findById(fanId).select('clerkId').lean();
+            if (fanUser?.clerkId) {
+                createNotification(
+                    fanUser.clerkId, 'room_live',
+                    `${user.fullName} is live!`,
+                    `"${room.title}" just went live. Join now!`,
+                    { roomId: room._id.toString() }
+                ).catch(() => {});
+            }
         }
     }
 
@@ -563,6 +574,23 @@ export const goOfflineInternal = async (roomId) => {
     }
 };
 
+// ── Go Offline with countdown (manual end — gives listeners a heads-up) ───────
+// Emits room:ending_soon, waits ENDING_COUNTDOWN_MS, then calls goOfflineInternal.
+const ENDING_COUNTDOWN_S = 8;
+
+export const goOfflineWithCountdown = async (roomId) => {
+    const io = getIo();
+    if (io) {
+        io.to(roomId).emit('room:ending_soon', {
+            roomId,
+            seconds: ENDING_COUNTDOWN_S,
+            message: 'Creator is ending the stream…',
+        });
+    }
+    await new Promise((resolve) => setTimeout(resolve, ENDING_COUNTDOWN_S * 1000));
+    await goOfflineInternal(roomId);
+};
+
 // ───── Go Offline (REST endpoint wrapper — validates creator ownership) ────
 
 export const goOffline = async (roomId, clerkId) => {
@@ -572,7 +600,7 @@ export const goOffline = async (roomId, clerkId) => {
     if (room.creatorId.toString() !== user._id.toString()) throw new Error("Only the creator can go offline");
     if (room.status !== "live") throw new Error("Room is not live");
 
-    await goOfflineInternal(roomId);
+    await goOfflineWithCountdown(roomId);
     return { success: true };
 };
 
