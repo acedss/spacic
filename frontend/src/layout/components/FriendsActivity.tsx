@@ -1,5 +1,5 @@
-import { useEffect, useRef, useCallback, useState } from 'react'
-import { Bell, Share2, X, Radio, UserPlus, Users as UsersIcon, Zap } from 'lucide-react'
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react'
+import { Bell, Share2, X, Radio, UserPlus, Users as UsersIcon, Zap, Clock } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@clerk/clerk-react'
@@ -71,8 +71,17 @@ interface FriendRowProps {
     onInvite?: (friendId: string) => void
 }
 
+const listeningDuration = (joinedAt?: string) => {
+    if (!joinedAt) return null
+    const mins = Math.floor((Date.now() - Date.parse(joinedAt)) / 60000)
+    if (mins < 1) return 'just joined'
+    if (mins < 60) return `${mins}m`
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`
+}
+
 const FriendRow = ({ friend, listening, currentRoomId, onInvite }: FriendRowProps) => {
     const navigate = useNavigate()
+    const dur = listeningDuration(friend.joinedAt)
 
     return (
         <div className='flex items-center gap-3 py-2'>
@@ -87,21 +96,31 @@ const FriendRow = ({ friend, listening, currentRoomId, onInvite }: FriendRowProp
             <div className='flex-1 min-w-0'>
                 <p className='text-[13px] text-white truncate'>{friend.fullName}</p>
                 {friend.room ? (
-                    <p className='text-[11px] truncate' style={{ color: 'var(--fg-3)' }}>
-                        in <span className='text-white/80 serif italic'>{friend.room.title}</span>
-                    </p>
+                    <div>
+                        <p className='text-[11px] truncate' style={{ color: 'var(--fg-3)' }}>
+                            in <span className='text-white/80 serif italic'>{friend.room.title}</span>
+                        </p>
+                        {dur && (
+                            <p className='text-[9px] flex items-center gap-1 mt-0.5' style={{ color: 'var(--fg-3)' }}>
+                                <Clock className='size-2.5' /> {dur}
+                            </p>
+                        )}
+                    </div>
                 ) : (
                     <p className='text-[11px]' style={{ color: 'var(--fg-3)' }}>Online</p>
                 )}
             </div>
 
             {listening && friend.room && (
-                <button
-                    onClick={() => navigate(`/rooms/${friend.room!._id}?ref=${friend.userId}&type=activity_join`)}
-                    className='shrink-0 h-7 px-2.5 text-[10px] font-semibold ring-1 ring-white/15 hover:bg-white/8 rounded-full press whitespace-nowrap text-white'
-                >
-                    Join
-                </button>
+                <div className='flex flex-col items-end gap-1 shrink-0'>
+                    <button
+                        onClick={() => navigate(`/rooms/${friend.room!._id}?ref=${friend.userId}&type=activity_join`)}
+                        className='h-7 px-2.5 text-[10px] font-semibold ring-1 ring-white/15 hover:bg-white/8 rounded-full press whitespace-nowrap text-white'
+                    >
+                        Join
+                    </button>
+                    <span className='text-[8px] mono' style={{ color: 'oklch(0.88 0.12 75)' }}>+5 coins</span>
+                </div>
             )}
 
             {!listening && currentRoomId && onInvite && (

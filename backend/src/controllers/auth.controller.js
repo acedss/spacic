@@ -1,4 +1,6 @@
 import { User } from "../models/user.model.js";
+import { Song } from "../models/song.model.js";
+import { Room } from "../models/room.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { Webhook } from "svix";
 
@@ -54,14 +56,44 @@ export const updateUsername = async (req, res, next) => {
     }
 };
 
-// POST /auth/onboarding/complete — marks onboarding as done
+// POST /auth/onboarding/complete — marks onboarding as done, saves preferences, handles referral
 export const completeOnboarding = async (req, res, next) => {
     try {
         const clerkId = req.auth().userId;
-        await User.findOneAndUpdate(
-            { clerkId },
-            { $set: { onboardingCompleted: true }, $inc: { balance: 50 } }
-        );
+        const { genres, moods, likedSongIds, dislikedSongIds, referralUsername } = req.body ?? {};
+
+        const update = {
+            $set: {
+                onboardingCompleted: true,
+                ...(genres || moods || likedSongIds || dislikedSongIds
+                    ? {
+                        preferences: {
+                            genres: genres ?? [],
+                            moods: moods ?? [],
+                            likedSongIds: likedSongIds ?? [],
+                            dislikedSongIds: dislikedSongIds ?? [],
+                        },
+                    }
+                    : {}),
+            },
+            $inc: { balance: 50 },
+        };
+
+        const me = await User.findOneAndUpdate({ clerkId }, update, { new: true });
+
+        // Handle referral — both parties get 25 bonus coins
+        if (referralUsername && me) {
+            const referrer = await User.findOne({
+                username: referralUsername.toLowerCase().replace(/^@/, ''),
+                _id: { $ne: me._id },
+            });
+            if (referrer && !me.referredBy) {
+                await User.updateOne({ _id: me._id }, { $set: { referredBy: referrer._id } });
+                await User.updateOne({ _id: referrer._id }, { $inc: { balance: 25 } });
+                await User.updateOne({ _id: me._id }, { $inc: { balance: 25 } });
+            }
+        }
+
         res.json({ success: true });
     } catch (error) {
         next(error);
@@ -74,6 +106,25 @@ export const getOnboardingStatus = async (req, res, next) => {
         const clerkId = req.auth().userId;
         const user = await User.findOne({ clerkId }).select('onboardingCompleted').lean();
         res.json({ onboardingCompleted: user?.onboardingCompleted ?? false });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// GET /auth/onboarding/data — real songs + creators for onboarding steps
+export const getOnboardingData = async (req, res, next) => {
+    try {
+        const [songs, creators, rooms] = await Promise.all([
+            Song.find().sort({ streamCount: -1 }).limit(20)
+                .select('_id title artist imageUrl duration').lean(),
+            User.find({ role: { $in: ['CREATOR', 'ADMIN'] } })
+                .sort({ 'creatorStats.totalStreams': -1 }).limit(12)
+                .select('_id fullName imageUrl username creatorStats.totalRoomsHosted creatorStats.totalStreams').lean(),
+            Room.find({ status: 'live' }).sort({ listenerCount: -1 }).limit(8)
+                .populate('creatorId', 'fullName imageUrl')
+                .select('_id title description listenerCount playlist').lean(),
+        ]);
+        res.json({ songs, creators, rooms });
     } catch (error) {
         next(error);
     }

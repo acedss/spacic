@@ -409,9 +409,14 @@ export const useRoomSocket = (roomId: string) => {
 
         socket.on('room:playlist_updated', ({ playlist }: { playlist: Array<{ _id: string; title: string; artist: string; duration: number; imageUrl: string; s3Key: string; albumId: string | null }> }) => {
             const current = useRoomStore.getState().room;
-            if (current) {
-                roomStore.setRoom({ ...current, playlist: playlist.map(s => ({ ...s, audioUrl: '' })) });
-            }
+            if (!current) return;
+            const currentIdx = usePlayerStore.getState().currentSongIndex;
+            const oldPlaylist = current.playlist;
+            const updated = playlist.map((s, i) => ({
+                ...s,
+                audioUrl: (i === currentIdx && i < oldPlaylist.length) ? oldPlaylist[i].audioUrl : '',
+            }));
+            roomStore.setRoom({ ...current, playlist: updated });
         });
 
         socket.on('room:goal_reached', () => {

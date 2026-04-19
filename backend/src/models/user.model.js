@@ -56,6 +56,17 @@ const userSchema = new mongoose.Schema({
     // Whether the user has completed the onboarding flow
     onboardingCompleted: { type: Boolean, default: false },
 
+    // Onboarding preferences — saved on completion
+    preferences: {
+        genres: [{ type: String }],
+        moods:  [{ type: String }],
+        likedSongIds:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Song' }],
+        dislikedSongIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Song' }],
+    },
+
+    // Referral tracking
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+
     // ── Win Points ────────────────────────────────────────────────────────────
     // Earned-only currency: minigame prizes + creator stream payouts.
     // Cannot be purchased. Withdrawable to fiat once minimums are met.

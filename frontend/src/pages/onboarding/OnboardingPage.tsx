@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
-import { ArrowRight, Check, Play, Gem, Zap } from 'lucide-react'
-import { getPublicRooms } from '@/lib/roomService'
+import { ArrowRight, Check, Play, Gem, Zap, ThumbsUp, ThumbsDown, UserPlus, AtSign } from 'lucide-react'
 import { axiosInstance } from '@/lib/axios'
 
 /* ─── Static data ──────────────────────────────────────────────────────── */
@@ -25,25 +24,26 @@ const GENRES = [
 
 const MOODS = ['Late Night', 'Ambient', 'Chill', 'Focus', 'Hype', 'Sad Hours', 'Morning Coffee', 'Indie Vibes', 'Jazz Bar', 'Lo-fi Study', 'After Hours', 'Road Trip']
 
-const SUGGESTED_CREATORS = [
-    { id: '1', name: 'Remy Okafor',  handle: '@remybeats',    genres: ['R&B', 'Soul'],         freq: 'nightly',  followers: '48.2k' },
-    { id: '2', name: 'Iris Holm',    handle: '@irisholm',     genres: ['Ambient', 'Electronic']  , freq: 'weekly',   followers: '12.8k' },
-    { id: '3', name: 'Noa Tanaka',   handle: '@noatanaka',    genres: ['Lo-fi', 'Jazz'],         freq: 'nightly',  followers: '31.4k' },
-    { id: '4', name: 'Sage Alonso',  handle: '@sagealonso',   genres: ['Indie', 'Acoustic'],     freq: 'weekly',   followers: '8.9k'  },
-    { id: '5', name: 'Koa Eshun',    handle: '@koaeshun',     genres: ['Hip-Hop', 'Soul'],       freq: 'nightly',  followers: '24.6k' },
-    { id: '6', name: 'Mira Bellini', handle: '@mirabellini',  genres: ['Classical', 'Ambient'],  freq: 'weekly',   followers: '6.2k'  },
-    { id: '7', name: 'Dev Osei',     handle: '@devosei',      genres: ['Electronic', 'Pop'],     freq: 'nightly',  followers: '17.3k' },
-    { id: '8', name: 'Leah Ruiz',    handle: '@leahruiz',     genres: ['Folk', 'Acoustic'],      freq: 'weekly',   followers: '4.8k'  },
-    { id: '9', name: 'Finn Larsen',  handle: '@finnlarsen',   genres: ['Jazz', 'Lo-fi'],         freq: 'nightly',  followers: '9.1k'  },
-]
-
 type GenreId = typeof GENRES[number]['id']
 
+interface OnboardingSong {
+    _id: string; title: string; artist: string; imageUrl: string; duration: number;
+}
+interface OnboardingCreator {
+    _id: string; fullName: string; imageUrl: string; username?: string;
+    creatorStats?: { totalRoomsHosted?: number; totalStreams?: number };
+}
+interface OnboardingRoom {
+    _id: string; title: string; description?: string; listenerCount: number;
+    creatorId?: { fullName: string; imageUrl: string };
+    playlist?: Array<{ imageUrl?: string }>;
+}
+
 const AVATAR_BG = (seed: string) =>
-    `oklch(0.55 0.18 ${(seed.charCodeAt(0) * 47 + seed.charCodeAt(1) * 13) % 360})`
+    `oklch(0.55 0.18 ${(seed.charCodeAt(0) * 47 + (seed.charCodeAt(1) ?? 0) * 13) % 360})`
 
 /* ─── Progress bar ─────────────────────────────────────────────────────── */
-const Progress = ({ step, total = 5 }: { step: number; total?: number }) => (
+const Progress = ({ step, total = 7 }: { step: number; total?: number }) => (
     <div className="flex items-center gap-2">
         {Array.from({ length: total }).map((_, i) => (
             <span key={i} className="h-[3px] w-8 rounded-full transition-all duration-500"
@@ -92,7 +92,7 @@ const StepFooter = ({
 }
 
 /* ─── Step 0: Welcome ──────────────────────────────────────────────────── */
-const StepWelcome = ({ onNext, rooms }: { onNext: () => void; rooms: any[] }) => {
+const StepWelcome = ({ onNext, rooms }: { onNext: () => void; rooms: OnboardingRoom[] }) => {
     const featured = rooms[0]
     return (
         <div className="grid grid-cols-12 gap-12 items-center min-h-[620px]">
@@ -106,7 +106,7 @@ const StepWelcome = ({ onNext, rooms }: { onNext: () => void; rooms: any[] }) =>
                     }}>in the same room.</span>
                 </h1>
                 <p className="mt-6 text-[17px] leading-relaxed max-w-[480px]" style={{ color: 'var(--fg-1)' }}>
-                    You're about to join thousands of people listening live, together. Let's tune it to you — three quick steps, sixty seconds.
+                    You're about to join thousands of people listening live, together. Let's tune it to you — a few quick steps, under two minutes.
                 </p>
                 <div className="mt-8 flex items-center gap-3">
                     <button onClick={onNext}
@@ -126,7 +126,6 @@ const StepWelcome = ({ onNext, rooms }: { onNext: () => void; rooms: any[] }) =>
                 </div>
             </div>
 
-            {/* Featured room card */}
             <div className="col-span-5">
                 <div className="relative rounded-3xl overflow-hidden ring-1 ring-white/10" style={{ aspectRatio: '4/5' }}>
                     {featured ? (
@@ -139,16 +138,12 @@ const StepWelcome = ({ onNext, rooms }: { onNext: () => void; rooms: any[] }) =>
                                     <span className="live-dot" style={{ width: 5, height: 5 }} /> {featured.listenerCount} listening now
                                 </span>
                                 <h3 className="serif text-[28px] text-white italic mt-3 leading-tight">{featured.title}</h3>
-                                <div className="mt-4 flex items-end gap-[2px] h-[18px]">
-                                    {Array.from({ length: 28 }, (_, i) => {
-                                        const h = 0.25 + Math.abs(Math.sin(i * 0.6) * Math.cos(i * 0.27)) * 0.9
-                                        return <span key={i} style={{ height: `${h * 100}%`, width: 2, background: 'white', opacity: 0.5, borderRadius: 2, animation: `wf ${1 + (i % 5) * 0.15}s ease-in-out ${i * 0.03}s infinite alternate` }} />
-                                    })}
-                                </div>
                             </div>
                         </>
                     ) : (
-                        <div className="w-full h-full" style={{ background: 'var(--ink-2)' }} />
+                        <div className="w-full h-full grid place-items-center" style={{ background: 'var(--ink-2)' }}>
+                            <span className="serif italic text-[32px] text-white/20">spacic</span>
+                        </div>
                     )}
                 </div>
             </div>
@@ -212,42 +207,107 @@ const StepMood = ({ moods, toggle, onBack, onNext }: {
     </div>
 )
 
-/* ─── Step 3: Circle (follow creators) ────────────────────────────────── */
-const StepCircle = ({ following, toggle, onBack, onNext }: {
-    following: Set<string>; toggle: (id: string) => void; onBack: () => void; onNext: () => void;
+/* ─── Step 3: Songs — like/dislike from real DB ───────────────────────── */
+const StepSongs = ({ songs, liked, disliked, onLike, onDislike, onBack, onNext }: {
+    songs: OnboardingSong[]; liked: Set<string>; disliked: Set<string>;
+    onLike: (id: string) => void; onDislike: (id: string) => void;
+    onBack: () => void; onNext: () => void;
 }) => (
     <div>
         <StepHead
-            kicker="03 · Circle"
+            kicker="03 · Discovery"
+            title={<>Rate a few <em className="italic">tracks.</em></>}
+            sub="Like or skip — we'll learn what to queue for you and what to avoid."
+        />
+        <div className="grid grid-cols-2 gap-3 mt-10 max-w-[860px]">
+            {songs.map(song => {
+                const isLiked = liked.has(song._id)
+                const isDisliked = disliked.has(song._id)
+                return (
+                    <div key={song._id}
+                         className={`flex items-center gap-3 p-3 rounded-xl ring-1 transition-all ${
+                             isLiked ? 'ring-[oklch(0.74_0.14_160)] bg-[oklch(0.74_0.14_160_/_0.08)]'
+                             : isDisliked ? 'ring-white/5 opacity-40'
+                             : 'ring-white/10 hover:ring-white/20'
+                         }`}
+                         style={{ background: isLiked || isDisliked ? undefined : 'var(--ink-2)' }}>
+                        {song.imageUrl ? (
+                            <img src={song.imageUrl} className="w-12 h-12 rounded-lg object-cover shrink-0" alt="" />
+                        ) : (
+                            <div className="w-12 h-12 rounded-lg grid place-items-center shrink-0 bg-white/8">
+                                <Play className="size-4 text-white/40" />
+                            </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                            <p className="text-[13px] text-white truncate">{song.title}</p>
+                            <p className="text-[11px] truncate" style={{ color: 'var(--fg-3)' }}>{song.artist}</p>
+                            <p className="mono text-[9px]" style={{ color: 'var(--fg-3)' }}>
+                                {Math.floor(song.duration / 60)}:{String(Math.floor(song.duration % 60)).padStart(2, '0')}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <button onClick={() => onDislike(song._id)}
+                                className={`w-8 h-8 rounded-lg grid place-items-center press transition-all ${
+                                    isDisliked ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/30' : 'hover:bg-white/8 text-white/30 hover:text-white/60'
+                                }`}>
+                                <ThumbsDown className="size-3.5" />
+                            </button>
+                            <button onClick={() => onLike(song._id)}
+                                className={`w-8 h-8 rounded-lg grid place-items-center press transition-all ${
+                                    isLiked ? 'bg-[oklch(0.74_0.14_160_/_0.2)] text-[oklch(0.74_0.14_160)] ring-1 ring-[oklch(0.74_0.14_160_/_0.3)]' : 'hover:bg-white/8 text-white/30 hover:text-white/60'
+                                }`}>
+                                <ThumbsUp className="size-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                )
+            })}
+        </div>
+        <StepFooter selected={liked.size + disliked.size} min={3} onBack={onBack} onNext={onNext} />
+    </div>
+)
+
+/* ─── Step 4: Circle (follow real creators from DB) ──────────────────── */
+const StepCircle = ({ creators, following, toggle, onBack, onNext }: {
+    creators: OnboardingCreator[]; following: Set<string>; toggle: (id: string) => void;
+    onBack: () => void; onNext: () => void;
+}) => (
+    <div>
+        <StepHead
+            kicker="04 · Circle"
             title={<>Find the people who <em className="italic">play your songs.</em></>}
-            sub="Follow a few creators and friends — their activity will make your home feel alive from day one."
+            sub="Follow creators — their rooms will appear on your home feed."
         />
         <div className="grid grid-cols-3 gap-4 mt-10 max-w-[980px]">
-            {SUGGESTED_CREATORS.map(creator => {
-                const on = following.has(creator.id)
+            {creators.map(c => {
+                const on = following.has(c._id)
                 return (
-                    <div key={creator.id}
+                    <div key={c._id}
                          className={`relative rounded-2xl ring-1 p-5 transition-all ${on ? 'ring-[oklch(0.68_0.21_295)]' : 'ring-white/10 hover:ring-white/20'}`}
                          style={{ background: 'var(--ink-2)' }}>
                         <div className="flex items-center gap-3">
-                            <div className="w-14 h-14 rounded-full ring-1 ring-white/15 grid place-items-center text-[18px] font-bold text-white shrink-0"
-                                 style={{ background: AVATAR_BG(creator.name) }}>
-                                {creator.name[0]}
-                            </div>
+                            {c.imageUrl ? (
+                                <img src={c.imageUrl} className="w-14 h-14 rounded-full object-cover ring-1 ring-white/15 shrink-0" alt="" />
+                            ) : (
+                                <div className="w-14 h-14 rounded-full ring-1 ring-white/15 grid place-items-center text-[18px] font-bold text-white shrink-0"
+                                     style={{ background: AVATAR_BG(c.fullName) }}>
+                                    {c.fullName[0]}
+                                </div>
+                            )}
                             <div className="flex-1 min-w-0">
-                                <p className="text-[14px] text-white">{creator.name}</p>
-                                <p className="text-[11px] mono" style={{ color: 'var(--fg-3)' }}>{creator.handle} · {creator.followers} followers</p>
+                                <p className="text-[14px] text-white">{c.fullName}</p>
+                                <p className="text-[11px] mono" style={{ color: 'var(--fg-3)' }}>
+                                    {c.username ? `@${c.username}` : 'creator'}
+                                    {c.creatorStats?.totalStreams ? ` · ${c.creatorStats.totalStreams.toLocaleString()} streams` : ''}
+                                </p>
                             </div>
                         </div>
                         <p className="mt-3 text-[12px] leading-snug" style={{ color: 'var(--fg-2)' }}>
-                            Hosts {creator.genres.join(' & ').toLowerCase()} rooms {creator.freq}.
+                            {c.creatorStats?.totalRoomsHosted
+                                ? `Hosted ${c.creatorStats.totalRoomsHosted} rooms`
+                                : 'New creator'}
                         </p>
-                        <div className="mt-3 flex items-center gap-1.5">
-                            {creator.genres.map(t => (
-                                <span key={t} className="mono text-[9px] px-2 py-0.5 rounded uppercase tracking-wide bg-white/5" style={{ color: 'var(--fg-2)' }}>{t}</span>
-                            ))}
-                        </div>
-                        <button onClick={() => toggle(creator.id)}
+                        <button onClick={() => toggle(c._id)}
                             className={`mt-4 w-full h-9 rounded-lg text-[12px] font-medium press ring-1 transition-all ${
                                 on ? 'bg-[oklch(0.68_0.21_295)] text-white ring-[oklch(0.68_0.21_295)]'
                                    : 'bg-white/5 text-white ring-white/10 hover:bg-white/10'
@@ -262,16 +322,52 @@ const StepCircle = ({ following, toggle, onBack, onNext }: {
     </div>
 )
 
-/* ─── Step 4: Ready (tuned) ────────────────────────────────────────────── */
-const StepTuned = ({ genres, moods, following, onBack, onFinish, rooms }: {
-    genres: Set<GenreId>; moods: Set<string>; following: Set<string>;
-    onBack: () => void; onFinish: () => void; rooms: any[];
+/* ─── Step 5: Referral — enter friend's username ─────────────────────── */
+const StepReferral = ({ referral, setReferral, onBack, onNext }: {
+    referral: string; setReferral: (v: string) => void; onBack: () => void; onNext: () => void;
+}) => (
+    <div>
+        <StepHead
+            kicker="05 · Invite"
+            title={<>Got a friend <em className="italic">already here?</em></>}
+            sub="Enter their username and you'll both get 25 bonus coins. Skip if you don't have one."
+        />
+        <div className="mt-10 max-w-[480px]">
+            <div className="relative">
+                <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 size-4" style={{ color: 'var(--fg-3)' }} />
+                <input
+                    value={referral}
+                    onChange={(e) => setReferral(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                    placeholder="friend_username"
+                    className="w-full pl-10 pr-4 h-14 rounded-xl bg-white/6 ring-1 ring-white/10 text-[16px] text-white placeholder:text-[var(--fg-3)] outline-none focus:ring-[oklch(0.68_0.21_295_/_0.5)] mono"
+                />
+            </div>
+            <div className="mt-4 flex items-center gap-3 p-4 rounded-xl ring-1 ring-[oklch(0.82_0.15_75_/_0.3)]"
+                 style={{ background: 'oklch(0.22 0.05 75 / 0.3)' }}>
+                <UserPlus className="size-5 text-[oklch(0.88_0.12_75)] shrink-0" />
+                <div>
+                    <p className="text-[13px] text-white font-medium">Referral bonus</p>
+                    <p className="text-[11px]" style={{ color: 'var(--fg-2)' }}>
+                        Both you and your friend receive <span className="text-[oklch(0.88_0.12_75)] font-semibold">25 coins</span> each.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <StepFooter selected={referral.length >= 3 ? 1 : 0} min={0} optional onBack={onBack} onNext={onNext} />
+    </div>
+)
+
+/* ─── Step 6: Ready (tuned) ────────────────────────────────────────────── */
+const StepTuned = ({ genres, moods, liked, referral, onBack, onFinish, rooms }: {
+    genres: Set<GenreId>; moods: Set<string>; liked: Set<string>; referral: string;
+    onBack: () => void; onFinish: () => void; rooms: OnboardingRoom[];
 }) => {
     const roomCount = genres.size * 4 + moods.size * 2
+    const totalCoins = 50 + (referral.length >= 3 ? 25 : 0)
     return (
         <div className="grid grid-cols-12 gap-10 items-center min-h-[540px]">
             <div className="col-span-5">
-                <div className="mono text-[10px] uppercase tracking-[0.25em] mb-4" style={{ color: 'var(--fg-3)' }}>04 · Ready</div>
+                <div className="mono text-[10px] uppercase tracking-[0.25em] mb-4" style={{ color: 'var(--fg-3)' }}>06 · Ready</div>
                 <h1 className="serif text-white leading-[0.95] tracking-[-0.02em]" style={{ fontSize: 72 }}>
                     Your dial is{' '}
                     <em className="italic" style={{
@@ -280,10 +376,11 @@ const StepTuned = ({ genres, moods, following, onBack, onFinish, rooms }: {
                     }}>tuned.</em>
                 </h1>
                 <p className="mt-5 text-[15px] leading-relaxed max-w-[420px]" style={{ color: 'var(--fg-1)' }}>
-                    Based on your taste, we've lined up {roomCount} live rooms starting tonight. First drink's on us — 50 welcome coins landed in your wallet.
+                    Based on your taste, we've lined up {roomCount} live rooms starting tonight.
+                    {liked.size > 0 && ` You liked ${liked.size} tracks — we'll queue more like them.`}
+                    {' '}Your welcome coins landed in your wallet.
                 </p>
 
-                {/* Welcome coins card */}
                 <div className="mt-8 p-5 rounded-2xl ring-1 ring-[oklch(0.82_0.15_75_/_0.4)]"
                      style={{ background: 'linear-gradient(145deg, oklch(0.22 0.05 75 / 0.4), oklch(0.14 0.03 60))' }}>
                     <div className="flex items-center gap-3">
@@ -291,8 +388,10 @@ const StepTuned = ({ genres, moods, following, onBack, onFinish, rooms }: {
                             <Gem className="size-4.5 text-[oklch(0.88_0.12_75)]" />
                         </div>
                         <div className="flex-1">
-                            <p className="mono text-[9px] uppercase tracking-widest text-[oklch(0.88_0.12_75)]">Welcome gift</p>
-                            <p className="mono text-[24px] text-white tabular-nums mt-0.5">50 coins</p>
+                            <p className="mono text-[9px] uppercase tracking-widest text-[oklch(0.88_0.12_75)]">
+                                Welcome{referral.length >= 3 ? ' + referral' : ''} gift
+                            </p>
+                            <p className="mono text-[24px] text-white tabular-nums mt-0.5">{totalCoins} coins</p>
                         </div>
                         <span className="inline-flex items-center gap-1 rounded-full text-[10px] font-medium px-2.5 py-1 bg-[oklch(0.82_0.15_75_/_0.14)] text-[oklch(0.88_0.12_75)] ring-1 ring-[oklch(0.82_0.15_75_/_0.35)]">
                             Auto-applied
@@ -312,7 +411,6 @@ const StepTuned = ({ genres, moods, following, onBack, onFinish, rooms }: {
                 </div>
             </div>
 
-            {/* Picked rooms */}
             <div className="col-span-7 space-y-3">
                 <div className="mono text-[9px] uppercase tracking-widest mb-1" style={{ color: 'var(--fg-3)' }}>
                     Picked for you · starting in the next 2 hours
@@ -329,7 +427,7 @@ const StepTuned = ({ genres, moods, following, onBack, onFinish, rooms }: {
                                     <span className="live-dot" style={{ width: 4, height: 4 }} /> {r.listenerCount}
                                 </span>
                                 <span className="mono text-[10px] uppercase tracking-wider" style={{ color: 'var(--fg-3)' }}>
-                                    because you picked {['Ambient', 'Late Night', 'Lo-fi', 'Indie'][i % 4]}
+                                    because you picked {[...genres][i % genres.size] ?? 'ambient'}
                                 </span>
                             </div>
                             <p className="serif text-[20px] text-white italic mt-1 leading-tight truncate">{r.title}</p>
@@ -343,6 +441,11 @@ const StepTuned = ({ genres, moods, following, onBack, onFinish, rooms }: {
                         </button>
                     </div>
                 ))}
+                {rooms.length === 0 && (
+                    <div className="py-12 text-center">
+                        <p className="text-[13px]" style={{ color: 'var(--fg-3)' }}>No rooms live right now — check back soon!</p>
+                    </div>
+                )}
             </div>
         </div>
     )
@@ -353,14 +456,24 @@ const OnboardingPage = () => {
     const { user } = useUser()
     const navigate = useNavigate()
     const [step, setStep] = useState(0)
-    const [genres, setGenres]     = useState<Set<GenreId>>(new Set(['ambient', 'lofi']))
-    const [moods, setMoods]       = useState<Set<string>>(new Set(['Late Night']))
+    const [genres, setGenres]       = useState<Set<GenreId>>(new Set(['ambient', 'lofi']))
+    const [moods, setMoods]         = useState<Set<string>>(new Set(['Late Night']))
     const [following, setFollowing] = useState<Set<string>>(new Set())
-    const [rooms, setRooms]       = useState<any[]>([])
+    const [likedSongs, setLikedSongs]       = useState<Set<string>>(new Set())
+    const [dislikedSongs, setDislikedSongs] = useState<Set<string>>(new Set())
+    const [referral, setReferral]   = useState('')
+    const [songs, setSongs]         = useState<OnboardingSong[]>([])
+    const [creators, setCreators]   = useState<OnboardingCreator[]>([])
+    const [rooms, setRooms]         = useState<OnboardingRoom[]>([])
+    const [submitting, setSubmitting] = useState(false)
 
     useEffect(() => {
-        getPublicRooms({ limit: 8, sort: 'listener_count' })
-            .then(r => setRooms(r.data ?? []))
+        axiosInstance.get('/auth/onboarding/data')
+            .then(({ data }) => {
+                setSongs(data.songs ?? [])
+                setCreators(data.creators ?? [])
+                setRooms(data.rooms ?? [])
+            })
             .catch(() => {})
     }, [])
 
@@ -370,75 +483,80 @@ const OnboardingPage = () => {
         setter(n)
     }
 
-    const markComplete = () => {
-        axiosInstance.post('/auth/onboarding/complete').catch(() => {})
+    const handleLike = (id: string) => {
+        const n = new Set(likedSongs)
+        if (n.has(id)) { n.delete(id) } else { n.add(id); dislikedSongs.delete(id); setDislikedSongs(new Set(dislikedSongs)) }
+        setLikedSongs(n)
     }
 
-    const finish = () => {
-        markComplete()
+    const handleDislike = (id: string) => {
+        const n = new Set(dislikedSongs)
+        if (n.has(id)) { n.delete(id) } else { n.add(id); likedSongs.delete(id); setLikedSongs(new Set(likedSongs)) }
+        setDislikedSongs(n)
+    }
+
+    const finish = async () => {
+        if (submitting) return
+        setSubmitting(true)
+        try {
+            await axiosInstance.post('/auth/onboarding/complete', {
+                genres: [...genres],
+                moods: [...moods],
+                likedSongIds: [...likedSongs],
+                dislikedSongIds: [...dislikedSongs],
+                referralUsername: referral || undefined,
+            })
+        } catch { /* onboarding still completes locally */ }
+        setSubmitting(false)
         navigate('/')
     }
 
-    const skip = () => {
-        markComplete()
+    const skip = async () => {
+        try { await axiosInstance.post('/auth/onboarding/complete') } catch {}
         navigate('/')
     }
+
+    const TOTAL_STEPS = 7
 
     return (
         <div className="min-h-screen relative" style={{ background: 'var(--ink-0)', fontFamily: "'Figtree', system-ui, sans-serif" }}>
             <div className="aurora aurora-breathe" />
             <div className="grain" />
 
-            {/* Top nav */}
             <div className="relative z-10 flex items-center justify-between px-10 h-16">
                 <div className="flex items-baseline gap-1.5">
                     <span className="serif italic text-[24px] text-white">spacic</span>
                     <span className="mono text-[9px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>fm</span>
                 </div>
-                <Progress step={step} />
+                <Progress step={step} total={TOTAL_STEPS} />
                 <button onClick={skip} className="text-[12px] hover:text-white transition-colors" style={{ color: 'var(--fg-3)' }}>
                     Skip setup
                 </button>
             </div>
 
-            {/* Step content */}
             <div className="relative z-10 max-w-5xl mx-auto px-10 pt-10 pb-20">
-                {step === 0 && (
-                    <StepWelcome onNext={() => setStep(1)} rooms={rooms} />
-                )}
+                {step === 0 && <StepWelcome onNext={() => setStep(1)} rooms={rooms} />}
                 {step === 1 && (
-                    <StepTaste
-                        genres={genres}
-                        toggle={v => toggle(genres, setGenres, v)}
-                        onBack={() => setStep(0)}
-                        onNext={() => setStep(2)}
-                    />
+                    <StepTaste genres={genres} toggle={v => toggle(genres, setGenres, v)} onBack={() => setStep(0)} onNext={() => setStep(2)} />
                 )}
                 {step === 2 && (
-                    <StepMood
-                        moods={moods}
-                        toggle={v => toggle(moods, setMoods, v)}
-                        onBack={() => setStep(1)}
-                        onNext={() => setStep(3)}
-                    />
+                    <StepMood moods={moods} toggle={v => toggle(moods, setMoods, v)} onBack={() => setStep(1)} onNext={() => setStep(3)} />
                 )}
                 {step === 3 && (
-                    <StepCircle
-                        following={following}
-                        toggle={v => toggle(following, setFollowing, v)}
-                        onBack={() => setStep(2)}
-                        onNext={() => setStep(4)}
-                    />
+                    <StepSongs songs={songs} liked={likedSongs} disliked={dislikedSongs}
+                        onLike={handleLike} onDislike={handleDislike}
+                        onBack={() => setStep(2)} onNext={() => setStep(4)} />
                 )}
                 {step === 4 && (
-                    <StepTuned
-                        genres={genres}
-                        moods={moods}
-                        following={following}
-                        onBack={() => setStep(3)}
-                        onFinish={finish}
-                        rooms={rooms}
-                    />
+                    <StepCircle creators={creators} following={following} toggle={v => toggle(following, setFollowing, v)}
+                        onBack={() => setStep(3)} onNext={() => setStep(5)} />
+                )}
+                {step === 5 && (
+                    <StepReferral referral={referral} setReferral={setReferral} onBack={() => setStep(4)} onNext={() => setStep(6)} />
+                )}
+                {step === 6 && (
+                    <StepTuned genres={genres} moods={moods} liked={likedSongs} referral={referral}
+                        onBack={() => setStep(5)} onFinish={finish} rooms={rooms} />
                 )}
             </div>
         </div>
