@@ -778,7 +778,7 @@ export const initializeSocket = (httpServer) => {
         socket.on('room:song_ended', async ({ roomId, currentSongIndex }) => {
             try {
                 const lastAdvance = songEndedDebounce.get(roomId);
-                if (lastAdvance && Date.now() - lastAdvance < 3000) return;
+                if (lastAdvance && Date.now() - lastAdvance < 5000) return;
                 // Don't advance if a game timer is already blocking this room
                 if (gameTimers.has(roomId)) return;
 

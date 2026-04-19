@@ -2,7 +2,7 @@ import { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { axiosInstance } from '@/lib/axios';
-import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Vote, WifiOff, Mic } from 'lucide-react';
+import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Vote, WifiOff, Mic, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useRoomSession } from '@/providers/RoomSessionProvider';
@@ -227,7 +227,7 @@ const ReactionsRow = ({ onReact, onSendEmoji, onVoteSkip, onDonate }: {
     onDonate: (amount: number) => void;
 }) => {
     const [bursts, setBursts] = useState<{ id: number; emoji: string; x: number }[]>([]);
-    const { skipVotes } = useRoomStore();
+    const { skipVotes, reactions, emojiBursts } = useRoomStore();
     const REACTIONS = ['❤️', '🔥', '✨', '🥲', '🕺', '👏'];
 
     const pop = (emoji: string) => {
@@ -237,19 +237,30 @@ const ReactionsRow = ({ onReact, onSendEmoji, onVoteSkip, onDonate }: {
         onSendEmoji(emoji);
     };
 
+    // Merge local bursts + remote bursts from store
+    const allBursts = [
+        ...bursts,
+        ...emojiBursts.map(b => ({ id: Number(b.id.split('-')[0]), emoji: b.emoji, x: 20 + Math.random() * 60 })),
+    ];
+
     return (
         <div className="rounded-2xl ring-1 ring-white/10 glass p-4 relative overflow-hidden">
             <div className="flex items-center gap-2 mb-3">
                 <div className="mono text-[9px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>React</div>
                 <span className="text-[11px]" style={{ color: 'var(--fg-2)' }}>Your vibes show up for everyone in the room</span>
             </div>
-            <div className="flex items-center gap-2">
-                {REACTIONS.map(e => (
-                    <button key={e} onClick={() => pop(e)}
-                        className="w-11 h-11 rounded-xl grid place-items-center bg-white/6 hover:bg-white/12 ring-1 ring-white/10 text-[20px] press">
-                        {e}
-                    </button>
-                ))}
+
+            {/* Like / Dislike */}
+            <div className="flex items-center gap-2 mb-3">
+                <button onClick={() => onReact('like')}
+                    className="flex items-center gap-1.5 h-9 px-3 rounded-xl ring-1 ring-[oklch(0.74_0.14_160_/_0.3)] bg-[oklch(0.74_0.14_160_/_0.08)] text-[oklch(0.74_0.14_160)] text-[12px] press hover:bg-[oklch(0.74_0.14_160_/_0.15)]">
+                    <ThumbsUp className="size-3.5" /> {reactions.likes}
+                </button>
+                <button onClick={() => onReact('dislike')}
+                    className="flex items-center gap-1.5 h-9 px-3 rounded-xl ring-1 ring-white/10 bg-white/5 text-[12px] press hover:bg-white/8"
+                    style={{ color: 'var(--fg-2)' }}>
+                    <ThumbsDown className="size-3.5" /> {reactions.dislikes}
+                </button>
                 <div className="flex-1" />
                 <button onClick={onVoteSkip}
                     className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl ring-1 ring-white/15 text-[12px] hover:bg-white/8 press"
@@ -264,9 +275,19 @@ const ReactionsRow = ({ onReact, onSendEmoji, onVoteSkip, onDonate }: {
                 </button>
             </div>
 
-            {/* Emoji bursts */}
+            {/* Emoji row */}
+            <div className="flex items-center gap-2">
+                {REACTIONS.map(e => (
+                    <button key={e} onClick={() => pop(e)}
+                        className="w-10 h-10 rounded-xl grid place-items-center bg-white/6 hover:bg-white/12 ring-1 ring-white/10 text-[18px] press">
+                        {e}
+                    </button>
+                ))}
+            </div>
+
+            {/* Emoji bursts — local + remote */}
             <div className="absolute inset-0 pointer-events-none">
-                {bursts.map(b => (
+                {allBursts.map(b => (
                     <span key={b.id} className="absolute text-[28px] animate-float-up"
                         style={{ left: `${b.x}%`, bottom: 10 }}>{b.emoji}</span>
                 ))}
@@ -549,7 +570,7 @@ export const RoomPage = () => {
                     </div>
 
                     {/* Col 10–12: Chat / Tip / Goal */}
-                    <div className="col-span-3 flex flex-col min-h-0">
+                    <div className="col-span-3 flex flex-col min-h-0 overflow-hidden">
                         <RightRail
                             tab={rightTab}
                             setTab={setRightTab}

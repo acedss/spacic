@@ -111,6 +111,7 @@ export const useRoomSocket = (roomId: string) => {
         const socket = socketRef.current;
 
         // Register song-ended callback so AudioPlayer can trigger auto-advance
+        // Any client can emit, but server debounces (3s per room + index check)
         songEndedCallbackRef.current = () => {
             socket.emit('room:song_ended', {
                 roomId,
@@ -321,16 +322,25 @@ export const useRoomSocket = (roomId: string) => {
             // Block onTimeUpdate from overwriting position with stale audio data
             playerStore.setSynced(false);
 
-            // If the new song index is beyond the current playlist, append it
-            const currentPlaylist = useRoomStore.getState().room?.playlist;
-            if (song && currentPlaylist && songIndex >= currentPlaylist.length) {
-                const newSong = { ...song, audioUrl: songPresignedUrl || '', albumId: song.albumId ?? null, imageUrl: song.imageUrl ?? '' };
-                roomStore.setRoom({
-                    ...useRoomStore.getState().room!,
-                    playlist: [...currentPlaylist, newSong],
-                });
-            } else if (songPresignedUrl) {
-                roomStore.updatePlaylistSongUrl(songIndex, songPresignedUrl);
+            // Update playlist with the new song data + presigned URL
+            const room = useRoomStore.getState().room;
+            if (room) {
+                const currentPlaylist = [...room.playlist];
+                const songData = song
+                    ? { ...song, audioUrl: songPresignedUrl || '', albumId: song.albumId ?? null, imageUrl: song.imageUrl ?? '' }
+                    : null;
+
+                if (songIndex >= currentPlaylist.length && songData) {
+                    // Append new song (random from DB after playlist exhausted)
+                    currentPlaylist.push(songData);
+                } else if (songData) {
+                    // Replace song data + URL at index (keeps metadata in sync)
+                    currentPlaylist[songIndex] = songData;
+                } else if (songPresignedUrl && songIndex < currentPlaylist.length) {
+                    // Only URL update (no song data sent)
+                    currentPlaylist[songIndex] = { ...currentPlaylist[songIndex], audioUrl: songPresignedUrl };
+                }
+                roomStore.setRoom({ ...room, playlist: currentPlaylist });
             }
 
             playerStore.setCurrentSongIndex(songIndex);
