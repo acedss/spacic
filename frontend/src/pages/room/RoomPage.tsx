@@ -1,8 +1,8 @@
-import { useEffect, useCallback, useState, useMemo } from 'react';
+import { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { axiosInstance } from '@/lib/axios';
-import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Vote, WifiOff, Mic, Sparkles, ChevronDown } from 'lucide-react';
+import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Vote, WifiOff, Mic, Sparkles, ChevronDown, Link2, Check, TrendingUp } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useRoomSession } from '@/providers/RoomSessionProvider';
@@ -24,7 +24,7 @@ type RightTab = 'chat' | 'tip' | 'goal';
 /* ─── Constellation ─────────────────────────────────────────────────────── */
 /* Compact bounded layout: fixed 176px orb height, safe dot range (22–78% y)
    to guarantee no clipping regardless of column width.                      */
-const Constellation = ({ room, listenerCount }: { room: RoomInfo; listenerCount: number }) => {
+const Constellation = ({ room, listenerCount, listenerHistory }: { room: RoomInfo; listenerCount: number; listenerHistory: number[] }) => {
     const nodes = useMemo(() => {
         const N = Math.min(10, Math.max(3, listenerCount || 6));
         return Array.from({ length: N }, (_, i) => {
@@ -48,9 +48,38 @@ const Constellation = ({ room, listenerCount }: { room: RoomInfo; listenerCount:
                         {listenerCount.toLocaleString()} {listenerCount === 1 ? 'person' : 'people'}
                     </p>
                 </div>
-                <button className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] ring-1 ring-white/10 hover:bg-white/8 transition-colors" style={{ color: 'var(--fg-2)' }}>
-                    <Users className="size-3" /> All
-                </button>
+                <div className="flex items-center gap-2">
+                    {/* Listener count sparkline histogram */}
+                    {listenerHistory.length > 1 && (
+                        <div className="flex items-center gap-1">
+                            <TrendingUp className="size-3 text-[oklch(0.88_0.12_75)] opacity-60" />
+                            <svg width="52" height="20" viewBox="0 0 52 20" style={{ overflow: 'visible' }}>
+                                {(() => {
+                                    const max = Math.max(...listenerHistory, 1);
+                                    const pts = listenerHistory.map((v, i) => {
+                                        const x = listenerHistory.length === 1 ? 26 : (i / (listenerHistory.length - 1)) * 52;
+                                        const y = 20 - Math.max(2, (v / max) * 18);
+                                        return `${x.toFixed(1)},${y.toFixed(1)}`;
+                                    }).join(' ');
+                                    const last = listenerHistory[listenerHistory.length - 1];
+                                    const lastX = 52;
+                                    const lastY = 20 - Math.max(2, (last / max) * 18);
+                                    return (
+                                        <>
+                                            <polyline points={pts} fill="none"
+                                                stroke="oklch(0.88 0.12 75 / 0.5)" strokeWidth="1.5"
+                                                strokeLinecap="round" strokeLinejoin="round" />
+                                            <circle cx={lastX} cy={lastY} r="2" fill="oklch(0.88 0.12 75)" />
+                                        </>
+                                    );
+                                })()}
+                            </svg>
+                        </div>
+                    )}
+                    <button className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] ring-1 ring-white/10 hover:bg-white/8 transition-colors" style={{ color: 'var(--fg-2)' }}>
+                        <Users className="size-3" /> All
+                    </button>
+                </div>
             </div>
 
             {/* Fixed-height orb — no more aspect-ratio surprises */}
@@ -378,7 +407,10 @@ export const RoomPage = () => {
 
     const [guestDialogOpen, setGuestDialogOpen] = useState(false);
     const [rightTab, setRightTab] = useState<RightTab>('chat');
-    const [queueOpen, setQueueOpen] = useState(true);
+    const [queueOpen, setQueueOpen] = useState(() => window.innerWidth >= 768);
+    const [copied, setCopied] = useState(false);
+    const [listenerHistory, setListenerHistory] = useState<number[]>([]);
+    const listenerHistoryRef = useRef<number[]>([]);
 
     const roomStore = useRoomStore();
     const { creatorAway } = useRoomStore();
@@ -420,6 +452,18 @@ export const RoomPage = () => {
             .finally(() => roomStore.setLoading(false));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, isSignedIn]);
+
+    // Track listener count history for Constellation sparkline (last 30 readings)
+    useEffect(() => {
+        listenerHistoryRef.current = [...listenerHistoryRef.current.slice(-29), roomStore.listenerCount];
+        setListenerHistory([...listenerHistoryRef.current]);
+    }, [roomStore.listenerCount]);
+
+    const handleCopyLink = useCallback(() => {
+        navigator.clipboard.writeText(window.location.href).catch(() => {});
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    }, []);
 
     const handleGoOffline = useCallback(async () => {
         if (!roomId) return;
@@ -489,6 +533,12 @@ export const RoomPage = () => {
                             Synced · 38ms
                         </span>
                         <SessionTimer />
+                        <button onClick={handleCopyLink}
+                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] ring-1 ring-white/15 hover:bg-white/8 press transition-colors"
+                            style={{ color: 'var(--fg-2)' }}>
+                            {copied ? <Check className="size-3.5 text-[oklch(0.74_0.14_160)]" /> : <Link2 className="size-3.5" />}
+                            {copied ? 'Copied!' : 'Share'}
+                        </button>
                         {roomStore.room && <RoomInfoModal room={roomStore.room} />}
                         {isSignedIn ? (
                             <button onClick={handleLeave}
@@ -517,7 +567,7 @@ export const RoomPage = () => {
                         )}
                         <RoomPlayer onSkip={skipSong} onClose={handleGoOffline} onReact={reactToSong} />
                         {roomStore.room && (
-                            <Constellation room={roomStore.room} listenerCount={roomStore.listenerCount} />
+                            <Constellation room={roomStore.room} listenerCount={roomStore.listenerCount} listenerHistory={listenerHistory} />
                         )}
                     </div>
 
@@ -548,7 +598,11 @@ export const RoomPage = () => {
                             </button>
                             {queueOpen && (
                                 <div className="overflow-auto">
-                                    <NominationsPanel onNominate={nominateSong} onVote={voteForSong} />
+                                    <NominationsPanel
+                                    onNominate={nominateSong}
+                                    onVote={voteForSong}
+                                    onRequestSong={(req) => sendChat(`🎵 Song request: ${req}`)}
+                                />
                                 </div>
                             )}
                         </div>
@@ -591,29 +645,46 @@ const toHours = (minutes: number) => {
 };
 
 const RoomOfflineView = ({ room, onBack }: { room: RoomInfo; onBack: () => void }) => {
+    const [recapCopied, setRecapCopied] = useState(false);
     const s = room.stats;
     const stats = [
-        { icon: Users, label: 'Listeners', value: s?.totalListeners?.toLocaleString() ?? '0' },
-        { icon: Clock, label: 'Hours Listened', value: toHours(s?.totalMinutesListened ?? 0) },
-        { icon: Gem, label: 'Coins Earned', value: s?.totalCoinsEarned?.toLocaleString() ?? '0' },
-        { icon: Users, label: 'Unique Donors', value: s?.totalDonors?.toLocaleString() ?? '0' },
-        { icon: Heart, label: 'Favorites', value: room.favoriteCount?.toLocaleString() ?? '0' },
+        { icon: Users, label: 'Listeners',      value: s?.totalListeners?.toLocaleString() ?? '0' },
+        { icon: Clock, label: 'Time Played',     value: toHours(s?.totalMinutesListened ?? 0) },
+        { icon: Gem,   label: 'Coins Earned',    value: s?.totalCoinsEarned?.toLocaleString() ?? '0' },
+        { icon: Users, label: 'Unique Donors',   value: s?.totalDonors?.toLocaleString() ?? '0' },
+        { icon: Heart, label: 'Favorites',       value: room.favoriteCount?.toLocaleString() ?? '0' },
         { icon: Radio, label: 'Sessions Hosted', value: s?.totalSessions?.toLocaleString() ?? '0' },
     ];
 
+    const topSongs = (room.playlist ?? []).slice(0, 5);
+
+    const handleCopyRecap = () => {
+        navigator.clipboard.writeText(window.location.href).catch(() => {});
+        setRecapCopied(true);
+        setTimeout(() => setRecapCopied(false), 2000);
+    };
+
     return (
-        <div className="flex flex-col items-center justify-center min-h-full py-16 px-8 gap-8" style={{ background: 'var(--ink-0)' }}>
-            <div className="text-center space-y-2">
+        <div className="flex flex-col items-center justify-start min-h-full py-14 px-8 gap-8 overflow-auto hide-scrollbar" style={{ background: 'var(--ink-0)' }}>
+            {/* Session ended header */}
+            <div className="text-center space-y-2 max-w-lg w-full">
                 <div className="flex items-center justify-center gap-2 mb-4">
                     <span className="w-2 h-2 rounded-full bg-white/20" />
-                    <span className="mono text-[10px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>Creator is offline</span>
+                    <span className="mono text-[10px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>Session ended · Replay available</span>
                 </div>
-                <h1 className="serif text-white leading-tight" style={{ fontSize: 48 }}>{room.title}</h1>
+                <h1 className="serif text-white leading-tight" style={{ fontSize: 44 }}>{room.title}</h1>
                 {room.description && (
                     <p className="text-[14px] max-w-md mx-auto leading-relaxed" style={{ color: 'var(--fg-2)' }}>{room.description}</p>
                 )}
+                <button onClick={handleCopyRecap}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-[12px] ring-1 ring-white/15 hover:bg-white/8 press transition-colors mt-2"
+                    style={{ color: 'var(--fg-2)' }}>
+                    {recapCopied ? <Check className="size-3.5 text-[oklch(0.74_0.14_160)]" /> : <Link2 className="size-3.5" />}
+                    {recapCopied ? 'Link copied!' : 'Share recap'}
+                </button>
             </div>
 
+            {/* Stats grid */}
             {s && (
                 <div className="w-full max-w-lg grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {stats.map(({ icon: Icon, label, value }) => (
@@ -623,6 +694,34 @@ const RoomOfflineView = ({ room, onBack }: { room: RoomInfo; onBack: () => void 
                             <p className="mono text-[10px] uppercase tracking-wider mt-1" style={{ color: 'var(--fg-3)' }}>{label}</p>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Top songs played */}
+            {topSongs.length > 0 && (
+                <div className="w-full max-w-lg">
+                    <p className="mono text-[9px] uppercase tracking-widest mb-3" style={{ color: 'var(--fg-3)' }}>Tracks played this session</p>
+                    <div className="rounded-2xl ring-1 ring-white/8 overflow-hidden divide-y divide-white/5" style={{ background: 'var(--ink-2)' }}>
+                        {topSongs.map((song, i) => (
+                            <div key={song._id ?? i} className="flex items-center gap-3 px-4 py-3">
+                                <span className="mono text-[10px] w-4 tabular-nums" style={{ color: 'var(--fg-3)' }}>{i + 1}</span>
+                                {song.imageUrl ? (
+                                    <img src={song.imageUrl} className="w-9 h-9 rounded-lg object-cover shrink-0" alt="" />
+                                ) : (
+                                    <div className="w-9 h-9 rounded-lg grid place-items-center shrink-0 bg-white/8">
+                                        <Music2 className="size-4 text-white/30" />
+                                    </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[13px] text-white truncate">{song.title}</p>
+                                    <p className="text-[11px] truncate" style={{ color: 'var(--fg-3)' }}>{song.artist}</p>
+                                </div>
+                                <span className="mono text-[10px] tabular-nums" style={{ color: 'var(--fg-3)' }}>
+                                    {song.duration ? `${Math.floor(song.duration / 60)}:${String(song.duration % 60).padStart(2, '0')}` : ''}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 

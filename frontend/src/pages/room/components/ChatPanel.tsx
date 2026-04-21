@@ -55,7 +55,8 @@ export const ChatPanel = ({ onSendMessage, onPinMessage, isCreator }: Props) => 
                             );
                         }
 
-                        const isTip = msg.message.startsWith('🪙') || msg.message.toLowerCase().includes('coin');
+                        const isTip     = msg.message.startsWith('🪙') || msg.message.toLowerCase().includes('coin');
+                        const isRequest = msg.message.startsWith('🎵 Song request:');
                         return (
                             <div key={msg.id} className="group flex items-start gap-2.5">
                                 <div className="w-6 h-6 rounded-full shrink-0 mt-0.5 grid place-items-center text-[9px] font-bold text-white"
@@ -69,6 +70,10 @@ export const ChatPanel = ({ onSendMessage, onPinMessage, isCreator }: Props) => 
                                     {isTip ? (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[12px] text-[oklch(0.88_0.12_75)] bg-[oklch(0.82_0.15_75_/_0.12)] ring-1 ring-[oklch(0.82_0.15_75_/_0.25)]">
                                             <Gem className="size-2.5" /> {msg.message}
+                                        </span>
+                                    ) : isRequest ? (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[12px] text-[oklch(0.82_0.14_295)] bg-[oklch(0.68_0.21_295_/_0.1)] ring-1 ring-[oklch(0.68_0.21_295_/_0.3)]">
+                                            {msg.message}
                                         </span>
                                     ) : (
                                         <span className="text-[13px] break-words leading-snug" style={{ color: 'var(--fg-1)' }}>

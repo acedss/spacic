@@ -21,6 +21,7 @@ export const DonationPanel = ({ onDonate, onUpdateGoal, isCreator }: DonationPan
     const [donating, setDonating] = useState(false);
     const [showGoalModal, setShowGoalModal] = useState(false);
     const [newGoalValue, setNewGoalValue] = useState('');
+    const [coinBurst, setCoinBurst] = useState<{ id: number; x: number; emoji: string }[]>([]);
 
     if (!room || room.streamGoal <= 0) return (
         <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
@@ -41,6 +42,14 @@ export const DonationPanel = ({ onDonate, onUpdateGoal, isCreator }: DonationPan
         }
         setDonating(true);
         onDonate(selected);
+        // Coin particle burst
+        const coins = Array.from({ length: 14 }, (_, i) => ({
+            id: Date.now() + i,
+            x: 5 + Math.random() * 90,
+            emoji: ['🪙', '💰', '✨', '💫', '⭐'][i % 5],
+        }));
+        setCoinBurst(coins);
+        setTimeout(() => setCoinBurst([]), 2600);
         setTimeout(() => { setDonating(false); setSelected(null); }, 800);
     };
 
@@ -57,7 +66,16 @@ export const DonationPanel = ({ onDonate, onUpdateGoal, isCreator }: DonationPan
 
     return (
         <>
-            <div className="p-5 flex flex-col gap-5 h-full overflow-auto hide-scrollbar">
+            <div className="p-5 flex flex-col gap-5 h-full overflow-auto hide-scrollbar relative">
+                {/* Coin particle burst on successful donation */}
+                {coinBurst.length > 0 && (
+                    <div className="absolute inset-0 pointer-events-none overflow-hidden z-10">
+                        {coinBurst.map(p => (
+                            <span key={p.id} className="absolute text-[22px] animate-float-up"
+                                style={{ left: `${p.x}%`, bottom: 40 }}>{p.emoji}</span>
+                        ))}
+                    </div>
+                )}
                 {/* Wallet balance card */}
                 <div className="rounded-xl p-4 ring-1 ring-[oklch(0.82_0.15_75_/_0.3)]"
                      style={{ background: 'linear-gradient(145deg, oklch(0.22 0.05 75 / 0.5), oklch(0.14 0.03 60))' }}>
