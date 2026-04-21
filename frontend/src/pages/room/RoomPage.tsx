@@ -4,6 +4,7 @@ import { useAuth } from '@clerk/clerk-react';
 import { axiosInstance } from '@/lib/axios';
 import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Vote, WifiOff, Mic, Sparkles, ChevronDown, Link2, Check, TrendingUp } from 'lucide-react';
 import { OrbitingCircles } from '@/components/ui/orbiting-circles';
+import { ListenerAvatarStack } from '@/components/ui/avatar-circles';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useRoomSession } from '@/providers/RoomSessionProvider';
@@ -28,14 +29,19 @@ type RightTab = 'chat' | 'tip' | 'goal';
 const Constellation = ({ room, listenerCount, listenerHistory }: { room: RoomInfo; listenerCount: number; listenerHistory: number[] }) => {
     const creator = (room as any).creatorId as { fullName?: string; imageUrl?: string } | undefined;
 
-    // Split listeners across two orbit rings
-    const { inner, outer } = useMemo(() => {
-        const N = Math.min(12, Math.max(2, listenerCount || 4));
-        const innerCount = Math.min(4, Math.ceil(N / 2));
-        const outerCount = Math.min(8, N - innerCount);
+    // Split listeners across two orbit rings; cap at 12 dots, track overflow for stack
+    const MAX_ORBIT = 12;
+    const { inner, outer, orbitOverflow } = useMemo(() => {
+        const capped = Math.min(MAX_ORBIT, Math.max(2, listenerCount || 4));
+        const innerCount = Math.min(4, Math.ceil(capped / 2));
+        const outerCount = Math.min(8, capped - innerCount);
         const mkNodes = (count: number, offset: number) =>
             Array.from({ length: count }, (_, i) => ({ i: i + offset, hue: ((i + offset) * 37) % 360 }));
-        return { inner: mkNodes(innerCount, 0), outer: mkNodes(outerCount, innerCount) };
+        return {
+            inner: mkNodes(innerCount, 0),
+            outer: mkNodes(outerCount, innerCount),
+            orbitOverflow: Math.max(0, listenerCount - MAX_ORBIT),
+        };
     }, [listenerCount]);
 
     return (
@@ -120,8 +126,18 @@ const Constellation = ({ room, listenerCount, listenerHistory }: { room: RoomInf
                 </div>
             </div>
 
+            {/* Overflow avatar stack — shown when crowd exceeds 12 orbiting dots */}
+            {orbitOverflow > 0 && (
+                <div className="mt-3 flex items-center gap-2.5">
+                    <ListenerAvatarStack count={listenerCount} maxVisible={5} size={24} />
+                    <span className="text-[11px]" style={{ color: 'var(--fg-3)' }}>
+                        +{orbitOverflow.toLocaleString()} more listening
+                    </span>
+                </div>
+            )}
+
             {/* Speaking indicator */}
-            <div className="mt-3 flex items-center gap-2">
+            <div className={orbitOverflow > 0 ? 'mt-2 flex items-center gap-2' : 'mt-3 flex items-center gap-2'}>
                 <Mic className="size-3 text-[oklch(0.72_0.22_20)]" />
                 <span className="text-[11px] truncate" style={{ color: 'var(--fg-2)' }}>
                     {creator?.fullName ?? 'Host'} is speaking
@@ -459,7 +475,7 @@ export const RoomPage = () => {
     }, [roomStore.listenerCount]);
 
     const handleCopyLink = useCallback(() => {
-        navigator.clipboard.writeText(window.location.href).catch(() => {});
+        navigator.clipboard.writeText(window.location.href).catch(() => { });
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     }, []);
@@ -504,7 +520,7 @@ export const RoomPage = () => {
             {/* Atmospheric cover blur */}
             {coverUrl && (
                 <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                    <img src={coverUrl} className="w-full h-[620px] object-cover opacity-50 blur-3xl scale-110" alt="" />
+                    <img src={coverUrl} className="w-full h-155 object-cover opacity-50 blur-3xl scale-110" alt="" />
                     <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, oklch(0.08 0.015 285 / 0.6) 0%, oklch(0.08 0.015 285 / 0.95) 60%)' }} />
                 </div>
             )}
@@ -598,10 +614,10 @@ export const RoomPage = () => {
                             {queueOpen && (
                                 <div className="overflow-auto">
                                     <NominationsPanel
-                                    onNominate={nominateSong}
-                                    onVote={voteForSong}
-                                    onRequestSong={(req) => sendChat(`🎵 Song request: ${req}`)}
-                                />
+                                        onNominate={nominateSong}
+                                        onVote={voteForSong}
+                                        onRequestSong={(req) => sendChat(`🎵 Song request: ${req}`)}
+                                    />
                                 </div>
                             )}
                         </div>
@@ -647,18 +663,18 @@ const RoomOfflineView = ({ room, onBack }: { room: RoomInfo; onBack: () => void 
     const [recapCopied, setRecapCopied] = useState(false);
     const s = room.stats;
     const stats = [
-        { icon: Users, label: 'Listeners',      value: s?.totalListeners?.toLocaleString() ?? '0' },
-        { icon: Clock, label: 'Time Played',     value: toHours(s?.totalMinutesListened ?? 0) },
-        { icon: Gem,   label: 'Coins Earned',    value: s?.totalCoinsEarned?.toLocaleString() ?? '0' },
-        { icon: Users, label: 'Unique Donors',   value: s?.totalDonors?.toLocaleString() ?? '0' },
-        { icon: Heart, label: 'Favorites',       value: room.favoriteCount?.toLocaleString() ?? '0' },
+        { icon: Users, label: 'Listeners', value: s?.totalListeners?.toLocaleString() ?? '0' },
+        { icon: Clock, label: 'Time Played', value: toHours(s?.totalMinutesListened ?? 0) },
+        { icon: Gem, label: 'Coins Earned', value: s?.totalCoinsEarned?.toLocaleString() ?? '0' },
+        { icon: Users, label: 'Unique Donors', value: s?.totalDonors?.toLocaleString() ?? '0' },
+        { icon: Heart, label: 'Favorites', value: room.favoriteCount?.toLocaleString() ?? '0' },
         { icon: Radio, label: 'Sessions Hosted', value: s?.totalSessions?.toLocaleString() ?? '0' },
     ];
 
     const topSongs = (room.playlist ?? []).slice(0, 5);
 
     const handleCopyRecap = () => {
-        navigator.clipboard.writeText(window.location.href).catch(() => {});
+        navigator.clipboard.writeText(window.location.href).catch(() => { });
         setRecapCopied(true);
         setTimeout(() => setRecapCopied(false), 2000);
     };
