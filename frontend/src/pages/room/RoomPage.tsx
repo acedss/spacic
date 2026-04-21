@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { axiosInstance } from '@/lib/axios';
 import { Loader, LogOut, Radio, Users, Clock, Gem, Heart, MessageSquare, Music2, Vote, WifiOff, Mic, Sparkles, ChevronDown, Link2, Check, TrendingUp } from 'lucide-react';
+import { OrbitingCircles } from '@/components/ui/orbiting-circles';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useRoomSession } from '@/providers/RoomSessionProvider';
@@ -25,22 +26,21 @@ type RightTab = 'chat' | 'tip' | 'goal';
 /* Compact bounded layout: fixed 176px orb height, safe dot range (22–78% y)
    to guarantee no clipping regardless of column width.                      */
 const Constellation = ({ room, listenerCount, listenerHistory }: { room: RoomInfo; listenerCount: number; listenerHistory: number[] }) => {
-    const nodes = useMemo(() => {
-        const N = Math.min(10, Math.max(3, listenerCount || 6));
-        return Array.from({ length: N }, (_, i) => {
-            const angle = (i / N) * Math.PI * 2;
-            const radius = 22 + (i % 3) * 6; // 22, 28, 34 — all safe inside bounds
-            const x = 50 + Math.cos(angle) * radius;
-            const y = 50 + Math.sin(angle) * radius;
-            const hue = (i * 37) % 360;
-            return { i, x, y, delay: (i * 0.25) % 2, hue };
-        });
-    }, [listenerCount]);
-
     const creator = (room as any).creatorId as { fullName?: string; imageUrl?: string } | undefined;
+
+    // Split listeners across two orbit rings
+    const { inner, outer } = useMemo(() => {
+        const N = Math.min(12, Math.max(2, listenerCount || 4));
+        const innerCount = Math.min(4, Math.ceil(N / 2));
+        const outerCount = Math.min(8, N - innerCount);
+        const mkNodes = (count: number, offset: number) =>
+            Array.from({ length: count }, (_, i) => ({ i: i + offset, hue: ((i + offset) * 37) % 360 }));
+        return { inner: mkNodes(innerCount, 0), outer: mkNodes(outerCount, innerCount) };
+    }, [listenerCount]);
 
     return (
         <div className="rounded-2xl ring-1 ring-white/10 p-4 glass relative overflow-hidden">
+            {/* Header row */}
             <div className="flex items-center justify-between mb-3">
                 <div>
                     <div className="mono text-[9px] uppercase tracking-[0.25em]" style={{ color: 'var(--fg-3)' }}>Listening together</div>
@@ -49,7 +49,7 @@ const Constellation = ({ room, listenerCount, listenerHistory }: { room: RoomInf
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
-                    {/* Listener count sparkline histogram */}
+                    {/* Listener count sparkline */}
                     {listenerHistory.length > 1 && (
                         <div className="flex items-center gap-1">
                             <TrendingUp className="size-3 text-[oklch(0.88_0.12_75)] opacity-60" />
@@ -62,14 +62,13 @@ const Constellation = ({ room, listenerCount, listenerHistory }: { room: RoomInf
                                         return `${x.toFixed(1)},${y.toFixed(1)}`;
                                     }).join(' ');
                                     const last = listenerHistory[listenerHistory.length - 1];
-                                    const lastX = 52;
                                     const lastY = 20 - Math.max(2, (last / max) * 18);
                                     return (
                                         <>
                                             <polyline points={pts} fill="none"
                                                 stroke="oklch(0.88 0.12 75 / 0.5)" strokeWidth="1.5"
                                                 strokeLinecap="round" strokeLinejoin="round" />
-                                            <circle cx={lastX} cy={lastY} r="2" fill="oklch(0.88 0.12 75)" />
+                                            <circle cx={52} cy={lastY} r="2" fill="oklch(0.88 0.12 75)" />
                                         </>
                                     );
                                 })()}
@@ -82,46 +81,46 @@ const Constellation = ({ room, listenerCount, listenerHistory }: { room: RoomInf
                 </div>
             </div>
 
-            {/* Fixed-height orb — no more aspect-ratio surprises */}
-            <div className="relative rounded-xl overflow-hidden h-44" style={{ background: 'radial-gradient(ellipse at center, oklch(0.22 0.06 295 / 0.5), oklch(0.12 0.02 285) 75%)' }}>
-                {/* orbit rings */}
-                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-                    <circle cx="50" cy="50" r="18" fill="none" stroke="oklch(1 0 0 / 0.05)" strokeDasharray="1 2" />
-                    <circle cx="50" cy="50" r="28" fill="none" stroke="oklch(1 0 0 / 0.04)" strokeDasharray="1 2" />
-                    <circle cx="50" cy="50" r="38" fill="none" stroke="oklch(1 0 0 / 0.03)" strokeDasharray="1 2" />
-                </svg>
+            {/* OrbitingCircles orb — h-48 = 192px = (radius 85 + iconSize 11) × 2 */}
+            <div className="relative flex items-center justify-center h-48 rounded-xl overflow-hidden"
+                style={{ background: 'radial-gradient(ellipse at center, oklch(0.22 0.06 295 / 0.5), oklch(0.12 0.02 285) 75%)' }}>
+
+                {/* Inner orbit: 4 listeners, 20s period */}
+                <OrbitingCircles radius={55} duration={22} iconSize={26} path>
+                    {inner.map(n => (
+                        <div key={n.i} className="rounded-full size-full ring-2 ring-white/25"
+                            style={{ background: `oklch(0.55 0.16 ${n.hue})`, boxShadow: `0 0 8px oklch(0.55 0.16 ${n.hue} / 0.7)` }} />
+                    ))}
+                </OrbitingCircles>
+
+                {/* Outer orbit: up to 8 listeners, slower, reversed */}
+                {outer.length > 0 && (
+                    <OrbitingCircles radius={85} duration={38} iconSize={22} path reverse>
+                        {outer.map(n => (
+                            <div key={n.i} className="rounded-full size-full ring-1 ring-white/20"
+                                style={{ background: `oklch(0.5 0.14 ${n.hue})`, boxShadow: `0 0 6px oklch(0.5 0.14 ${n.hue} / 0.5)` }} />
+                        ))}
+                    </OrbitingCircles>
+                )}
 
                 {/* Host at center */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+                <div className="z-10 flex flex-col items-center">
                     <div className="relative">
                         {creator?.imageUrl ? (
                             <img src={creator.imageUrl}
-                                className="w-11 h-11 rounded-full object-cover ring-2 ring-[oklch(0.88_0.12_75)]"
-                                style={{ boxShadow: '0 0 22px oklch(0.88 0.12 75 / 0.5)' }}
+                                className="w-12 h-12 rounded-full object-cover ring-2 ring-[oklch(0.88_0.12_75)]"
+                                style={{ boxShadow: '0 0 24px oklch(0.88 0.12 75 / 0.6)' }}
                                 alt="" />
                         ) : (
-                            <div className="w-11 h-11 rounded-full ring-2 ring-[oklch(0.88_0.12_75)]"
-                                style={{ background: 'oklch(0.3 0.08 295)', boxShadow: '0 0 22px oklch(0.88 0.12 75 / 0.5)' }} />
+                            <div className="w-12 h-12 rounded-full ring-2 ring-[oklch(0.88_0.12_75)]"
+                                style={{ background: 'oklch(0.3 0.08 295)', boxShadow: '0 0 24px oklch(0.88 0.12 75 / 0.6)' }} />
                         )}
-                        <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[7px] mono uppercase bg-[oklch(0.88_0.12_75)] text-[var(--ink-0)] font-semibold tracking-wider whitespace-nowrap">Host</span>
+                        <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[7px] mono uppercase bg-[oklch(0.88_0.12_75)] text-[var(--ink-0)] font-semibold tracking-wider whitespace-nowrap">Host</span>
                     </div>
                 </div>
-
-                {/* Listener dots — scales with real listener count */}
-                {nodes.map(n => (
-                    <div key={n.i} className="absolute drift"
-                        style={{
-                            left: `${n.x}%`, top: `${n.y}%`,
-                            transform: 'translate(-50%,-50%)',
-                            animationDelay: `${n.delay}s`,
-                        }}>
-                        <div className="w-6 h-6 rounded-full ring-2 ring-white/20"
-                            style={{ background: `oklch(0.55 0.14 ${n.hue})` }} />
-                    </div>
-                ))}
             </div>
 
-            {/* Speaking indicator — compact single row */}
+            {/* Speaking indicator */}
             <div className="mt-3 flex items-center gap-2">
                 <Mic className="size-3 text-[oklch(0.72_0.22_20)]" />
                 <span className="text-[11px] truncate" style={{ color: 'var(--fg-2)' }}>
