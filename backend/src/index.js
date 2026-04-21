@@ -21,6 +21,7 @@ import minigameRoutes from './routes/minigame.route.js';
 import recsysRoutes from './routes/recsys.route.js';
 import broadcastAssetRoutes from './routes/broadcastAsset.route.js';
 import notificationRoutes from './routes/notification.route.js';
+import userRoutes from './routes/user.route.js';
 import { handleWebhook } from './controllers/wallet.controller.js';
 import { handleClerkWebhook } from './controllers/auth.controller.js';
 
@@ -141,6 +142,7 @@ app.use('/api/minigames', minigameRoutes);
 app.use('/api/recs', recsysRoutes);
 app.use('/api/broadcast-assets', broadcastAssetRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/users', userRoutes);
 
 //  Error handler
 app.use((error, req, res, next) => {

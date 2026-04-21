@@ -18,6 +18,8 @@ import { RoomInfoModal } from './components/RoomInfoModal';
 import { ListenerGamePanel } from './components/ListenerGamePanel';
 import { NominationsPanel } from './components/NominationsPanel';
 import { SessionTimer } from './components/SessionTimer';
+import { TipHoldButton } from './components/TipHoldButton';
+import { TipRainOverlay } from './components/TipRainOverlay';
 import type { RoomInfo } from '@/types/types';
 import { cn } from '@/lib/utils';
 
@@ -45,7 +47,7 @@ const Constellation = ({ room, listenerCount, listenerHistory }: { room: RoomInf
     }, [listenerCount]);
 
     return (
-        <div className="rounded-2xl ring-1 ring-white/10 p-4 glass relative overflow-hidden">
+        <div className="rounded-2xl ring-1 ring-white/10 p-4 glass relative overflow-hidden ">
             {/* Header row */}
             <div className="flex items-center justify-between mb-3">
                 <div>
@@ -255,10 +257,11 @@ const NowMoment = ({ room }: { room: RoomInfo }) => {
 /* ─── ReactionsRow ──────────────────────────────────────────────────────── */
 /* Like/dislike live in the RoomPlayer card (left column). This row focuses on
    transient crowd reactions: floating emojis + skip-vote + tip CTA.          */
-const ReactionsRow = ({ onSendEmoji, onVoteSkip, onDonate }: {
+const ReactionsRow = ({ onSendEmoji, onVoteSkip, onDonate, onTipHolding }: {
     onSendEmoji: (emoji: string) => void;
     onVoteSkip: () => void;
     onDonate: (amount: number) => void;
+    onTipHolding: (amount: number) => void;
 }) => {
     const [bursts, setBursts] = useState<{ id: number; emoji: string; x: number }[]>([]);
     const { skipVotes, emojiBursts } = useRoomStore();
@@ -292,10 +295,7 @@ const ReactionsRow = ({ onSendEmoji, onVoteSkip, onDonate }: {
                         <Vote className="size-3" />
                         Skip {skipVotes.count}/{skipVotes.needed}
                     </button>
-                    <button onClick={() => onDonate(500)}
-                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[oklch(0.88_0.12_75)] text-[oklch(0.18_0.02_80)] text-[11px] font-semibold press">
-                        <Gem className="size-3" /> Tip 500
-                    </button>
+                    <TipHoldButton onDonate={onDonate} onHolding={onTipHolding} />
                 </div>
             </div>
 
@@ -430,7 +430,7 @@ export const RoomPage = () => {
     const roomStore = useRoomStore();
     const { creatorAway } = useRoomStore();
     const playerStore = usePlayerStore();
-    const { joinRoom, leaveRoom, sendChat, skipSong, donate, updateGoal, voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong, pinMessage } = useRoomSession();
+    const { joinRoom, leaveRoom, sendChat, skipSong, donate, tipHolding, updateGoal, voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong, pinMessage } = useRoomSession();
 
     // Track referral
     useEffect(() => {
@@ -597,6 +597,7 @@ export const RoomPage = () => {
                                 onSendEmoji={sendEmoji}
                                 onVoteSkip={voteSkip}
                                 onDonate={donate}
+                                onTipHolding={tipHolding}
                             />
                         )}
 
@@ -641,6 +642,8 @@ export const RoomPage = () => {
             {/* Overlays */}
             {isSignedIn && !roomStore.isCreator && <CreatorSpeakingOverlay creatorName={roomStore.room?.title} />}
             {isSignedIn && !roomStore.isCreator && <ListenerGamePanel />}
+
+            <TipRainOverlay />
 
             <GuestAuthDialog
                 open={guestDialogOpen}

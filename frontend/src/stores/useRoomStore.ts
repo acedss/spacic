@@ -23,6 +23,15 @@ export interface EmojiBurst {
     emoji:    string;
 }
 
+export interface TipRainSession {
+    userId:   string;
+    userName: string;
+    imageUrl: string;
+    amount:   number;
+    x:        number; // vw %
+    y:        number; // vh %
+}
+
 export interface SessionInfo {
     maxSessionMinutes: number | null;
     liveAt:            string | null;
@@ -53,8 +62,9 @@ interface RoomStore {
     skipVotes:   { count: number; needed: number };
     reactions:   { likes: number; dislikes: number };
     nominations: Nomination[];
-    emojiBursts: EmojiBurst[];
-    sessionInfo: SessionInfo | null;
+    emojiBursts:     EmojiBurst[];
+    tipRainSessions: Record<string, TipRainSession>;
+    sessionInfo:     SessionInfo | null;
 
     // Creator pinned message
     pinnedMessage: { id: string; userId: string; userName: string; message: string; pinnedAt: string } | null;
@@ -91,8 +101,10 @@ interface RoomStore {
     setSkipVotes:    (votes: { count: number; needed: number }) => void;
     setReactions:    (r: { likes: number; dislikes: number }) => void;
     setNominations:  (n: Nomination[]) => void;
-    addEmojiBurst:   (burst: EmojiBurst) => void;
-    setSessionInfo:  (info: SessionInfo | null) => void;
+    addEmojiBurst:    (burst: EmojiBurst) => void;
+    upsertTipRain:    (session: TipRainSession) => void;
+    removeTipRain:    (userId: string) => void;
+    setSessionInfo:   (info: SessionInfo | null) => void;
     setPinnedMessage:(msg: { id: string; userId: string; userName: string; message: string; pinnedAt: string } | null) => void;
 }
 
@@ -115,6 +127,7 @@ export const useRoomStore = create<RoomStore>((set) => ({
     reactions:                  { likes: 0, dislikes: 0 },
     nominations:                [],
     emojiBursts:                [],
+    tipRainSessions:            {},
     sessionInfo:                null,
     pinnedMessage:              null,
 
@@ -156,6 +169,7 @@ export const useRoomStore = create<RoomStore>((set) => ({
         reactions:                  { likes: 0, dislikes: 0 },
         nominations:                [],
         emojiBursts:                [],
+        tipRainSessions:            {},
         sessionInfo:                null,
         pinnedMessage:              null,
     }),
@@ -204,6 +218,14 @@ export const useRoomStore = create<RoomStore>((set) => ({
     addEmojiBurst:  (burst) => set((s) => ({
         emojiBursts: [...s.emojiBursts.slice(-19), burst],
     })),
+    upsertTipRain: (session) => set((s) => ({
+        tipRainSessions: { ...s.tipRainSessions, [session.userId]: session },
+    })),
+    removeTipRain: (userId) => set((s) => {
+        const next = { ...s.tipRainSessions };
+        delete next[userId];
+        return { tipRainSessions: next };
+    }),
     setSessionInfo:    (sessionInfo) => set({ sessionInfo }),
     setPinnedMessage:  (pinnedMessage) => set({ pinnedMessage }),
 }));

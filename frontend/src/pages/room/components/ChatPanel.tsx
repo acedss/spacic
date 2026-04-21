@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Gem, Pin } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
+import { UserHoverCard } from '@/components/UserHoverCard';
 
 interface Props {
     onSendMessage: (message: string) => void;
@@ -59,14 +60,18 @@ export const ChatPanel = ({ onSendMessage, onPinMessage, isCreator }: Props) => 
                         const isRequest = msg.message.startsWith('🎵 Song request:');
                         return (
                             <div key={msg.id} className="group flex items-start gap-2.5">
-                                <div className="w-6 h-6 rounded-full shrink-0 mt-0.5 grid place-items-center text-[9px] font-bold text-white"
-                                     style={{ background: `oklch(0.5 0.15 ${(msg.user?.username?.charCodeAt(0) ?? 65) * 17 % 360})` }}>
-                                    {msg.user?.username?.[0]?.toUpperCase() ?? '?'}
-                                </div>
+                                <UserHoverCard userId={msg.user?.id ?? null} userName={msg.user?.username ?? 'Listener'} imageUrl={msg.user?.imageUrl} side="right" openDelay={600}>
+                                    <button className="w-6 h-6 rounded-full shrink-0 mt-0.5 grid place-items-center text-[9px] font-bold text-white press"
+                                        style={{ background: `oklch(0.5 0.15 ${(msg.user?.username?.charCodeAt(0) ?? 65) * 17 % 360})` }}>
+                                        {msg.user?.username?.[0]?.toUpperCase() ?? '?'}
+                                    </button>
+                                </UserHoverCard>
                                 <div className="flex-1 min-w-0">
-                                    <span className="text-[11px] font-medium text-[oklch(0.74_0.14_160)] mr-1.5">
-                                        {msg.user?.username ?? 'Listener'}
-                                    </span>
+                                    <UserHoverCard userId={msg.user?.id ?? null} userName={msg.user?.username ?? 'Listener'} imageUrl={msg.user?.imageUrl} side="right" openDelay={600}>
+                                        <button className="text-[11px] font-medium text-[oklch(0.74_0.14_160)] mr-1.5 hover:underline">
+                                            {msg.user?.username ?? 'Listener'}
+                                        </button>
+                                    </UserHoverCard>
                                     {isTip ? (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[12px] text-[oklch(0.88_0.12_75)] bg-[oklch(0.82_0.15_75_/_0.12)] ring-1 ring-[oklch(0.82_0.15_75_/_0.25)]">
                                             <Gem className="size-2.5" /> {msg.message}

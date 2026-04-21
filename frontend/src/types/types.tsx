@@ -21,6 +21,8 @@ export interface CreateRoomPayload {
     isPublic?: boolean;
     playlistIds: string[];
     streamGoal?: number; // coins; 0 = no donation goal
+    tags?: string[];
+    coverImageUrl?: string | null;
 }
 
 export interface RoomStats {
@@ -73,6 +75,9 @@ export interface RoomInfo {
     sessions?: RoomSession[];
     listenerCount?: number;
     featureFlags?: RoomFeatureFlags;
+    tags?: string[];
+    coverImageUrl?: string | null;
+    coverImageKey?: string | null;
 }
 
 // ── Broadcast Assets ───────────────────────────────────────────────────────────

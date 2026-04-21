@@ -1,6 +1,6 @@
 import { useUser } from '@clerk/clerk-react'
 import { useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Search, Zap, Play, Radio, Heart, ChevronRight, Users, Gem, ArrowRight, Bell, Sparkles } from 'lucide-react'
 import { useWalletStore } from '@/stores/useWalletStore'
 import { getPublicRooms, toggleFavorite, getFavoriteStatus } from '@/lib/roomService'
@@ -43,7 +43,7 @@ const goalPct = (r: RoomData) =>
 
 const getGreeting = () => {
     const h = new Date().getHours()
-    if (h < 5)  return 'Still up'
+    if (h < 5) return 'Still up'
     if (h < 12) return 'Good morning'
     if (h < 18) return 'Good afternoon'
     if (h < 22) return 'Good evening'
@@ -82,7 +82,7 @@ const Equalizer = () => (
 /* ─── RoomCard ─────────────────────────────────────────────────────────── */
 const RoomCard = ({ room, onJoin }: { room: RoomData; onJoin: (id: string) => void }) => {
     const pct = goalPct(room)
-    const image = room.playlist[0]?.imageUrl ?? FALLBACK
+    const image = room.coverImageUrl || room.playlist[0]?.imageUrl || FALLBACK
     const artist = room.playlist[0]?.artist ?? room.creatorId?.fullName ?? '—'
 
     return (
@@ -135,7 +135,7 @@ const RoomCard = ({ room, onJoin }: { room: RoomData; onJoin: (id: string) => vo
 
 /* ─── TasteCard (square) ───────────────────────────────────────────────── */
 const TasteCard = ({ room, onJoin }: { room: RoomData; onJoin: (id: string) => void }) => {
-    const image = room.playlist[0]?.imageUrl ?? FALLBACK
+    const image = room.coverImageUrl || room.playlist[0]?.imageUrl || FALLBACK
     const GENRE_COLORS = ['oklch(0.72 0.22 20)', 'oklch(0.68 0.21 295)', 'oklch(0.74 0.14 160)', 'oklch(0.88 0.12 75)']
     const color = GENRE_COLORS[room.listenerCount % GENRE_COLORS.length]
 
@@ -179,11 +179,11 @@ const AlbumGoalCard = ({ title, artist, cover, raised, goal, days }: {
     return (
         <div className="rounded-2xl overflow-hidden ring-1 ring-white/10 press hover:ring-white/20 transition-all" style={{ background: 'var(--ink-1)' }}>
             <div className="relative h-28 flex"
-                 style={{ background: 'linear-gradient(135deg, oklch(0.22 0.04 295), oklch(0.2 0.04 60))' }}>
+                style={{ background: 'linear-gradient(135deg, oklch(0.22 0.04 295), oklch(0.2 0.04 60))' }}>
                 <div className="flex-1 flex items-center gap-2 px-4">
                     {covers.map((c, j) => (
                         <img key={j} src={c} className="w-12 h-12 rounded-md object-cover ring-1 ring-white/20"
-                             style={{ transform: `rotate(${(j - 1) * 4}deg) translateY(${j === 1 ? -4 : 0}px)` }} alt="" />
+                            style={{ transform: `rotate(${(j - 1) * 4}deg) translateY(${j === 1 ? -4 : 0}px)` }} alt="" />
                     ))}
                 </div>
                 <div className="p-3 self-end">
@@ -220,11 +220,15 @@ const HomePage = () => {
     const navigate = useNavigate()
     const socket = useSocialSocket()
 
-    const [rooms, setRooms]               = useState<RoomData[]>([])
-    const [loading, setLoading]           = useState(true)
-    const [featuredFav, setFeaturedFav]   = useState(false)
-    const [filter, setFilter]             = useState<'All' | 'For you' | 'Friends' | 'Nearby'>('All')
+    const [rooms, setRooms] = useState<RoomData[]>([])
+    const [loading, setLoading] = useState(true)
+    const [featuredFav, setFeaturedFav] = useState(false)
+    const [filter, setFilter] = useState<'All' | 'For you' | 'Friends' | 'Nearby'>('All')
     const [showOnboardingBanner, setShowOnboardingBanner] = useState(false)
+
+    const openSearch = useCallback(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))
+    }, [])
 
     const refreshRooms = async () => {
         try {
@@ -244,7 +248,7 @@ const HomePage = () => {
         if (!userId) return
         axiosInstance.get('/auth/onboarding/status')
             .then(({ data }) => { if (!data.onboardingCompleted) setShowOnboardingBanner(true) })
-            .catch(() => {})
+            .catch(() => { })
     }, [userId])
 
     useEffect(() => {
@@ -257,7 +261,7 @@ const HomePage = () => {
 
     useEffect(() => {
         if (!userId || rooms.length === 0) return
-        getFavoriteStatus(rooms[0]._id).then(setFeaturedFav).catch(() => {})
+        getFavoriteStatus(rooms[0]._id).then(setFeaturedFav).catch(() => { })
     }, [userId, rooms])
 
     const handleJoin = (id: string) => navigate(`/rooms/${id}`)
@@ -282,7 +286,7 @@ const HomePage = () => {
             {/* ── Onboarding banner ─────────────────────────────────────────── */}
             {showOnboardingBanner && (
                 <div className="relative z-20 flex items-center gap-4 px-10 py-3 border-b hair"
-                     style={{ background: 'linear-gradient(90deg, oklch(0.68 0.21 295 / 0.1), oklch(0.88 0.12 75 / 0.1))' }}>
+                    style={{ background: 'linear-gradient(90deg, oklch(0.68 0.21 295 / 0.1), oklch(0.88 0.12 75 / 0.1))' }}>
                     <Sparkles className="size-4 text-[oklch(0.88_0.12_75)]" />
                     <span className="text-[13px] text-white flex-1">Complete your setup to get personalized recommendations and 100 bonus coins.</span>
                     <button onClick={() => navigate('/onboarding')}
@@ -296,14 +300,11 @@ const HomePage = () => {
 
             {/* ── Top search bar ──────────────────────────────────────────── */}
             <div className="sticky top-0 z-20 flex items-center gap-4 px-10 h-16 border-b hair glass">
-                <div className="flex items-center gap-2 flex-1">
+                <button onClick={openSearch} className="flex items-center gap-2  flex-1 text-left">
                     <Search className="size-3.5 shrink-0" style={{ color: 'var(--fg-3)' }} />
-                    <input
-                        placeholder="Search rooms, creators, songs…"
-                        className="bg-transparent outline-none text-[13px] w-[420px] placeholder:text-[var(--fg-3)] text-white"
-                    />
+                    <span className="text-[13px] w-105 truncate text-zinc-300" >Search rooms, creators, songs…</span>
                     <kbd className="mono text-[10px] px-2 py-0.5 rounded-md ring-1 ring-white/10 ml-auto" style={{ color: 'var(--fg-3)', background: 'var(--ink-2)' }}>⌘K</kbd>
-                </div>
+                </button>
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => navigate('/studio')}
@@ -438,7 +439,7 @@ const HomePage = () => {
                             </div>
                         ) : (
                             <div className="relative rounded-2xl ring-1 ring-white/8 flex items-center justify-center text-center p-12"
-                                 style={{ aspectRatio: '4/5', background: 'var(--ink-2)' }}>
+                                style={{ aspectRatio: '4/5', background: 'var(--ink-2)' }}>
                                 <div>
                                     <Radio className="size-10 mx-auto mb-4 opacity-30 text-white" />
                                     <p className="text-[14px]" style={{ color: 'var(--fg-3)' }}>No live rooms right now</p>
@@ -571,7 +572,7 @@ const HomePage = () => {
                             >
                                 <div className="relative shrink-0">
                                     <div className="w-11 h-11 rounded-full object-cover bg-white/10 ring-2 ring-white/10"
-                                         style={{ background: `oklch(0.5 0.15 ${(i * 72) % 360})` }} />
+                                        style={{ background: `oklch(0.5 0.15 ${(i * 72) % 360})` }} />
                                     <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ring-2 ring-[var(--ink-0)] bg-[oklch(0.74_0.14_160)]" />
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -706,12 +707,12 @@ const HomePage = () => {
                         return (
                             <button
                                 key={m}
-                                onClick={() => navigate(`/rooms?mood=${encodeURIComponent(m)}`)}
+                                onClick={() => navigate(`/rooms?tags=${encodeURIComponent(m)}`)}
                                 className="press relative rounded-xl overflow-hidden ring-1 ring-white/10 hover:ring-white/30 transition-all group"
                                 style={{ aspectRatio: '4/3', background: `linear-gradient(135deg, oklch(0.3 0.09 ${hue}), oklch(0.18 0.04 ${hue + 30}))` }}
                             >
                                 <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                      style={{ background: 'oklch(1 0 0 / 0.06)' }} />
+                                    style={{ background: 'oklch(1 0 0 / 0.06)' }} />
                                 <span className="absolute bottom-3 left-3 serif text-[20px] text-white italic">{m}</span>
                                 <span className="absolute top-3 right-3 mono text-[9px] uppercase tracking-wider text-white/50">
                                     {(20 + i * 13) % 48} rooms

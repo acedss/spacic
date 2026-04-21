@@ -49,9 +49,25 @@ export const getPublicRooms = async (params?: {
     offset?: number;
     search?: string;
     status?: string;
+    tag?: string;
+    tags?: string; // comma-separated for multi-select
 }) => {
     const { data } = await axiosInstance.get('/rooms/public', { params });
     return data;
+};
+
+export const getTagCounts = async (): Promise<{ tag: string; count: number }[]> => {
+    const { data } = await axiosInstance.get('/rooms/tag-counts');
+    return data.data ?? [];
+};
+
+export const uploadCoverImage = async (file: File): Promise<{ key: string; presignedUrl: string }> => {
+    const form = new FormData();
+    form.append('image', file);
+    const { data } = await axiosInstance.post('/rooms/cover-image', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data.data; // { key, presignedUrl }
 };
 
 // ── Session actions ───────────────────────────────────────────────────────

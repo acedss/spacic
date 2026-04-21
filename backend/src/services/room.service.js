@@ -8,6 +8,7 @@ import { User } from "../models/user.model.js";
 import { Song } from "../models/song.model.js";
 import { Transaction } from "../models/transaction.model.js";
 import { RoomFavorite } from "../models/roomFavorite.model.js";
+import { getPutPresignedUrl } from "./s3.services.js";
 import { InviteLog } from "../models/inviteLog.model.js";
 import { SongPlay } from "../models/songPlay.model.js";
 import { ListenEvent } from "../models/listenEvent.model.js";
@@ -16,6 +17,20 @@ import { socketManager } from "../lib/socket-manager.js";
 import { getIo } from "../lib/io.js";
 import { createNotification } from "../controllers/notification.controller.js";
 import { getPresignedUrl } from "./s3.services.js";
+
+// ── Cover image: key → presigned URL ─────────────────────────────────────────
+// S3 bucket is private; coverImageUrl stores the key, not a public URL.
+// Generates a 1-hour presigned GET URL on every read.
+const withCoverUrl = async (roomObj) => {
+    const key = roomObj.coverImageUrl;
+    if (!key || key.startsWith('https://')) return { ...roomObj, coverImageUrl: null, coverImageKey: null };
+    try {
+        const url = await getPresignedUrl(key, 3600);
+        return { ...roomObj, coverImageUrl: url, coverImageKey: key };
+    } catch {
+        return { ...roomObj, coverImageUrl: null, coverImageKey: null };
+    }
+};
 
 // ── Song Transition Analytics ─────────────────────────────────────────────────
 // Called fire-and-forget from socket.js on room:skip and room:song_ended.
@@ -221,7 +236,7 @@ export const updateQueueWhileLive = async (clerkId, roomId, { playlistIds, strea
 // ───── Upsert Room (create or update creator's permanent channel) ─────────
 // One room per creator — creates on first call, updates settings on subsequent calls.
 
-export const upsertRoom = async (clerkId, { title, description, isPublic, voteThresholdPercent, playlistIds, streamGoal }) => {
+export const upsertRoom = async (clerkId, { title, description, isPublic, voteThresholdPercent, playlistIds, streamGoal, tags, coverImageUrl }) => {
     const user = await getUserByClerkId(clerkId);
     const capacity = getCapacityByTier(user.userTier);
 
@@ -238,22 +253,25 @@ export const upsertRoom = async (clerkId, { title, description, isPublic, voteTh
             playlist:             playlistIds ?? [],
             status:               "offline",
             streamGoal:           Math.max(0, Math.floor(streamGoal ?? 0)),
+            tags:                 Array.isArray(tags) ? tags : [],
+            coverImageUrl:        coverImageUrl ?? null,
         });
         return room.toObject();
     }
 
-    // Guard: don't update playlist / capacity while live (would disrupt playback)
     if (existing.status === "live") {
         throw new Error("Cannot update room settings while live. Go offline first.");
     }
 
-    const updates = { capacity }; // always refresh tier-based capacity
+    const updates = { capacity };
     if (title              !== undefined) updates.title              = title;
     if (description        !== undefined) updates.description        = description;
     if (isPublic           !== undefined) updates.isPublic           = isPublic;
     if (voteThresholdPercent !== undefined) updates.voteThresholdPercent = voteThresholdPercent;
     if (playlistIds        !== undefined) updates.playlist           = playlistIds;
     if (streamGoal         !== undefined) updates.streamGoal         = Math.max(0, Math.floor(streamGoal));
+    if (Array.isArray(tags))             updates.tags               = tags;
+    if (coverImageUrl      !== undefined) updates.coverImageUrl      = coverImageUrl;
 
     const updated = await Room.findByIdAndUpdate(existing._id, updates, { new: true });
     return updated.toObject();
@@ -274,23 +292,22 @@ export const getMyRoom = async (clerkId) => {
         : room.playlist.map((s) => s.toObject());
 
     const session = await socketManager.getRoomById(room._id.toString());
-    return {
-        ...room.toObject(),
-        playlist: playlistWithUrls,
-        listenerCount: session?.listenerCount ?? 0,
-    };
+    const base = { ...room.toObject(), playlist: playlistWithUrls, listenerCount: session?.listenerCount ?? 0 };
+    return withCoverUrl(base);
 };
 
 // ───── List Public Live Rooms ─────────────────────────────────────────────
 
-export const getPublicRooms = async ({ sort = "listener_count", limit = 50, offset = 0, search = "", status = "" }) => {
+export const getPublicRooms = async ({ sort = "listener_count", limit = 50, offset = 0, search = "", status = "", tag = "", tags = "" }) => {
     const query = { isPublic: true };
-    // Default: show live rooms first, but allow all-status browse and explicit filtering
     if (status === "live" || status === "offline") query.status = status;
     if (search) query.title = { $regex: search, $options: "i" };
+    // Accept comma-separated tags for multi-select OR legacy single tag param
+    const tagList = (tags || tag).split(',').map(t => t.trim()).filter(Boolean);
+    if (tagList.length === 1) query.tags = tagList[0];
+    else if (tagList.length > 1) query.tags = { $in: tagList };
 
-    // For default sort (listener_count / newest), live rooms come first via DB sort trick
-    const dbSort = sort === "newest" ? { createdAt: -1 } : { status: 1, createdAt: -1 }; // 'live' < 'offline' alphabetically
+    const dbSort = sort === "newest" ? { createdAt: -1 } : { status: 1, createdAt: -1 };
 
     const rooms = await Room.find(query)
         .populate("creatorId", "fullName imageUrl")
@@ -301,14 +318,10 @@ export const getPublicRooms = async ({ sort = "listener_count", limit = 50, offs
 
     const enriched = await Promise.all(rooms.map(async (room) => {
         const session = await socketManager.getRoomById(room._id.toString());
-        return {
-            ...room.toObject(),
-            listenerCount: session?.listenerCount ?? 0,
-        };
+        return withCoverUrl({ ...room.toObject(), listenerCount: session?.listenerCount ?? 0 });
     }));
 
     if (sort === "listener_count" || sort === "listeners") {
-        // Live rooms first, then by listener count desc
         enriched.sort((a, b) => {
             if (a.status === b.status) return b.listenerCount - a.listenerCount;
             return a.status === "live" ? -1 : 1;
@@ -316,7 +329,6 @@ export const getPublicRooms = async ({ sort = "listener_count", limit = 50, offs
     } else if (sort === "donations") {
         enriched.sort((a, b) => b.streamGoalCurrent - a.streamGoalCurrent);
     }
-    // "newest" is already handled by dbSort above
 
     const total = await Room.countDocuments(query);
     return { data: enriched, total, limit, offset };
@@ -333,12 +345,12 @@ export const getRoomById = async (roomId) => {
 
     // Offline rooms are still viewable — show stats, no playback
     if (room.status === "offline") {
-        return {
+        return withCoverUrl({
             ...room.toObject(),
             playlist: room.playlist.map((s) => s.toObject()),
             listenerCount: 0,
             currentPlayback: null,
-        };
+        });
     }
 
     const playlistWithUrls = await Promise.all(
@@ -350,12 +362,12 @@ export const getRoomById = async (roomId) => {
 
     const session = await socketManager.getRoomById(roomId);
     const currentPlayback = session ? await socketManager.getRoomPlaybackState(roomId) : null;
-    return {
+    return withCoverUrl({
         ...room.toObject(),
         playlist: playlistWithUrls,
         listenerCount: session?.listenerCount ?? 0,
         currentPlayback,
-    };
+    });
 };
 
 // ───── Go Live ───────────────────────────────────────────────────────────

@@ -30,3 +30,13 @@ export const deleteS3Object = async (key) => {
     const command = new DeleteObjectCommand({ Bucket: s3Config.bucket, Key: key });
     return s3Config.client.send(command);
 };
+
+export const putObject = async (key, buffer, mimeType) => {
+    const command = new PutObjectCommand({
+        Bucket: s3Config.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: mimeType,
+    });
+    return s3Config.client.send(command);
+};

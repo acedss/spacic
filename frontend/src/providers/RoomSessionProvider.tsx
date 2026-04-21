@@ -20,6 +20,7 @@ interface RoomSessionContextValue {
     sendChat:     (message: string) => void;
     skipSong:     () => void;
     donate:       (amount: number) => void;
+    tipHolding:   (amount: number) => void;
     updateGoal:   (newGoal: number) => void;
     submitAnswer: (minigameId: string, answer: string) => void;
     voteSkip:     () => void;
@@ -37,7 +38,7 @@ export const RoomSessionProvider = ({ children }: { children: React.ReactNode })
     const roomStore   = useRoomStore();
     const playerStore = usePlayerStore();
 
-    const { sendChat, skipSong, leaveRoom: socketLeave, donate, updateGoal, submitAnswer, voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong, pinMessage } =
+    const { sendChat, skipSong, leaveRoom: socketLeave, donate, tipHolding, updateGoal, submitAnswer, voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong, pinMessage } =
         useRoomSocket(activeRoomId ?? '');
 
     const joinRoom = useCallback((roomId: string) => {
@@ -53,7 +54,7 @@ export const RoomSessionProvider = ({ children }: { children: React.ReactNode })
 
     return (
         <RoomSessionContext.Provider value={{
-            activeRoomId, joinRoom, leaveRoom, sendChat, skipSong, donate, updateGoal, submitAnswer,
+            activeRoomId, joinRoom, leaveRoom, sendChat, skipSong, donate, tipHolding, updateGoal, submitAnswer,
             voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong, pinMessage,
         }}>
             {children}

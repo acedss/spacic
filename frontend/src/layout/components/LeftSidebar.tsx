@@ -1,4 +1,4 @@
-import { Home, Search, Users, Target, Wallet, User, Crown, Radio, UserPlus, Heart, Zap, LayoutDashboard } from 'lucide-react'
+import { Home, Search, Users, Target, Wallet, User, Crown, Radio, UserPlus, UserCheck, Zap, LayoutDashboard } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { useEffect, useState } from 'react'
@@ -22,7 +22,7 @@ const navItems = [
     { to: '/search', icon: Search, label: 'Search' },
     { to: '/rooms', icon: Users, label: 'Live Rooms' },
     { to: '/friends', icon: UserPlus, label: 'Friends' },
-    { to: '/favorites', icon: Heart, label: 'Favorites' },
+    { to: '/favorites', icon: UserCheck, label: 'Following' },
     { to: '/goal', icon: Target, label: 'Album Goals' },
     { to: '/studio', icon: Radio, label: 'Creator Studio' },
     { to: '/wallet', icon: Wallet, label: 'Wallet', isWallet: true },
@@ -100,7 +100,7 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
                 </div>
 
                 {/* Nav */}
-                <nav className='flex-1 overflow-y-auto hide-scrollbar px-3 pt-4 space-y-0.5'>
+                <nav className='flex-1 overflow-y-auto hide-scrollbar px-3 pt-4 space-y-0.5 whitespace-nowrap'>
                     {visibleNav.map(({ to, icon: Icon, label, isWallet }) => {
                         const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to))
                         const badge = isWallet && balance > 0 ? balance.toLocaleString() : undefined
@@ -113,7 +113,7 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
                                     'flex items-center gap-3 px-3 py-2 rounded-xl text-left press transition-all',
                                     isActive
                                         ? 'bg-white/8 text-white ring-1 ring-white/10'
-                                        : 'text-[var(--fg-2)] hover:bg-white/4 hover:text-white'
+                                        : 'text-(--fg-2) hover:bg-white/4 hover:text-white'
                                 )}
                             >
                                 <Icon className='size-4 shrink-0' />
@@ -151,7 +151,7 @@ export const LeftSidebar = ({ isCollapsed }: LeftSidebarProps) => {
                 </nav>
 
                 {/* Go Live CTA */}
-                <div className='px-3 pb-3 pt-2 border-t hair shrink-0'>
+                <div className='px-3 pb-3 pt-2 border-t hair shrink-0 whitespace-nowrap'>
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <button

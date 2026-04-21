@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
     Search, Users, SendHorizontal, Inbox,
 } from 'lucide-react'
@@ -8,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { useFriendStore } from '@/stores/useFriendStore'
-import TopBar from '@/components/TopBar'
+import { UserPublicProfileModal } from '@/pages/room/components/UserPublicProfileModal'
 import { SearchCard } from './components/SearchCard'
 import { RequestCard } from './components/RequestCard'
 import { FriendCard } from './components/FriendCard'
@@ -20,6 +21,10 @@ import { EmptyState } from './components/EmptyState'
 const FriendsPage = () => {
     const [query, setQuery] = useState('')
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const [searchParams] = useSearchParams()
+    const [viewingUserId, setViewingUserId] = useState<string | null>(searchParams.get('user'))
+    const [viewingUserName, setViewingUserName] = useState('')
+    const [viewingUserImage, setViewingUserImage] = useState('')
 
     const {
         friends, searchResults, searchLoading,
@@ -43,8 +48,6 @@ const FriendsPage = () => {
 
     return (
         <div className="flex flex-col min-h-full bg-zinc-950 text-white">
-            <TopBar />
-
             <div className="px-6 py-8 max-w-2xl mx-auto w-full">
 
                 {/* Header */}
@@ -237,6 +240,13 @@ const FriendsPage = () => {
                     </TabsContent>
                 </Tabs>
             </div>
+
+            <UserPublicProfileModal
+                userId={viewingUserId}
+                userName={viewingUserName}
+                imageUrl={viewingUserImage}
+                onClose={() => { setViewingUserId(null); setViewingUserName(''); setViewingUserImage(''); }}
+            />
         </div>
     )
 }

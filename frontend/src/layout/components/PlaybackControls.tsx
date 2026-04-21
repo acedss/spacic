@@ -136,7 +136,7 @@ export const PlaybackControls = () => {
                     />
                 ) : (
                     <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex-shrink-0 grid place-items-center"
-                         style={{ background: 'var(--ink-2)' }}>
+                        style={{ background: 'var(--ink-2)' }}>
                         <span className="text-white/30 text-lg">♪</span>
                     </div>
                 )}

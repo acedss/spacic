@@ -62,11 +62,11 @@ const sortByDateAsc = <T extends { date: string }>(arr: T[]) =>
 const StatsStrip = ({ room }: { room: RoomInfo }) => {
     const s = room.stats;
     const items = [
-        { icon: Radio,  label: 'Sessions',  value: s.totalSessions.toLocaleString(),   color: 'text-purple-400' },
-        { icon: Users,  label: 'Listeners', value: s.totalListeners.toLocaleString(),   color: 'text-blue-400' },
-        { icon: Clock,  label: 'Listened',  value: toHours(s.totalMinutesListened),     color: 'text-indigo-400' },
-        { icon: Gem,    label: 'Coins',     value: s.totalCoinsEarned.toLocaleString(), color: 'text-yellow-400' },
-        { icon: Heart,  label: 'Favorites', value: room.favoriteCount.toLocaleString(), color: 'text-pink-400' },
+        { icon: Radio, label: 'Sessions', value: s.totalSessions.toLocaleString(), color: 'text-purple-400' },
+        { icon: Users, label: 'Listeners', value: s.totalListeners.toLocaleString(), color: 'text-blue-400' },
+        { icon: Clock, label: 'Listened', value: toHours(s.totalMinutesListened), color: 'text-indigo-400' },
+        { icon: Gem, label: 'Coins', value: s.totalCoinsEarned.toLocaleString(), color: 'text-yellow-400' },
+        { icon: Heart, label: 'Favorites', value: room.favoriteCount.toLocaleString(), color: 'text-pink-400' },
     ];
     return (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
@@ -101,8 +101,8 @@ const SongSelector = ({
     const [query, setQuery] = useState('');
     const filtered = songs.filter(s =>
         query.trim() === '' ? true :
-        s.title.toLowerCase().includes(query.toLowerCase()) ||
-        s.artist.toLowerCase().includes(query.toLowerCase())
+            s.title.toLowerCase().includes(query.toLowerCase()) ||
+            s.artist.toLowerCase().includes(query.toLowerCase())
     );
     const toggle = (id: string) =>
         onChange(selectedIds.includes(id) ? selectedIds.filter(s => s !== id) : [...selectedIds, id]);
@@ -413,7 +413,7 @@ const CreatorDashboardPage = () => {
         );
     }
 
-    const isLive  = room?.status === 'live';
+    const isLive = room?.status === 'live';
     const hasRoom = !!room;
     const sessionTrend = sortByDateAsc(analytics?.sessionTrend ?? []);
     const donationTrend = sortByDateAsc(analytics?.donationTrend ?? []);
@@ -735,7 +735,7 @@ const CreatorDashboardPage = () => {
                                 <p className="text-sm text-zinc-300">Public channel</p>
                                 <p className="text-xs text-zinc-600">Visible on discovery when live</p>
                             </div>
-                            <Switch
+                            <Switch className="bg-green-500"
                                 checked={isPublic}
                                 onCheckedChange={setIsPublic}
                                 disabled={isLive}

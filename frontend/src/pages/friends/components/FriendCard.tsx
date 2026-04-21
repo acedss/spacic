@@ -2,6 +2,7 @@ import { Clock, UserX } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useFriendStore } from '@/stores/useFriendStore'
+import { UserHoverCard } from '@/components/UserHoverCard'
 import type { Friend } from '@/types/types'
 import { usePending } from './usePending'
 
@@ -18,16 +19,22 @@ export const FriendCard = ({ friend }: { friend: Friend }) => {
 
     return (
         <div className="group flex items-center gap-4 p-4 rounded-2xl border bg-white/[0.02] border-white/5 hover:border-white/10 transition-all">
-            <Avatar className="w-12 h-12 ring-2 ring-white/5 shrink-0">
-                <AvatarImage src={friend.imageUrl} alt={friend.fullName} />
-                <AvatarFallback className="bg-zinc-800 text-sm font-bold">
-                    {friend.fullName.slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate">{friend.fullName}</p>
-                <p className="text-xs text-zinc-500 mt-0.5">Friend</p>
-            </div>
+            <UserHoverCard userId={friend.userId} userName={friend.fullName} imageUrl={friend.imageUrl} side="right">
+                <button className="press shrink-0">
+                    <Avatar className="w-12 h-12 ring-2 ring-white/5">
+                        <AvatarImage src={friend.imageUrl} alt={friend.fullName} />
+                        <AvatarFallback className="bg-zinc-800 text-sm font-bold">
+                            {friend.fullName.slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                    </Avatar>
+                </button>
+            </UserHoverCard>
+            <UserHoverCard userId={friend.userId} userName={friend.fullName} imageUrl={friend.imageUrl} side="right">
+                <div className="flex-1 min-w-0 cursor-pointer">
+                    <p className="text-sm font-semibold truncate hover:underline">{friend.fullName}</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">Friend</p>
+                </div>
+            </UserHoverCard>
             <Button
                 size="sm"
                 variant="ghost"

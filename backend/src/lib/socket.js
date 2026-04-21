@@ -676,6 +676,26 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
+        // ── Tip Hold — broadcasts live coin rain to others while user holds the tip button ──
+        // No wallet changes here; room:donate fires on release for the actual deduction.
+        socket.on('room:tip_holding', async ({ roomId, amount }) => {
+            try {
+                if (!Number.isInteger(amount) || amount <= 0) return;
+                const userSession = await socketManager.getUserBySocketId(socket.id);
+                if (!userSession) return;
+                // Broadcast to the whole room including sender so the holder
+                // also sees their own avatar appearing on screen
+                io.to(roomId).emit('room:tip_rain', {
+                    userId:   userSession.userId,
+                    userName: userSession.userName,
+                    imageUrl: userSession.userImage ?? '',
+                    amount,
+                });
+            } catch (error) {
+                console.error('[room:tip_holding]', error.message);
+            }
+        });
+
         // ── Emoji Burst (ephemeral, rate-limited) ────────────────────────────
         socket.on('room:emoji', async ({ roomId, emoji }) => {
             try {

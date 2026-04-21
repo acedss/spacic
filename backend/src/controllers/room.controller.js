@@ -4,6 +4,7 @@ import * as roomService from "../services/room.service.js";
 import { Room } from '../models/room.model.js';
 import { User } from '../models/user.model.js';
 import { getIo } from '../lib/io.js';
+import { putObject, getPresignedUrl } from '../services/s3.services.js';
 
 const getClerkId = (req) => req.devBypass ? req.devClerkId : req.auth().userId;
 
@@ -53,12 +54,14 @@ export const goOffline = async (req, res, next) => {
 
 export const getPublicRooms = async (req, res, next) => {
     try {
-        const { sort, limit, offset, search } = req.query;
+        const { sort, limit, offset, search, tag, tags } = req.query;
         const result = await roomService.getPublicRooms({
             sort,
             limit: parseInt(limit) || 50,
             offset: parseInt(offset) || 0,
             search,
+            tag,
+            tags,
         });
         res.json({ success: true, ...result });
     } catch (error) {
@@ -238,5 +241,45 @@ export const trackReferral = async (req, res, next) => {
         res.status(204).send();
     } catch (error) {
         next(error);
+    }
+};
+
+// ── Cover image upload — multipart file → S3 → public URL ─────────────────
+// Multer attaches req.file (buffer). Backend streams to S3, returns public URL.
+// No browser-to-S3 request → no CORS issue.
+export const uploadCoverImage = async (req, res, next) => {
+    try {
+        const clerkId = getClerkId(req);
+        const user = await User.findOne({ clerkId: clerkId }).select('_id');
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        if (!req.file) return res.status(400).json({ message: 'No file provided' });
+
+        const { mimetype, buffer } = req.file;
+        if (!mimetype.startsWith('image/')) return res.status(400).json({ message: 'File must be an image' });
+
+        const ext = mimetype.split('/')[1]?.split(';')[0] ?? 'jpg';
+        const key = `images/${user._id}/${crypto.randomUUID()}.${ext}`;
+        await putObject(key, buffer, mimetype);
+        const presignedUrl = await getPresignedUrl(key, 3600);
+
+        res.status(200).json({ success: true, data: { key, presignedUrl } });
+    } catch (err) {
+        next(err);
+    }
+};
+
+// ── Tag counts for discovery grid ──────────────────────────────────────────
+// Returns [{ tag, count }] for all public rooms
+export const getTagCounts = async (req, res, next) => {
+    try {
+        const counts = await Room.aggregate([
+            { $match: { isPublic: true, tags: { $exists: true, $ne: [] } } },
+            { $unwind: '$tags' },
+            { $group: { _id: '$tags', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+        ]);
+        res.json({ success: true, data: counts.map(c => ({ tag: c._id, count: c.count })) });
+    } catch (err) {
+        next(err);
     }
 };

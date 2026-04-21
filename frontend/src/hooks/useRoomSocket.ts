@@ -84,6 +84,10 @@ export const useRoomSocket = (roomId: string) => {
         emit('room:emoji', { roomId, emoji });
     }, [roomId, emit]);
 
+    const tipHolding = useCallback((amount: number) => {
+        emit('room:tip_holding', { roomId, amount });
+    }, [roomId, emit]);
+
     const nominateSong = useCallback((songId: string) => {
         emit('room:nominate_song', { roomId, songId });
     }, [roomId, emit]);
@@ -493,6 +497,32 @@ export const useRoomSocket = (roomId: string) => {
             roomStore.addEmojiBurst({ id: `${Date.now()}-${uid}`, userId: uid, userName, emoji });
         });
 
+        // Tip rain — show holder's avatar on everyone's screen (including their own)
+        // Gate: only appear once the holder has crossed 100 coins (~3 seconds held)
+        const tipRainTimers = new Map<string, ReturnType<typeof setTimeout>>();
+        const tipRainPositions = new Map<string, { x: number; y: number }>();
+        socket.on('room:tip_rain', ({ userId: uid, userName, imageUrl, amount }: { userId: string; userName: string; imageUrl: string; amount: number }) => {
+            if (amount < 100) return; // gate: must hold ~3 seconds before appearing
+
+            // Lock position on first appearance so the avatar doesn't drift around
+            if (!tipRainPositions.has(uid)) {
+                tipRainPositions.set(uid, {
+                    x: 8 + Math.random() * 75,
+                    y: 10 + Math.random() * 65,
+                });
+            }
+            const pos = tipRainPositions.get(uid)!;
+            roomStore.upsertTipRain({ userId: uid, userName, imageUrl, amount, x: pos.x, y: pos.y });
+
+            // Debounced removal — clears 700ms after last tick (ticks every 300ms)
+            clearTimeout(tipRainTimers.get(uid));
+            tipRainTimers.set(uid, setTimeout(() => {
+                roomStore.removeTipRain(uid);
+                tipRainTimers.delete(uid);
+                tipRainPositions.delete(uid);
+            }, 700));
+        });
+
         socket.on('room:nominations_update', ({ nominations }: { nominations: Nomination[] }) => {
             roomStore.setNominations(nominations);
         });
@@ -580,5 +610,5 @@ export const useRoomSocket = (roomId: string) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomId, userId]);
 
-    return { sendChat, skipSong, leaveRoom, donate, updateGoal, submitAnswer, voteSkip, reactToSong, sendEmoji, nominateSong, voteForSong, pinMessage };
+    return { sendChat, skipSong, leaveRoom, donate, updateGoal, submitAnswer, voteSkip, reactToSong, sendEmoji, tipHolding, nominateSong, voteForSong, pinMessage };
 };

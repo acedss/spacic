@@ -1,11 +1,15 @@
 import { Router } from "express";
+import multer from "multer";
 import { protectRoute } from "../middlewares/auth.middleware.js";
 import * as roomController from "../controllers/room.controller.js";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const router = Router();
 
 // Discovery (public, no auth required)
-router.get("/public", roomController.getPublicRooms);
+router.get("/public",    roomController.getPublicRooms);
+router.get("/tag-counts", roomController.getTagCounts);
 
 // Static paths — must be before /:roomId so they aren't swallowed as params
 router.get("/me/room",          protectRoute, roomController.getMyRoom);
@@ -18,6 +22,7 @@ router.get("/:roomId", roomController.getRoomById);
 
 // Creator channel management
 router.post("/",                        protectRoute, roomController.upsertRoom);
+router.post("/cover-image",             protectRoute, upload.single('image'), roomController.uploadCoverImage);
 router.post("/:roomId/go-live",         protectRoute, roomController.goLive);
 router.post("/:roomId/go-offline",      protectRoute, roomController.goOffline);
 router.patch("/me/feature-flags",       protectRoute, roomController.updateFeatureFlags);

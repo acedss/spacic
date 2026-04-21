@@ -64,6 +64,10 @@ const roomSchema = new mongoose.Schema({
         broadcasts: { type: Boolean, default: true },  // creator can play broadcast assets
     },
 
+    // Creator-set metadata for discovery
+    tags:          { type: [String], default: [] },
+    coverImageUrl: { type: String,   default: null }, // permanent public S3 URL
+
     // All-time engagement counter (never resets)
     favoriteCount: { type: Number, default: 0 },
 
