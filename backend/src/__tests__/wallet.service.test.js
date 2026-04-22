@@ -73,12 +73,13 @@ vi.mock('../models/platformConfig.model.js', () => ({ getConfig: vi.fn(async () 
 vi.mock('mongoose', async () => {
     const { ObjectId } = await import('bson');
     return {
-        default:      {},
-        startSession: vi.fn(async () => ({
-            withTransaction: async (fn) => fn(),
-            endSession:      vi.fn(),
-        })),
-        Types: { ObjectId },
+        default: {
+            startSession: vi.fn(async () => ({
+                withTransaction: async (fn) => fn(),
+                endSession:      vi.fn(),
+            })),
+            Types: { ObjectId },
+        },
     };
 });
 

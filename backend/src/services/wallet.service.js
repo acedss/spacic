@@ -290,7 +290,7 @@ export const getWallet = async (clerkId, cursor = null) => {
 // Credits go into room.escrow until the stream goal is reached, then released to creator.
 
 export const donateToRoom = async (clerkId, roomId, amount, idempotencyKey) => {
-    if (!Number.isInteger(amount) || amount < 10) throw new Error("Minimum donation is 10 credits");
+    if (!Number.isInteger(amount) || amount < 100) throw new Error("Minimum donation is 100 credits");
     if (!idempotencyKey) throw new Error("idempotencyKey is required");
 
     // ── Idempotency check (before opening session) ────────────────────────────

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Play, Pause, Heart, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
@@ -30,14 +30,20 @@ export const PlaybackControls = () => {
 
     const [volume, setVolume] = useState(80);
     const [isFavorited, setIsFavorited] = useState(false);
-    const isSeeking = useRef(false);
+    const [audioDuration, setAudioDuration] = useState(0);
     const [seekPreview, setSeekPreview] = useState<number | null>(null);
 
     const isBackgrounded = !!activeRoomId && location.pathname !== `/rooms/${activeRoomId}`;
 
-    // Sync volume to audio element
+    // Sync volume to audio element and track duration
     useEffect(() => {
-        if (audioRef.current) audioRef.current.volume = volume / 100;
+        if (!audioRef.current) return;
+        audioRef.current.volume = volume / 100;
+        const audio = audioRef.current;
+        const updateDuration = () => setAudioDuration(audio.duration);
+        audio.addEventListener('loadedmetadata', updateDuration);
+        if (audio.duration) updateDuration();
+        return () => audio.removeEventListener('loadedmetadata', updateDuration);
     }, [audioRef, volume]);
 
     // Load favorite status when room changes
@@ -59,7 +65,6 @@ export const PlaybackControls = () => {
     }
 
     const currentSong = room.playlist[currentSongIndex];
-    const audioDuration = audioRef.current?.duration;
     const duration = (audioDuration && isFinite(audioDuration)) ? audioDuration : (currentSong?.duration ?? 0);
     const progress = duration > 0 ? (currentTimeMs / 1000 / duration) * 100 : 0;
 
@@ -99,13 +104,11 @@ export const PlaybackControls = () => {
     // Seek via Slider — value is 0–100
     const handleSeekChange = (vals: number[]) => {
         if (!canSeek || !audioRef.current || duration === 0) return;
-        isSeeking.current = true;
         const ratio = vals[0] / 100;
         setSeekPreview(ratio * duration);
         audioRef.current.currentTime = ratio * duration;
     };
     const handleSeekCommit = () => {
-        isSeeking.current = false;
         setSeekPreview(null);
     };
 
@@ -218,7 +221,7 @@ export const PlaybackControls = () => {
                         <div
                             className="h-full rounded-full"
                             style={{
-                                width: `${Math.min(isSeeking.current ? (seekPreview! / duration * 100) : progress, 100)}%`,
+                                width: `${Math.min(seekPreview !== null ? (seekPreview / duration * 100) : progress, 100)}%`,
                                 background: 'linear-gradient(90deg, oklch(0.88 0.12 75), oklch(0.7 0.2 295))',
                             }}
                         />
@@ -226,7 +229,7 @@ export const PlaybackControls = () => {
                     {canSeek && (
                         <Slider
                             min={0} max={100} step={0.01}
-                            value={[isSeeking.current ? (seekPreview! / duration * 100) : Math.min(progress, 100)]}
+                            value={[seekPreview !== null ? (seekPreview / duration * 100) : Math.min(progress, 100)]}
                             onValueChange={handleSeekChange}
                             onValueCommit={handleSeekCommit}
                             className="absolute inset-0 opacity-0 cursor-pointer"

@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@clerk/clerk-react';
 import { UserPlus, Check, Clock, ExternalLink, Music2, Trophy, Gem } from 'lucide-react';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -26,7 +25,6 @@ interface Props {
 
 export const UserHoverCard = ({ userId, userName, imageUrl, children, side = 'right', openDelay = 400 }: Props) => {
     const navigate = useNavigate();
-    const { userId: clerkUserId } = useAuth();
     const { friends, sentRequests, sendRequest } = useFriendStore();
     const [profile, setProfile] = useState<PublicProfile | null>(null);
     const [loading, setLoading] = useState(false);

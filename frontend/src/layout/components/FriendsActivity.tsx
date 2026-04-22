@@ -42,13 +42,13 @@ const timeAgo = (date: string) => {
 const InviteCard = ({ invite }: { invite: FriendInvite }) => {
     const { dismissInvite } = useFriendStore()
     const navigate = useNavigate()
-    const ttlMs = Math.max(0, Date.parse(invite.expiresAt) - Date.now())
 
     useEffect(() => {
+        const ttlMs = Math.max(0, Date.parse(invite.expiresAt) - Date.now())
         if (ttlMs <= 0) { dismissInvite(invite.inviteId); return; }
         const t = setTimeout(() => dismissInvite(invite.inviteId), ttlMs)
         return () => clearTimeout(t)
-    }, [invite.inviteId, ttlMs, dismissInvite])
+    }, [invite.inviteId, invite.expiresAt, dismissInvite])
 
     return (
         <div className="rounded-xl p-3 space-y-2.5 ring-1 ring-[oklch(0.68_0.21_295_/_0.3)] bg-[oklch(0.68_0.21_295_/_0.06)]">
