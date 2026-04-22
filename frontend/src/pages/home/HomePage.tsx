@@ -34,6 +34,7 @@ interface RoomData {
     listenerCount: number
     streamGoal: number
     streamGoalCurrent: number
+    coverImageUrl?: string
     playlist: { _id: string; title: string; artist: string; imageUrl: string }[]
     creatorId: { fullName: string; imageUrl: string }
 }

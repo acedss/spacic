@@ -142,7 +142,6 @@ const MoodCard = ({ tag, count, active, onClick }: { tag: string; count: number;
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const RoomsPage = () => {
-    const navigate = useNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
     const initTags = searchParams.get('tags')?.split(',').filter(Boolean) ?? []
 

@@ -12,12 +12,6 @@ interface Props {
     onClose: () => void;
 }
 
-const TIER_COLORS: Record<string, string> = {
-    CREATOR: 'text-[oklch(0.88_0.12_75)]',
-    PREMIUM:  'text-[oklch(0.72_0.18_295)]',
-    FREE:     'text-white/40',
-};
-
 function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string | number }) {
     return (
         <div className="flex flex-col gap-1 p-3 rounded-xl bg-white/5 ring-1 ring-white/8">
