@@ -45,7 +45,7 @@ export const RoomPage = () => {
         const type = searchParams.get('type') ?? 'link';
         if (!ref || !roomId) return;
         axiosInstance.post(`/rooms/${roomId}/referral`, { ref, type }).catch(() => { });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [roomId]);
 
     useEffect(() => {
@@ -71,7 +71,7 @@ export const RoomPage = () => {
             })
             .catch((err) => roomStore.setError(err.message))
             .finally(() => roomStore.setLoading(false));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [roomId, isSignedIn]);
 
     useEffect(() => {

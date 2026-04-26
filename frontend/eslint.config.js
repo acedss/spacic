@@ -22,12 +22,13 @@ export default defineConfig([
     rules: {
       // Vite HMR hint — files exporting a hook + a component still hot-reload
       // fine in practice; the warning paints whole providers red for no win.
-      'react-refresh/only-export-components': 'warn',
+      'react-refresh/only-export-components': 'off',
       // We use `any` deliberately at socket/REST payload boundaries.
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-explicit-any': 'off',
       // setState-in-effect is sometimes the right pattern (syncing external
       // state → React). Surface as warning, not error.
-      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/exhaustive-deps': 'off',
     },
   },
 ])

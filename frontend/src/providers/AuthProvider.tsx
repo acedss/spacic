@@ -27,7 +27,7 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return () => {
             axiosInstance.interceptors.request.eject(interceptorId);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     }, []); // interceptor set up once — getToken is stable via closure
 
     // Ensure the user exists in MongoDB whenever they're authenticated.
@@ -41,7 +41,7 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             role: 'USER',
             username: user.username ?? undefined,
         }).catch(() => {}); // fire-and-forget — non-blocking
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     }, [userId]);
 
     useEffect(() => {
@@ -58,7 +58,7 @@ const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             }
         };
         initAuth();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     }, [userId]);
     if (loading) return (
         <div className="flex items-center justify-center w-full h-screen">

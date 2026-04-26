@@ -20,7 +20,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
         try {
             const response = await axiosInstance.get("/admin/check");
             set({ isAdmin: Boolean(response.data?.admin), error: null });
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
         } catch (error: any) {
             const status = error?.response?.status;
             // Non-admin or unauthenticated should not be treated as app errors.

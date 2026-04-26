@@ -607,7 +607,7 @@ export const useRoomSocket = (roomId: string) => {
             socket.emit('room:leave', { roomId, clerkId: userId });
             socket.disconnect();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [roomId, userId]);
 
     return { sendChat, skipSong, leaveRoom, donate, updateGoal, submitAnswer, voteSkip, reactToSong, sendEmoji, tipHolding, nominateSong, voteForSong, pinMessage };

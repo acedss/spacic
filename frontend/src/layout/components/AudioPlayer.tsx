@@ -55,7 +55,7 @@ const AudioPlayer = () => {
         // so the new track never starts after song-end advance.
         const { isPlaying: playing, listenerLocalPaused: paused } = usePlayerStore.getState();
         wantPlayRef.current = playing && !paused;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [currentSong?._id, currentSong?.audioUrl]);
 
     // Play / pause driven by store (but respect listener's local pause state)

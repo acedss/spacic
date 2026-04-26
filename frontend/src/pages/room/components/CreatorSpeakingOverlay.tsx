@@ -60,7 +60,7 @@ export const CreatorSpeakingOverlay = ({ creatorName = 'Creator' }: Props) => {
                 setPlaying(false)
             }
         })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     }, [creatorAudio.state])
 
     // ── Broadcast asset: play presigned URL directly ──────────────────────────
@@ -85,7 +85,7 @@ export const CreatorSpeakingOverlay = ({ creatorName = 'Creator' }: Props) => {
             audio.pause()
             audio.src = ''
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     }, [broadcastAsset])
 
     const micVisible   = creatorAudio.state === 'receiving' || playing
