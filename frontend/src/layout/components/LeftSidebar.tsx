@@ -1,4 +1,4 @@
-import { Home, Search, Users, Target, Wallet, User, Crown, Radio, UserPlus, UserCheck, Zap, LayoutDashboard } from 'lucide-react'
+import { Home, Search, Sparkles, Users, Target, Wallet, User, Crown, Radio, UserPlus, UserCheck, Zap, LayoutDashboard } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useUser } from '@clerk/clerk-react'
 import { useEffect, useState } from 'react'
@@ -20,6 +20,7 @@ type RoomState = 'none' | 'offline' | 'live'
 const navItems = [
     { to: '/', icon: Home, label: 'Home' },
     { to: '/search', icon: Search, label: 'Search' },
+    { to: '/discover', icon: Sparkles, label: 'Discover' },
     { to: '/rooms', icon: Users, label: 'Live Rooms' },
     { to: '/friends', icon: UserPlus, label: 'Friends' },
     { to: '/favorites', icon: UserCheck, label: 'Following' },

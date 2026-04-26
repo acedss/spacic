@@ -10,6 +10,8 @@ import { Room } from '../models/room.model.js';
 import { Song } from '../models/song.model.js';
 import { Friendship } from '../models/friendship.model.js';
 import { getPresignedUrl } from '../services/s3.services.js';
+import { socketRateLimit } from './socketRateLimit.js';
+import { once } from './idempotency.js';
 import { donateToRoom } from '../services/wallet.service.js';
 import { goOfflineInternal, recordSongTransition } from '../services/room.service.js';
 import { findAndActivateScheduledGame, recordAnswer, completeGame, settleGamePrize } from '../services/minigame.service.js';
@@ -26,6 +28,22 @@ const disconnectTimers = new Map();
 const notifyTimers     = new Map();
 // Debounce: multiple clients fire song_ended simultaneously; only first within 3s wins.
 const songEndedDebounce = new Map();
+
+// ── Feature-flags cache ───────────────────────────────────────────────────────
+// 30-second in-process cache keyed by roomId. Avoids per-event DB queries while
+// allowing creator flag changes to propagate within half a minute.
+// room:audio_chunk fires at audio streaming rate — caching is critical there.
+// Cleared on goOffline; invalidated immediately by updateFeatureFlags REST handler.
+const featureFlagsCache = new Map(); // roomId → { flags, expiresAt }
+
+const getFeatureFlags = async (roomId) => {
+    const cached = featureFlagsCache.get(roomId);
+    if (cached && cached.expiresAt > Date.now()) return cached.flags;
+    const doc = await Room.findById(roomId).select('featureFlags').lean();
+    const flags = doc?.featureFlags ?? {};
+    featureFlagsCache.set(roomId, { flags, expiresAt: Date.now() + 30_000 });
+    return flags;
+};
 // Active game timers — keyed by roomId. Cleared when game ends or room goes offline.
 const gameTimers = new Map();
 // Track whether a game timer is blocking a pending song advance.
@@ -108,6 +126,7 @@ const goOfflineAndNotify = async (io, roomId, reason) => {
     stopSyncCheckpoint(roomId);
     stopSessionTimer(roomId);
     disconnectTimers.delete(roomId);
+    featureFlagsCache.delete(roomId);
     songEndedDebounce.delete(roomId);
     pendingAdvance.delete(roomId);
     const gameTimer = gameTimers.get(roomId);
@@ -504,6 +523,10 @@ export const initializeSocket = (httpServer) => {
                 if (!trimmed || trimmed.length > 500) return;
                 const userSession = await socketManager.getUserBySocketId(socket.id);
                 if (!userSession) return;
+                const allowed = await socketRateLimit(userSession.userId, 'chat', { limit: 10, windowSec: 10, roomId });
+                if (!allowed) return socket.emit('room:error', { message: 'Sending messages too fast — slow down' });
+                const flags = await getFeatureFlags(roomId);
+                if (flags.chat === false) return socket.emit('room:error', { message: 'Chat is disabled in this room' });
                 io.to(roomId).emit('room:chat_message', {
                     id: `${Date.now()}-${socket.id}`,
                     user: { id: userSession.userId, username: userSession.userName, imageUrl: userSession.userImage },
@@ -520,6 +543,10 @@ export const initializeSocket = (httpServer) => {
                 const userSession = await socketManager.getUserBySocketId(socket.id);
                 if (!userSession) return socket.emit('room:error', { message: 'Session expired. Please refresh.' });
                 if (!idempotencyKey) return socket.emit('room:error', { message: 'Missing idempotencyKey' });
+                const allowedDonate = await socketRateLimit(userSession.userId, 'donate', { limit: 5, windowSec: 60, roomId });
+                if (!allowedDonate) return socket.emit('room:error', { message: 'Too many donations — try again shortly' });
+                const flags = await getFeatureFlags(roomId);
+                if (flags.donations === false) return socket.emit('room:error', { message: 'Donations are disabled in this room' });
 
                 const result = await donateToRoom(userSession.clerkId, roomId, amount, idempotencyKey);
 
@@ -609,6 +636,8 @@ export const initializeSocket = (httpServer) => {
                 if (roomSession.creatorId === userSession.userId) {
                     return socket.emit('room:error', { message: 'Creator should use skip, not vote' });
                 }
+                const flags = await getFeatureFlags(roomId);
+                if (flags.voting === false) return socket.emit('room:error', { message: 'Vote-skip is disabled in this room' });
 
                 const alreadyVoted = await socketManager.hasVotedToSkip(roomId, userSession.userId);
                 if (alreadyVoted) return socket.emit('room:error', { message: 'Already voted to skip' });
@@ -719,6 +748,10 @@ export const initializeSocket = (httpServer) => {
             try {
                 const userSession = await socketManager.getUserBySocketId(socket.id);
                 if (!userSession) return;
+                const allowedNom = await socketRateLimit(userSession.userId, 'nominate', { limit: 3, windowSec: 30, roomId });
+                if (!allowedNom) return socket.emit('room:error', { message: 'Nominating too quickly — wait a moment' });
+                const flags = await getFeatureFlags(roomId);
+                if (flags.voteQueue === false) return socket.emit('room:error', { message: 'Queue voting is disabled in this room' });
 
                 const song = await Song.findById(songId).select('title artist').lean();
                 if (!song) return socket.emit('room:error', { message: 'Song not found' });
@@ -736,10 +769,16 @@ export const initializeSocket = (httpServer) => {
             }
         });
 
-        socket.on('room:vote_queue', async ({ roomId, songId }) => {
+        socket.on('room:vote_queue', async ({ roomId, songId, clientEventId }) => {
             try {
                 const userSession = await socketManager.getUserBySocketId(socket.id);
                 if (!userSession) return;
+                // Dedup duplicate clicks within 60s. clientEventId is optional;
+                // if absent, fall back to a coarse user+song bucket.
+                const dedupKey = clientEventId || `${userSession.userId}:${roomId}:${songId}`;
+                if (!(await once('vote_queue', dedupKey, 60))) return;
+                const flags = await getFeatureFlags(roomId);
+                if (flags.voteQueue === false) return socket.emit('room:error', { message: 'Queue voting is disabled in this room' });
 
                 const newScore = await socketManager.voteForSong(roomId, songId, userSession.userId);
                 if (newScore === null) return socket.emit('room:error', { message: 'Already voted for this song' });
@@ -751,7 +790,16 @@ export const initializeSocket = (httpServer) => {
                 const needed = Math.max(1, Math.ceil(listenerCount * threshold / 100));
 
                 if (newScore >= needed) {
-                    await Room.findByIdAndUpdate(roomId, { $addToSet: { playlist: songId } });
+                    // Idempotency: only broadcast if THIS call actually transitioned
+                    // the song from "not in playlist" → "in playlist". Concurrent
+                    // votes that arrive after the threshold was already met will
+                    // get modifiedCount=0 and silently skip the duplicate broadcast.
+                    const addRes = await Room.updateOne(
+                        { _id: roomId, playlist: { $ne: songId } },
+                        { $addToSet: { playlist: songId } }
+                    );
+                    if (addRes.modifiedCount === 0) return; // already added by a peer vote
+
                     const playlist = await socketManager.getCachedPlaylist(roomId);
                     const song = await Song.findById(songId).lean();
                     if (playlist && song) {
@@ -909,6 +957,8 @@ export const initializeSocket = (httpServer) => {
                 const roomSession = await socketManager.getRoomById(roomId);
                 if (!canControlRoom(userSession, roomSession))
                     return socket.emit('room:error', { message: 'Only the creator can trigger games' });
+                const flags = await getFeatureFlags(roomId);
+                if (flags.minigames === false) return socket.emit('room:error', { message: 'Minigames are disabled in this room' });
                 if (gameTimers.has(roomId))
                     return socket.emit('room:error', { message: 'A game is already running' });
 
@@ -959,6 +1009,8 @@ export const initializeSocket = (httpServer) => {
                 const userSession = await socketManager.getUserBySocketId(socket.id);
                 if (!userSession) return;
                 if (typeof answer !== 'string' || answer.length > 200) return;
+                const flags = await getFeatureFlags(roomId);
+                if (flags.minigames === false) return;
 
                 const result = await recordAnswer(minigameId, userSession.userId, userSession.fullName ?? userSession.userName, answer.trim());
                 if (!result) return;
@@ -975,8 +1027,8 @@ export const initializeSocket = (httpServer) => {
                     if (timer) { clearTimeout(timer); gameTimers.delete(roomId); }
 
                     const completed = await completeGame(minigameId);
-                    await settleGamePrize(completed).catch(err => console.error('[settleGamePrize]', err.message));
-                    // Use in-memory winner from recordAnswer — more reliable than
+                    await settleGamePrize().catch(err => console.error('[settleGamePrize]', err.message));
+                    // Use in-memory winner from recordAnswer — more reliable thancompleted
                     // re-fetching completed doc which may lag behind the save.
                     const winnerData = result.game.winner;
                     io.to(roomId).emit('room:game_result', {
@@ -1019,6 +1071,8 @@ export const initializeSocket = (httpServer) => {
                 if (!userSession) return;
                 const roomSession = await socketManager.getRoomById(roomId);
                 if (!roomSession || roomSession.creatorId !== userSession.userId) return;
+                const flags = await getFeatureFlags(roomId);
+                if (flags.liveMic === false) return socket.emit('room:error', { message: 'Live mic is disabled in this room' });
 
                 // Set a server-side 10s hard limit — auto-ends speaking if creator forgets
                 const existingTimer = creatorSpeakTimers.get(roomId);
@@ -1044,6 +1098,8 @@ export const initializeSocket = (httpServer) => {
                 const roomSession = await socketManager.getRoomById(roomId);
                 if (!roomSession || roomSession.creatorId !== userSession.userId) return;
                 if (typeof chunk !== 'string' || chunk.length > 65536) return; // ~48KB per chunk max
+                const flags = await getFeatureFlags(roomId);
+                if (flags.liveMic === false) return;
 
                 // Relay chunk to all other sockets in the room (listeners only)
                 socket.to(roomId).emit('room:audio_chunk', { roomId, chunk });
@@ -1063,6 +1119,8 @@ export const initializeSocket = (httpServer) => {
 
                 const roomSession = await socketManager.getRoomById(roomId);
                 if (!roomSession || roomSession.creatorId !== userSession.userId) return;
+                const flags = await getFeatureFlags(roomId);
+                if (flags.broadcasts === false) return;
 
                 // Import lazily to avoid circular dep at module init time
                 const { BroadcastAsset } = await import('../models/broadcastAsset.model.js');
@@ -1179,5 +1237,7 @@ export const initializeSocket = (httpServer) => {
 
     return io;
 };
+
+export const invalidateFeatureFlagsCache = (roomId) => featureFlagsCache.delete(roomId);
 
 export default initializeSocket;

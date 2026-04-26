@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { protectRoute } from '../middlewares/auth.middleware.js';
+import { validate } from '../middlewares/validate.js';
+import { searchUsersSchema, sendInviteSchema } from '../lib/schemas.js';
 import * as friend from '../controllers/friend.controller.js';
 
 const router = Router();
@@ -7,7 +9,7 @@ const router = Router();
 router.use(protectRoute);
 
 // SPC-57: Discovery & Search
-router.get('/search',              friend.searchUsers);
+router.get('/search',              validate(searchUsersSchema), friend.searchUsers);
 
 // SPC-18: Activity feed
 router.get('/activity',            friend.getFriendsActivity);
@@ -22,6 +24,6 @@ router.post('/decline/:friendshipId', friend.declineRequest);
 router.delete('/:friendshipId',    friend.unfriend);
 
 // SPC-56: Direct invite
-router.post('/invite',             friend.sendInvite);
+router.post('/invite',             validate(sendInviteSchema), friend.sendInvite);
 
 export default router;

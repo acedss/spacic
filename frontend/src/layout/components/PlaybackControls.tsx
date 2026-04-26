@@ -11,6 +11,7 @@ import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 import { toggleFavorite, getFavoriteStatus } from '@/lib/roomService';
 import { toast } from 'sonner';
+import { AudioVisualizer } from '@/components/AudioVisualizer';
 
 const formatTime = (seconds: number): string => {
     const m = Math.floor(seconds / 60);
@@ -92,11 +93,15 @@ export const PlaybackControls = () => {
 
     const handleFavorite = async () => {
         if (!userId) return;
+        const prev = isFavorited;
+        const next = !prev;
+        setIsFavorited(next);
         try {
             const { favorited } = await toggleFavorite(room._id);
             setIsFavorited(favorited);
             toast.success(favorited ? 'Added to favorites' : 'Removed from favorites');
         } catch {
+            setIsFavorited(prev);
             toast.error('Could not update favorites');
         }
     };
@@ -114,7 +119,7 @@ export const PlaybackControls = () => {
 
     const displayTime = seekPreview !== null ? seekPreview : currentTimeMs / 1000;
 
-    const SyncBadge = () => isSynced ? (
+    const syncBadge = isSynced ? (
         <span className="flex items-center gap-1 text-[10px] text-emerald-400 flex-shrink-0">
             <Wifi className="size-3" /><span className="hidden sm:inline">Synced</span>
         </span>
@@ -125,7 +130,11 @@ export const PlaybackControls = () => {
     );
 
     return (
-        <div className="flex flex-col justify-center h-full px-5 md:px-8 gap-2">
+        <div className="relative flex flex-col justify-center h-full px-5 md:px-8 gap-2">
+            {/* Ambient frequency-bars behind the controls — pointer-events-none so it never blocks clicks */}
+            <div className="absolute inset-0 pointer-events-none opacity-25">
+                <AudioVisualizer bars={64} />
+            </div>
 
             {/* Row 1: thumbnail + info + controls */}
             <div className="flex items-center gap-3">
@@ -194,7 +203,7 @@ export const PlaybackControls = () => {
                 </div>
 
                 {/* Sync badge */}
-                <SyncBadge />
+                {syncBadge}
 
                 {/* Return-to-room pill */}
                 {isBackgrounded && (

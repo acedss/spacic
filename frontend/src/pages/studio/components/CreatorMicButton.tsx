@@ -56,24 +56,6 @@ export const CreatorMicButton = ({ socket, roomId, disabled }: Props) => {
         return Math.max(0, Math.round(duration - current))
     }, [audioRef, currentTimeMs])
 
-    // Start countdown when button is clicked (idle → countdown)
-    const startCountdown = useCallback(() => {
-        clearTimers()
-        setMicState('countdown')
-        setSecsLeft(getSecsUntilSongEnd())
-
-        // Countdown timer: update every 1s until song ends
-        countdownRef.current = setInterval(() => {
-            const secs = getSecsUntilSongEnd()
-            setSecsLeft(secs)
-            // When countdown reaches 0, auto-start recording
-            if (secs === 0) {
-                clearInterval(countdownRef.current!)
-                startRecording()
-            }
-        }, 1000)
-    }, [getSecsUntilSongEnd, clearTimers])
-
     // Request mic access and start recording (countdown → recording)
     const startRecording = useCallback(async () => {
         clearTimers()
@@ -134,6 +116,22 @@ export const CreatorMicButton = ({ socket, roomId, disabled }: Props) => {
             if (recorder.state !== 'inactive') recorder.stop()
         }, MAX_RECORDING_MS)
     }, [socket, roomId, clearTimers])
+
+    // Start countdown when button is clicked (idle → countdown)
+    const startCountdown = useCallback(() => {
+        clearTimers()
+        setMicState('countdown')
+        setSecsLeft(getSecsUntilSongEnd())
+
+        countdownRef.current = setInterval(() => {
+            const secs = getSecsUntilSongEnd()
+            setSecsLeft(secs)
+            if (secs === 0) {
+                clearInterval(countdownRef.current!)
+                startRecording()
+            }
+        }, 1000)
+    }, [getSecsUntilSongEnd, clearTimers, startRecording])
 
     const handleClick = useCallback(() => {
         if (micState === 'idle') {

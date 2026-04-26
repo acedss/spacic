@@ -62,7 +62,7 @@ pipeline {
                             -v ${WORKSPACE}/frontend:/app \\
                             -w /app \\
                             node:22-alpine \\
-                            sh -c 'npm ci && npx eslint . --max-warnings=0 || true && npx tsc --noEmit'
+                            sh -c 'npm ci && npx eslint . --max-warnings=0 && npx tsc --noEmit'
                         """
                     }
                 }

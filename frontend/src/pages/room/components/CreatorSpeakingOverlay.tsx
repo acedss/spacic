@@ -97,7 +97,7 @@ export const CreatorSpeakingOverlay = ({ creatorName = 'Creator' }: Props) => {
     if (assetVisible) {
         return (
             <div className={cn(
-                'fixed bottom-36 left-1/2 -translate-x-1/2 z-50 pointer-events-none',
+                'fixed bottom-[calc(9rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-50 pointer-events-none',
                 'flex items-center gap-3 px-5 py-3 rounded-2xl border shadow-2xl backdrop-blur-md',
                 'bg-blue-900/80 border-blue-500/40 text-blue-200',
             )}>
@@ -124,7 +124,7 @@ export const CreatorSpeakingOverlay = ({ creatorName = 'Creator' }: Props) => {
     const isPlaying = playing
     return (
         <div className={cn(
-            'fixed bottom-36 left-1/2 -translate-x-1/2 z-50 pointer-events-none',
+            'fixed bottom-[calc(9rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-50 pointer-events-none',
             'flex items-center gap-3 px-5 py-3 rounded-2xl border shadow-2xl backdrop-blur-md',
             isPlaying
                 ? 'bg-emerald-900/80 border-emerald-500/40 text-emerald-200'

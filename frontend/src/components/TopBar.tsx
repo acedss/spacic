@@ -1,4 +1,4 @@
-import { UserButton } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/clerk-react";
 import { ChevronLeft, ChevronRight, Search, Zap } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useWalletStore } from "@/stores/useWalletStore";
@@ -110,7 +110,16 @@ const TopBar = ({ onSearchOpen }: TopBarProps) => {
                     </button>
                 )}
 
-                <UserButton userProfileUrl="/profile" />
+                <SignedIn>
+                    <UserButton userProfileUrl="/profile" />
+                </SignedIn>
+                <SignedOut>
+                    <SignInButton mode="modal">
+                        <button className="h-7 px-3 rounded-xl bg-white text-black text-[12px] font-semibold press hover:bg-white/90 transition-colors">
+                            Sign in
+                        </button>
+                    </SignInButton>
+                </SignedOut>
             </div>
         </div>
     );

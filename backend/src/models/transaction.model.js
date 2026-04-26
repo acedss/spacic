@@ -21,6 +21,7 @@ const transactionSchema = new mongoose.Schema({
             'topup', 'donation', 'goal_payout',
             'minigame_debit', 'minigame_win', 'minigame_refund',
             'creator_earning', 'withdrawal', 'withdrawal_fee',
+            'admin_gift', 'admin_adjust', // manual coin moves by an admin
         ],
         required: true,
     },
@@ -65,6 +66,9 @@ const transactionSchema = new mongoose.Schema({
         type: String,
         default: null,
     },
+    // Admin gift/adjust audit trail — who did it and why.
+    adminClerkId: { type: String, default: null },
+    reason:       { type: String, default: null },
 }, { timestamps: true });
 
 transactionSchema.index({ userId: 1, createdAt: -1 });

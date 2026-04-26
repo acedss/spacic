@@ -1,7 +1,7 @@
 // CreateGameDialog — inline minigame creation while live
 // Validates creator balance before submitting (coinReward is debited from creator)
 import { useState } from 'react'
-import { Gamepad2, Loader2 } from 'lucide-react'
+import { Gamepad2, Loader2, CheckCircle2 } from 'lucide-react'
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
@@ -18,19 +18,20 @@ interface Props {
     open: boolean
     onOpenChange: (open: boolean) => void
     roomId: string
-    creatorBalance: number // current coin balance — validate coinReward ≤ balance
+    creatorBalance: number
     onCreated: (game: Minigame) => void
 }
 
-const GAME_TYPES: { value: MinigameType; label: string; hasQuestion: boolean; hasLyric: boolean; hasAnswer: boolean }[] = [
-    { value: 'song_guesser', label: 'Song Guesser', hasQuestion: false, hasLyric: false, hasAnswer: true },
-    { value: 'lyric_fill',   label: 'Lyric Fill-in', hasQuestion: false, hasLyric: true,  hasAnswer: true },
-    { value: 'trivia',       label: 'Trivia',         hasQuestion: true,  hasLyric: false, hasAnswer: false },
-    { value: 'skip_battle',  label: 'Skip Battle',    hasQuestion: false, hasLyric: false, hasAnswer: false },
+const GAME_TYPES: { value: MinigameType; label: string; desc: string }[] = [
+    { value: 'song_guesser', label: 'Song Guesser',  desc: 'Listeners guess the song title' },
+    { value: 'lyric_fill',   label: 'Lyric Fill-in', desc: 'Complete the missing lyric word' },
+    { value: 'trivia',       label: 'Trivia',         desc: 'A/B/C/D multiple choice question' },
+    { value: 'skip_battle',  label: 'Skip Battle',    desc: 'Vote to skip the current song' },
 ]
 
 const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120]
 const REWARD_OPTIONS   = [0, 50, 100, 200, 500, 1000]
+const OPTION_LABELS    = ['A', 'B', 'C', 'D']
 
 export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, onCreated }: Props) => {
     const [type, setType]               = useState<MinigameType>('song_guesser')
@@ -40,39 +41,57 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
     const [question, setQuestion]        = useState('')
     const [answer, setAnswer]            = useState('')
     const [lyric, setLyric]              = useState('')
+    const [options, setOptions]          = useState(['', '', '', ''])
+    const [correctOption, setCorrectOption] = useState(0)
     const [saving, setSaving]            = useState(false)
 
-    const selectedType = GAME_TYPES.find(t => t.value === type)!
     const rewardTooHigh = coinReward > creatorBalance
+
+    const setOption = (idx: number, val: string) =>
+        setOptions(prev => prev.map((o, i) => i === idx ? val : o))
 
     const reset = () => {
         setType('song_guesser'); setTitle(''); setDuration(30)
         setCoinReward(0); setQuestion(''); setAnswer(''); setLyric('')
+        setOptions(['', '', '', '']); setCorrectOption(0)
+    }
+
+    const validate = () => {
+        if (!title.trim()) { toast.error('Give the game a title'); return false }
+        if (rewardTooHigh) { toast.error('Reward exceeds your coin balance'); return false }
+        if (type === 'trivia') {
+            if (!question.trim()) { toast.error('Trivia needs a question'); return false }
+            if (options.some(o => !o.trim())) { toast.error('Fill in all 4 answer options'); return false }
+        }
+        if (type === 'lyric_fill' && !lyric.trim()) { toast.error('Enter the lyric with a blank'); return false }
+        if ((type === 'song_guesser' || type === 'lyric_fill') && !answer.trim()) {
+            toast.error('Enter the correct answer'); return false
+        }
+        return true
     }
 
     const handleSubmit = async () => {
-        if (!title.trim()) { toast.error('Give the game a title'); return }
-        if (rewardTooHigh) { toast.error('Reward exceeds your coin balance'); return }
-
+        if (!validate()) return
         setSaving(true)
         try {
+            const config = (() => {
+                switch (type) {
+                    case 'trivia':      return { question: question.trim(), options, correctOption }
+                    case 'lyric_fill':  return { lyric: lyric.trim(), answer: answer.trim() }
+                    case 'song_guesser': return { answer: answer.trim() }
+                    default:            return {}
+                }
+            })()
+
             const game = await createMinigame(roomId, {
-                type,
-                title: title.trim(),
-                durationSeconds,
-                coinReward,
+                type, title: title.trim(), durationSeconds, coinReward,
                 trigger: { type: 'manual', songIndex: null },
-                config: {
-                    question:  selectedType.hasQuestion ? question.trim() || null : null,
-                    answer:    (selectedType.hasQuestion || selectedType.hasAnswer) ? answer.trim() || null : null,
-                    lyric:     selectedType.hasLyric   ? lyric.trim()    || null : null,
-                },
+                config,
             })
             onCreated(game)
             onOpenChange(false)
             reset()
             toast.success('Game created — trigger it from the panel when ready')
-            // Refresh balance so UI reflects the deducted coinReward immediately
             useWalletStore.getState().fetchWallet()
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Failed to create game')
@@ -83,7 +102,7 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
 
     return (
         <Dialog open={open} onOpenChange={v => { if (!saving) { onOpenChange(v); if (!v) reset() } }}>
-            <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-md">
+            <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-md max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-white">
                         <Gamepad2 className="size-4 text-violet-400" /> New Minigame
@@ -91,7 +110,7 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
                 </DialogHeader>
 
                 <div className="space-y-4 py-2">
-                    {/* Type */}
+                    {/* Type selector */}
                     <div className="space-y-1.5">
                         <Label className="text-xs text-zinc-400">Game type</Label>
                         <div className="grid grid-cols-2 gap-2">
@@ -100,13 +119,14 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
                                     key={t.value}
                                     onClick={() => setType(t.value)}
                                     className={cn(
-                                        'px-3 py-2 rounded-lg text-xs font-medium transition',
+                                        'px-3 py-2.5 rounded-lg text-left transition',
                                         type === t.value
-                                            ? 'bg-violet-600 text-white border border-violet-500'
+                                            ? 'bg-violet-600/20 border border-violet-500 text-white'
                                             : 'bg-white/5 text-zinc-300 border border-white/10 hover:bg-white/10',
                                     )}
                                 >
-                                    {t.label}
+                                    <p className="text-xs font-semibold">{t.label}</p>
+                                    <p className="text-[10px] text-zinc-500 mt-0.5">{t.desc}</p>
                                 </button>
                             ))}
                         </div>
@@ -124,47 +144,89 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
                         />
                     </div>
 
-                    {/* Trivia question + answer */}
-                    {selectedType.hasQuestion && (
+                    {/* ── Trivia: question + A/B/C/D options ── */}
+                    {type === 'trivia' && (
                         <>
                             <div className="space-y-1.5">
                                 <Label className="text-xs text-zinc-400">Question</Label>
-                                <Input value={question} onChange={e => setQuestion(e.target.value)}
+                                <Input
+                                    value={question}
+                                    onChange={e => setQuestion(e.target.value)}
                                     placeholder="What year was this song released?"
-                                    className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 h-9" />
+                                    className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 h-9"
+                                />
                             </div>
-                            <div className="space-y-1.5">
-                                <Label className="text-xs text-zinc-400">Correct answer</Label>
-                                <Input value={answer} onChange={e => setAnswer(e.target.value)}
-                                    placeholder="2019"
-                                    className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 h-9" />
+
+                            <div className="space-y-2">
+                                <Label className="text-xs text-zinc-400">Answer options — click the correct one</Label>
+                                {options.map((opt, idx) => (
+                                    <div key={idx} className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCorrectOption(idx)}
+                                            aria-label={`Mark option ${OPTION_LABELS[idx]} as correct answer`}
+                                            aria-pressed={correctOption === idx}
+                                            className={cn(
+                                                'size-7 rounded-lg text-xs font-bold shrink-0 transition border',
+                                                correctOption === idx
+                                                    ? 'bg-emerald-600 border-emerald-500 text-white'
+                                                    : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10',
+                                            )}
+                                        >
+                                            {OPTION_LABELS[idx]}
+                                        </button>
+                                        <Input
+                                            value={opt}
+                                            onChange={e => setOption(idx, e.target.value)}
+                                            placeholder={`Option ${OPTION_LABELS[idx]}`}
+                                            className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-zinc-600 h-9"
+                                        />
+                                        {correctOption === idx && (
+                                            <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
+                                        )}
+                                    </div>
+                                ))}
+                                <p className="text-[10px] text-zinc-600">Click a letter button to mark the correct answer</p>
                             </div>
                         </>
                     )}
 
-                    {/* Lyric fill */}
-                    {selectedType.hasLyric && (
+                    {/* ── Lyric Fill-in ── */}
+                    {type === 'lyric_fill' && (
                         <div className="space-y-1.5">
-                            <Label className="text-xs text-zinc-400">Lyric (listeners fill the blank)</Label>
-                            <Input value={lyric} onChange={e => setLyric(e.target.value)}
-                                placeholder="She said ___ and then she left"
-                                className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 h-9" />
+                            <Label className="text-xs text-zinc-400">Lyric with blank (use ___ for the missing word)</Label>
+                            <Input
+                                value={lyric}
+                                onChange={e => setLyric(e.target.value)}
+                                placeholder='She said ___ and then she left'
+                                className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 h-9"
+                            />
                         </div>
                     )}
 
-                    {/* Correct answer — for song_guesser and lyric_fill */}
-                    {selectedType.hasAnswer && (
+                    {/* ── Correct answer: song_guesser + lyric_fill ── */}
+                    {(type === 'song_guesser' || type === 'lyric_fill') && (
                         <div className="space-y-1.5">
                             <Label className="text-xs text-zinc-400">
-                                Correct answer {type === 'song_guesser' ? '(song title / artist)' : '(fill-in word)'}
+                                Correct answer {type === 'song_guesser' ? '(song title or artist)' : '(fill-in word)'}
                             </Label>
-                            <Input value={answer} onChange={e => setAnswer(e.target.value)}
+                            <Input
+                                value={answer}
+                                onChange={e => setAnswer(e.target.value)}
                                 placeholder={type === 'song_guesser' ? 'e.g. Blinding Lights' : 'e.g. love'}
-                                className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 h-9" />
+                                className="bg-white/5 border-white/10 text-white placeholder:text-zinc-600 h-9"
+                            />
                         </div>
                     )}
 
-                    {/* Duration + reward row */}
+                    {/* ── Skip Battle: no config needed ── */}
+                    {type === 'skip_battle' && (
+                        <p className="text-xs text-zinc-500 bg-white/3 rounded-lg px-3 py-2.5">
+                            Listeners vote to skip the current song. Most votes in the time limit wins — no answer needed.
+                        </p>
+                    )}
+
+                    {/* Duration + reward */}
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                             <Label className="text-xs text-zinc-400">Duration</Label>
@@ -201,7 +263,7 @@ export const CreateGameDialog = ({ open, onOpenChange, roomId, creatorBalance, o
 
                     {coinReward > 0 && (
                         <p className="text-[11px] text-zinc-500 bg-white/3 rounded-lg px-3 py-2">
-                            {coinReward} coins will be deducted from your balance now. Winner gets {coinReward} WinPoints. No winner → refund.
+                            {coinReward} coins deducted from your balance now. Winner gets {coinReward} WinPoints. No winner → full refund.
                         </p>
                     )}
                 </div>

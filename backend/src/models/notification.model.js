@@ -4,7 +4,7 @@ const notificationSchema = new mongoose.Schema({
     recipientClerkId: { type: String, required: true, index: true },
     type: {
         type: String,
-        enum: ['friend_request', 'friend_accepted', 'room_invite', 'room_live', 'system'],
+        enum: ['friend_request', 'friend_accepted', 'room_invite', 'room_live', 'system', 'admin_gift'],
         required: true,
     },
     title:   { type: String, required: true },

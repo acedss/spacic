@@ -136,11 +136,18 @@ export interface CreatorRoomAnalytics {
 
 export interface Transaction {
     _id: string;
-    type: 'topup' | 'donation' | 'goal_payout';
-    amount: number; // credits
+    type:
+        | 'topup' | 'donation' | 'goal_payout'
+        | 'minigame_debit' | 'minigame_win' | 'minigame_refund'
+        | 'creator_earning' | 'withdrawal' | 'withdrawal_fee'
+        | 'admin_gift' | 'admin_adjust';
+    amount: number; // credits or winPoints, see currency
+    currency?: 'coins' | 'winPoints' | 'usd_cents';
     status: 'pending' | 'completed' | 'failed';
     roomId?: { _id: string; title: string } | null;
     donorName?: string | null;
+    reason?: string | null;
+    adminClerkId?: string | null;
     createdAt: string;
 }
 

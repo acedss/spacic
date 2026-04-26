@@ -17,6 +17,7 @@ import FriendsPage from "./pages/friends/FriendsPage";
 import FavoritesPage from "./pages/favorites/FavoritesPage";
 import RoomsPage from "./pages/rooms/RoomsPage";
 import SearchPage from "./pages/search/SearchPage";
+import DiscoverPage from "./pages/discover/DiscoverPage";
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
         <Route element={<MainLayout />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/discover" element={<ProtectedRoute><DiscoverPage /></ProtectedRoute>} />
           {/* Public rooms browse — no auth required */}
           <Route path="/rooms" element={<RoomsPage />} />
           {/* Individual room — unauthed visitors see GuestAuthDialog */}

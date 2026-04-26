@@ -2,7 +2,7 @@
 Redis Feature Store
 ─────────────────────────────────────────────────────────────
 Key schema:
-  recsys:user:{userId}:recs        → JSON list of top-K songId strings
+  recsys:user:{userId}:recs        → JSON list of top-K roomId strings
   recsys:user:{userId}:recs:ts     → ISO timestamp when recs were written
   recsys:stats:requests            → int  (total recommendation requests)
   recsys:stats:hits                → int  (requests served from cache)
@@ -67,10 +67,10 @@ async def get_cache_stats() -> dict:
     }
 
 
-async def set_user_recs(user_id: str, song_ids: list[str]) -> None:
+async def set_user_recs(user_id: str, room_ids: list[str]) -> None:
     r = get_redis()
     pipe = r.pipeline()
-    pipe.set(f"recsys:user:{user_id}:recs", json.dumps(song_ids), ex=RECS_TTL)
+    pipe.set(f"recsys:user:{user_id}:recs", json.dumps(room_ids), ex=RECS_TTL)
     pipe.set(f"recsys:user:{user_id}:recs:ts", datetime.now(timezone.utc).isoformat())
     await pipe.execute()
 

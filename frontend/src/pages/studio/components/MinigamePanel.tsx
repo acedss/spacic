@@ -48,6 +48,20 @@ export const MinigamePanel = ({
                     {activeGame.config.lyric && (
                         <p className="text-xs text-zinc-300 italic bg-white/5 rounded-lg px-2.5 py-1.5">"{activeGame.config.lyric}"</p>
                     )}
+                    {/* Trivia: show options so creator can call them out */}
+                    {activeGame.type === 'trivia' && activeGame.config.options?.length ? (
+                        <div className="grid grid-cols-2 gap-1.5">
+                            {activeGame.config.options.map((opt, idx) => (
+                                <div
+                                    key={idx}
+                                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] border ${idx === activeGame.config.correctOption ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' : 'border-white/10 bg-white/5 text-zinc-400'}`}
+                                >
+                                    <span className="font-bold shrink-0">{['A','B','C','D'][idx]}</span>
+                                    <span className="truncate">{opt}</span>
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
                     {activeGame.coinReward > 0 && (
                         <p className="text-xs text-yellow-400 flex items-center gap-1">
                             <Trophy className="size-3" /> {activeGame.coinReward.toLocaleString()} WinPoints prize

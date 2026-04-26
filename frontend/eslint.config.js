@@ -19,5 +19,15 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Vite HMR hint — files exporting a hook + a component still hot-reload
+      // fine in practice; the warning paints whole providers red for no win.
+      'react-refresh/only-export-components': 'warn',
+      // We use `any` deliberately at socket/REST payload boundaries.
+      '@typescript-eslint/no-explicit-any': 'warn',
+      // setState-in-effect is sometimes the right pattern (syncing external
+      // state → React). Surface as warning, not error.
+      'react-hooks/set-state-in-effect': 'warn',
+    },
   },
 ])

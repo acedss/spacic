@@ -5,8 +5,8 @@ from datetime import datetime
 
 class RecsResponse(BaseModel):
     userId: str
-    songIds: list[str]
-    source: str          # "cache" | "realtime" | "fallback"
+    roomIds: list[str]
+    source: str          # "cache" | "content" | "fallback"
     generatedAt: datetime
 
 

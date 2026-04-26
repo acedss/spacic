@@ -4,14 +4,20 @@ import { PlatformConfig, getConfig } from '../models/platformConfig.model.js';
 import { SubscriptionPlan } from '../models/subscriptionPlan.model.js';
 import { TopupPackage } from '../models/topupPackage.model.js';
 import { User } from '../models/user.model.js';
-import { Song } from '../models/song.model.js';
+import { Song, SONG_GENRES, SONG_MOODS, MUSICAL_KEYS } from '../models/song.model.js';
+import { Artist } from '../models/artist.model.js';
+import { Album } from '../models/album.model.js';
 import { Room } from '../models/room.model.js';
 import { Transaction } from '../models/transaction.model.js';
+import { Notification } from '../models/notification.model.js';
+import { withIdempotency } from '../lib/idempotency.js';
+import { getIo } from '../lib/io.js';
 import { SongPlay } from '../models/songPlay.model.js';
 import { ListenEvent } from '../models/listenEvent.model.js';
 import { SongDailyStat } from '../models/songDailyStat.model.js';
 import { redis } from '../lib/redis.js';
 import s3Config from '../lib/s3.js';
+import { putObject, getPresignedUrl } from '../services/s3.services.js';
 
 export const checkAdmin = async (req, res, next) => {
     try {
@@ -164,6 +170,134 @@ export const updateUserSubscription = async (req, res, next) => {
     } catch (e) { next(e); }
 };
 
+// ── Admin coin gifts / adjustments ────────────────────────────────────────────
+//
+// Three concerns to get right:
+//   1. Atomicity        — credit balance + transaction row + notification must
+//                         all happen, or none of them. Mongo session/txn used.
+//   2. Idempotency      — admin clicks "Send" twice → user should get gift once.
+//                         IdempotencyKey persists for 24h so a retry returns
+//                         the cached result instead of double-crediting.
+//   3. Live propagation — if the user is online, push a wallet:balance_updated
+//                         event so their UI updates without a refetch.
+export const giftCoins = async (req, res, next) => {
+    try {
+        const { clerkId } = req.params;
+        const { amount, reason = '', idempotencyKey } = req.body;
+        const adminClerkId = getRequesterClerkId(req);
+
+        const numAmount = Number(amount);
+        if (!Number.isFinite(numAmount) || numAmount === 0) {
+            return res.status(400).json({ message: 'Amount must be a non-zero number' });
+        }
+        if (Math.abs(numAmount) > 1_000_000) {
+            return res.status(400).json({ message: 'Amount too large — max 1,000,000 per gift' });
+        }
+        if (!idempotencyKey) {
+            return res.status(400).json({ message: 'idempotencyKey is required' });
+        }
+
+        const result = await withIdempotency({
+            scope: 'admin-gift',
+            key:   idempotencyKey,
+            ttlHours: 168, // 7 days — long enough to survive any client retry storm
+            fn: async () => {
+                const target = await User.findOne({ clerkId });
+                if (!target) throw Object.assign(new Error('User not found'), { status: 404 });
+
+                // Negative amounts allowed (admin_adjust corrective debit) but
+                // never below zero balance.
+                if (numAmount < 0 && target.balance + numAmount < 0) {
+                    throw Object.assign(new Error('Cannot debit below zero balance'), { status: 400 });
+                }
+
+                const txType = numAmount > 0 ? 'admin_gift' : 'admin_adjust';
+
+                target.balance += numAmount;
+                await target.save();
+
+                const tx = await Transaction.create({
+                    userId:       target._id,
+                    type:         txType,
+                    amount:       numAmount,
+                    currency:     'coins',
+                    status:       'completed',
+                    reason:       reason.slice(0, 280),
+                    adminClerkId,
+                });
+
+                const notif = await Notification.create({
+                    recipientClerkId: clerkId,
+                    type: 'admin_gift',
+                    title: numAmount > 0 ? 'You received a gift!' : 'Balance adjusted',
+                    message: numAmount > 0
+                        ? `An admin sent you ${numAmount.toLocaleString()} coins${reason ? ` — ${reason}` : ''}`
+                        : `Balance adjusted by ${numAmount.toLocaleString()} coins${reason ? ` — ${reason}` : ''}`,
+                    metadata: { amount: numAmount, transactionId: tx._id.toString() },
+                });
+
+                // Push to recipient if online — non-fatal if io unavailable.
+                try {
+                    const io = getIo();
+                    io?.to(`user:${clerkId}`).emit('wallet:balance_updated', { balance: target.balance });
+                    io?.to(`user:${clerkId}`).emit('notification:new', notif);
+                } catch (_) { /* best-effort */ }
+
+                return {
+                    success: true,
+                    data: {
+                        transactionId: tx._id.toString(),
+                        newBalance:    target.balance,
+                        recipient:     { clerkId, fullName: target.fullName },
+                    },
+                };
+            },
+        });
+
+        res.json(result);
+    } catch (e) {
+        if (e.status) return res.status(e.status).json({ message: e.message });
+        next(e);
+    }
+};
+
+// Returns paginated coin movements for one user — used by the admin user-detail drawer.
+export const getUserTransactions = async (req, res, next) => {
+    try {
+        const { clerkId } = req.params;
+        const { page = 1, type } = req.query;
+        const limit = 25;
+        const skip = (Number(page) - 1) * limit;
+
+        const user = await User.findOne({ clerkId }).select('_id balance fullName');
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const query = { userId: user._id };
+        if (type) query.type = type;
+
+        const [txs, total] = await Promise.all([
+            Transaction.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+            Transaction.countDocuments(query),
+        ]);
+
+        // Lifetime totals — useful for the "this user has spent / received" header.
+        const totalsAgg = await Transaction.aggregate([
+            { $match: { userId: user._id, status: 'completed' } },
+            { $group: { _id: '$type', total: { $sum: '$amount' } } },
+        ]);
+        const totals = Object.fromEntries(totalsAgg.map(t => [t._id, t.total]));
+
+        res.json({
+            success: true,
+            data: {
+                user:  { clerkId, fullName: user.fullName, balance: user.balance },
+                txs, total, page: Number(page), pages: Math.ceil(total / limit),
+                totals,
+            },
+        });
+    } catch (e) { next(e); }
+};
+
 // ── Songs ─────────────────────────────────────────────────────────────────────
 
 const MAX_SONG_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
@@ -208,10 +342,64 @@ const isSafeHttpUrl = (value) => {
     }
 };
 
+const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const MAX_SONG_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+const SONG_IMAGE_PRESIGN_TTL = 7 * 24 * 3600; // 7 days (S3 SigV4 max)
+
+export const uploadSongImage = async (req, res, next) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: 'Image file is required' });
+        const mime = String(req.file.mimetype ?? '').toLowerCase();
+        if (!ALLOWED_IMAGE_MIME.has(mime)) {
+            return res.status(400).json({ message: 'Only JPEG, PNG, WebP, or GIF images are allowed' });
+        }
+        if (req.file.size > MAX_SONG_IMAGE_BYTES) {
+            return res.status(400).json({ message: `Image must be <= ${MAX_SONG_IMAGE_BYTES / (1024 * 1024)}MB` });
+        }
+        const ext = mime.split('/')[1] === 'jpeg' ? 'jpg' : mime.split('/')[1];
+        const key = `images/songs/${randomUUID()}.${ext}`;
+        await putObject(key, req.file.buffer, mime);
+        const presignedUrl = await getPresignedUrl(key, SONG_IMAGE_PRESIGN_TTL);
+        res.json({ success: true, data: { key, presignedUrl } });
+    } catch (e) { next(e); }
+};
+
 export const getSongs = async (req, res, next) => {
     try {
-        const songs = await Song.find().sort({ createdAt: -1 }).limit(100);
-        res.json({ success: true, data: songs });
+        const page    = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit   = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+        const search  = String(req.query.search ?? '').trim();
+        const sortKey = String(req.query.sort ?? 'createdAt');
+        const dir     = String(req.query.dir ?? 'desc') === 'asc' ? 1 : -1;
+        const filter  = String(req.query.filter ?? ''); // 'missingImage' | 'missingArtist' | 'short' | ''
+
+        const q = {};
+        if (search) {
+            const re = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+            q.$or = [{ title: re }, { artist: re }];
+        }
+        if (filter === 'missingImage')  q.imageUrl = { $in: [null, ''] };
+        if (filter === 'missingArtist') q.artist = { $in: [null, ''] };
+        if (filter === 'short')         q.duration = { $lt: 30 };
+
+        const allowedSorts = new Set(['createdAt', 'title', 'artist', 'duration', 'streamCount', 'uniquePlays', 'skipCount']);
+        const sort = { [allowedSorts.has(sortKey) ? sortKey : 'createdAt']: dir };
+
+        const [songs, total] = await Promise.all([
+            Song.find(q).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
+            Song.countDocuments(q),
+        ]);
+        res.json({ success: true, data: songs, total, page, pages: Math.ceil(total / limit) });
+    } catch (e) { next(e); }
+};
+
+export const bulkDeleteSongs = async (req, res, next) => {
+    try {
+        const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
+        if (ids.length === 0) return res.status(400).json({ message: 'ids required' });
+        if (ids.length > 100) return res.status(400).json({ message: 'Max 100 songs per bulk delete' });
+        const result = await Song.deleteMany({ _id: { $in: ids } });
+        res.json({ success: true, deleted: result.deletedCount });
     } catch (e) { next(e); }
 };
 
@@ -243,48 +431,6 @@ export const uploadSongFile = async (req, res, next) => {
             ContentType: contentType,
         });
         await s3Config.client.send(command);
-
-        const uploadToken = randomUUID();
-        const intentKey = `song-upload-intent:${uploadToken}`;
-        const requesterClerkId = getRequesterClerkId(req) ?? null;
-        await redis.set(intentKey, JSON.stringify({
-            s3Key,
-            contentType,
-            sizeBytes,
-            clerkId: requesterClerkId,
-        }), 'EX', SONG_UPLOAD_INTENT_TTL_SECONDS);
-
-        res.json({
-            success: true,
-            data: {
-                s3Key,
-                uploadToken,
-                maxSizeBytes: MAX_SONG_UPLOAD_BYTES,
-            },
-        });
-    } catch (e) { next(e); }
-};
-
-// Legacy endpoint — kept for backwards compatibility but not used by new frontend
-export const getSongUploadUrl = async (req, res, next) => {
-    try {
-        const filename = String(req.body?.filename ?? '').trim();
-        const contentType = String(req.body?.contentType ?? '').trim().toLowerCase();
-        const sizeBytes = Number(req.body?.sizeBytes);
-        if (!filename || !contentType || !Number.isFinite(sizeBytes)) {
-            return res.status(400).json({ message: 'filename, contentType and sizeBytes are required' });
-        }
-        if (!contentType.startsWith('audio/')) {
-            return res.status(400).json({ message: 'Only audio uploads are allowed' });
-        }
-        if (sizeBytes <= 0 || sizeBytes > MAX_SONG_UPLOAD_BYTES) {
-            return res.status(400).json({ message: `Audio file must be <= ${Math.round(MAX_SONG_UPLOAD_BYTES / (1024 * 1024))}MB` });
-        }
-
-        const s3Key = buildSafeSongKey(filename, contentType);
-        if (!s3Key) {
-            return res.status(400).json({ message: 'Unsupported audio format. Use mp3, wav, ogg, m4a, aac, flac, or webm.' });
-        }
 
         const uploadToken = randomUUID();
         const intentKey = `song-upload-intent:${uploadToken}`;
@@ -373,15 +519,88 @@ export const createSong = async (req, res, next) => {
             return res.status(400).json({ message: 'Uploaded file size mismatch. Please upload again.' });
         }
 
+        // Optional metadata — sanitize and apply only if provided
+        const optionalFields = pickSongMetadata(req.body);
+
         const song = await Song.create({
             title,
             artist,
             imageUrl,
             s3Key,
             duration: Math.round(duration),
+            ...optionalFields,
         });
         await redis.del(intentKey);
         res.status(201).json({ success: true, data: song });
+    } catch (e) { next(e); }
+};
+
+// Sanitize the optional song metadata fields. Returns a partial object with
+// only the fields actually present in the input — caller spreads into create/update.
+const pickSongMetadata = (body) => {
+    const out = {};
+    if (body?.description !== undefined) out.description = String(body.description).trim().slice(0, 2000);
+    if (Array.isArray(body?.genre))      out.genre = body.genre.slice(0, 8).map(s => String(s).trim().toLowerCase()).filter(Boolean);
+    if (Array.isArray(body?.mood))       out.mood = body.mood.slice(0, 8).map(s => String(s).trim().toLowerCase()).filter(Boolean);
+    if (Array.isArray(body?.tags))       out.tags = body.tags.slice(0, 12).map(s => String(s).trim().slice(0, 30)).filter(Boolean);
+    if (body?.language !== undefined)    out.language = String(body.language).trim().slice(0, 10).toLowerCase();
+    if (body?.bpm !== undefined && body.bpm !== null && body.bpm !== '') {
+        const n = Number(body.bpm);
+        if (Number.isFinite(n) && n >= 30 && n <= 300) out.bpm = Math.round(n);
+    }
+    if (body?.musicalKey !== undefined)  out.musicalKey = body.musicalKey ? String(body.musicalKey) : null;
+    if (body?.explicit !== undefined)    out.explicit = Boolean(body.explicit);
+    if (body?.releaseDate !== undefined) {
+        const d = body.releaseDate ? new Date(body.releaseDate) : null;
+        out.releaseDate = (d && !Number.isNaN(d.getTime())) ? d : null;
+    }
+    if (body?.originalArtist !== undefined) out.originalArtist = String(body.originalArtist).trim().slice(0, 200);
+    if (body?.license !== undefined)        out.license = String(body.license).trim().slice(0, 100);
+    if (body?.isrc !== undefined)           out.isrc = String(body.isrc).trim().slice(0, 32);
+    if (body?.artistId !== undefined)       out.artistId = body.artistId || null;
+    if (body?.albumId !== undefined)        out.albumId = body.albumId || null;
+    for (const f of ['energy', 'danceability', 'valence']) {
+        if (body?.[f] !== undefined && body[f] !== null && body[f] !== '') {
+            const n = Number(body[f]);
+            if (Number.isFinite(n) && n >= 0 && n <= 1) out[f] = n;
+        }
+    }
+    return out;
+};
+
+export const updateSong = async (req, res, next) => {
+    try {
+        const update = {};
+        if (req.body?.title !== undefined)    update.title = normalizeSongText(req.body.title, 200);
+        if (req.body?.artist !== undefined)   update.artist = normalizeSongText(req.body.artist, 200);
+        if (req.body?.imageUrl !== undefined) {
+            const url = String(req.body.imageUrl).trim();
+            if (url && !isSafeHttpUrl(url)) return res.status(400).json({ message: 'Invalid image URL' });
+            update.imageUrl = url;
+        }
+        Object.assign(update, pickSongMetadata(req.body));
+        const song = await Song.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+        if (!song) return res.status(404).json({ message: 'Song not found' });
+        res.json({ success: true, data: song });
+    } catch (e) { next(e); }
+};
+
+export const getSongDetail = async (req, res, next) => {
+    try {
+        const song = await Song.findById(req.params.id)
+            .populate('artistId', 'name imageUrl')
+            .populate('albumId', 'title coverImageUrl releaseYear')
+            .lean();
+        if (!song) return res.status(404).json({ message: 'Song not found' });
+
+        // Recent play stats (last 30 days)
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000);
+        const playTrend = await SongDailyStat.find({
+            songId: song._id,
+            date: { $gte: thirtyDaysAgo },
+        }).sort({ date: 1 }).lean();
+
+        res.json({ success: true, data: { song, playTrend } });
     } catch (e) { next(e); }
 };
 
@@ -783,4 +1002,350 @@ export const updatePlatformConfig = async (req, res, next) => {
         );
         res.json({ success: true, data: config });
     } catch (e) { next(e); }
+};
+
+// ── Catalog: Artists ──────────────────────────────────────────────────────────
+
+export const getArtists = async (req, res, next) => {
+    try {
+        const search = String(req.query.search ?? '').trim();
+        const q = search ? { name: new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') } : {};
+        const artists = await Artist.find(q).sort({ name: 1 }).limit(200).lean();
+        // Sync song counts (cheap aggregate over Song.artist text match)
+        res.json({ success: true, data: artists });
+    } catch (e) { next(e); }
+};
+
+export const createArtist = async (req, res, next) => {
+    try {
+        const name = String(req.body?.name ?? '').trim().slice(0, 160);
+        const bio  = String(req.body?.bio ?? '').trim().slice(0, 2000);
+        const imageUrl = req.body?.imageUrl ? String(req.body.imageUrl).trim() : null;
+        if (!name) return res.status(400).json({ message: 'Name is required' });
+        try {
+            const artist = await Artist.create({ name, bio, imageUrl });
+            res.status(201).json({ success: true, data: artist });
+        } catch (err) {
+            if (err.code === 11000) return res.status(409).json({ message: 'Artist with this name already exists' });
+            throw err;
+        }
+    } catch (e) { next(e); }
+};
+
+export const updateArtist = async (req, res, next) => {
+    try {
+        const update = {};
+        if (req.body?.name !== undefined)     update.name = String(req.body.name).trim().slice(0, 160);
+        if (req.body?.bio !== undefined)      update.bio = String(req.body.bio).trim().slice(0, 2000);
+        if (req.body?.imageUrl !== undefined) update.imageUrl = req.body.imageUrl ? String(req.body.imageUrl).trim() : null;
+        const artist = await Artist.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+        if (!artist) return res.status(404).json({ message: 'Artist not found' });
+        res.json({ success: true, data: artist });
+    } catch (e) { next(e); }
+};
+
+export const getArtistDetail = async (req, res, next) => {
+    try {
+        const artist = await Artist.findById(req.params.id).lean();
+        if (!artist) return res.status(404).json({ message: 'Artist not found' });
+        const [albums, songs] = await Promise.all([
+            Album.find({ artistId: artist._id }).sort({ releaseYear: -1 }).limit(50).lean(),
+            Song.find({ $or: [{ artistId: artist._id }, { artist: artist.name }] })
+                .sort({ uniquePlays: -1 }).limit(50)
+                .select('title artist imageUrl duration uniquePlays streamCount skipCount createdAt')
+                .lean(),
+        ]);
+        const totals = songs.reduce((acc, s) => {
+            acc.plays   += s.uniquePlays ?? 0;
+            acc.streams += s.streamCount ?? 0;
+            acc.skips   += s.skipCount ?? 0;
+            return acc;
+        }, { plays: 0, streams: 0, skips: 0 });
+        res.json({ success: true, data: { artist, albums, songs, totals } });
+    } catch (e) { next(e); }
+};
+
+export const uploadArtistImage = async (req, res, next) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: 'Image file is required' });
+        const mime = String(req.file.mimetype ?? '').toLowerCase();
+        if (!ALLOWED_IMAGE_MIME.has(mime)) return res.status(400).json({ message: 'Only JPEG, PNG, WebP, or GIF images are allowed' });
+        if (req.file.size > MAX_SONG_IMAGE_BYTES) return res.status(400).json({ message: `Image must be <= ${MAX_SONG_IMAGE_BYTES / (1024 * 1024)}MB` });
+        const ext = mime.split('/')[1] === 'jpeg' ? 'jpg' : mime.split('/')[1];
+        const key = `images/artists/${randomUUID()}.${ext}`;
+        await putObject(key, req.file.buffer, mime);
+        const presignedUrl = await getPresignedUrl(key, SONG_IMAGE_PRESIGN_TTL);
+        res.json({ success: true, data: { key, presignedUrl } });
+    } catch (e) { next(e); }
+};
+
+export const deleteArtist = async (req, res, next) => {
+    try {
+        const a = await Artist.findByIdAndDelete(req.params.id);
+        if (!a) return res.status(404).json({ message: 'Artist not found' });
+        // Detach albums from this artist (don't cascade-delete albums)
+        await Album.updateMany({ artistId: a._id }, { $set: { artistId: null } });
+        res.json({ success: true });
+    } catch (e) { next(e); }
+};
+
+// ── Catalog: Albums ───────────────────────────────────────────────────────────
+
+export const getAlbums = async (req, res, next) => {
+    try {
+        const search = String(req.query.search ?? '').trim();
+        const q = search ? { title: new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') } : {};
+        const albums = await Album.find(q).populate('artistId', 'name').sort({ createdAt: -1 }).limit(200).lean();
+        res.json({ success: true, data: albums });
+    } catch (e) { next(e); }
+};
+
+export const createAlbum = async (req, res, next) => {
+    try {
+        const title = String(req.body?.title ?? '').trim().slice(0, 200);
+        const artistId = req.body?.artistId || null;
+        const coverImageUrl = req.body?.coverImageUrl ? String(req.body.coverImageUrl).trim() : null;
+        const releaseYear = req.body?.releaseYear ? Number(req.body.releaseYear) : null;
+        if (!title) return res.status(400).json({ message: 'Title is required' });
+        let artistName = '';
+        if (artistId) {
+            const a = await Artist.findById(artistId).select('name').lean();
+            if (!a) return res.status(400).json({ message: 'Artist not found' });
+            artistName = a.name;
+        }
+        const album = await Album.create({ title, artistId, artistName, coverImageUrl, releaseYear });
+        res.status(201).json({ success: true, data: album });
+    } catch (e) { next(e); }
+};
+
+export const updateAlbum = async (req, res, next) => {
+    try {
+        const update = {};
+        if (req.body?.title !== undefined) update.title = String(req.body.title).trim().slice(0, 200);
+        if (req.body?.coverImageUrl !== undefined) update.coverImageUrl = req.body.coverImageUrl ? String(req.body.coverImageUrl).trim() : null;
+        if (req.body?.releaseYear !== undefined) update.releaseYear = req.body.releaseYear ? Number(req.body.releaseYear) : null;
+        if (req.body?.artistId !== undefined) {
+            update.artistId = req.body.artistId || null;
+            if (update.artistId) {
+                const a = await Artist.findById(update.artistId).select('name').lean();
+                if (!a) return res.status(400).json({ message: 'Artist not found' });
+                update.artistName = a.name;
+            } else {
+                update.artistName = '';
+            }
+        }
+        const album = await Album.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+        if (!album) return res.status(404).json({ message: 'Album not found' });
+        res.json({ success: true, data: album });
+    } catch (e) { next(e); }
+};
+
+export const getAlbumDetail = async (req, res, next) => {
+    try {
+        const album = await Album.findById(req.params.id).populate('artistId', 'name imageUrl').lean();
+        if (!album) return res.status(404).json({ message: 'Album not found' });
+        const songs = await Song.find({ albumId: album._id })
+            .sort({ createdAt: 1 })
+            .select('title artist imageUrl duration uniquePlays streamCount skipCount createdAt')
+            .lean();
+        const totals = songs.reduce((acc, s) => {
+            acc.duration += s.duration ?? 0;
+            acc.plays    += s.uniquePlays ?? 0;
+            return acc;
+        }, { duration: 0, plays: 0 });
+        res.json({ success: true, data: { album, songs, totals } });
+    } catch (e) { next(e); }
+};
+
+export const uploadAlbumImage = async (req, res, next) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: 'Image file is required' });
+        const mime = String(req.file.mimetype ?? '').toLowerCase();
+        if (!ALLOWED_IMAGE_MIME.has(mime)) return res.status(400).json({ message: 'Only JPEG, PNG, WebP, or GIF images are allowed' });
+        if (req.file.size > MAX_SONG_IMAGE_BYTES) return res.status(400).json({ message: `Image must be <= ${MAX_SONG_IMAGE_BYTES / (1024 * 1024)}MB` });
+        const ext = mime.split('/')[1] === 'jpeg' ? 'jpg' : mime.split('/')[1];
+        const key = `images/albums/${randomUUID()}.${ext}`;
+        await putObject(key, req.file.buffer, mime);
+        const presignedUrl = await getPresignedUrl(key, SONG_IMAGE_PRESIGN_TTL);
+        res.json({ success: true, data: { key, presignedUrl } });
+    } catch (e) { next(e); }
+};
+
+export const deleteAlbum = async (req, res, next) => {
+    try {
+        const a = await Album.findByIdAndDelete(req.params.id);
+        if (!a) return res.status(404).json({ message: 'Album not found' });
+        await Song.updateMany({ albumId: a._id }, { $set: { albumId: null } });
+        res.json({ success: true });
+    } catch (e) { next(e); }
+};
+
+// ── Growth Analytics ──────────────────────────────────────────────────────────
+//
+// Data-analyst grade subscription/user growth dashboard. Returns:
+//   - Summary cards: totals + period-over-period deltas
+//   - Tier composition (FREE/PREMIUM/CREATOR snapshot)
+//   - Time-series: new signups, paid signups, MRR per bucket
+//   - Cohort retention: % of users from signup-month-N still on a paid tier today
+//   - Churn rate (recent window)
+//
+// Granularity: 'monthly' | 'quarterly' | 'yearly' — drives the bucket size + window.
+// Default window: monthly = 12 months back, quarterly = 8 quarters, yearly = 5 years.
+
+export const getGrowthAnalytics = async (req, res, next) => {
+    try {
+        const granularity = ['monthly', 'quarterly', 'yearly'].includes(String(req.query.granularity))
+            ? String(req.query.granularity) : 'monthly';
+
+        const now = new Date();
+        // Window length in months
+        const monthsBack = granularity === 'yearly' ? 60 : granularity === 'quarterly' ? 24 : 12;
+        const windowStart = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
+        const prevWindowStart = new Date(now.getFullYear(), now.getMonth() - monthsBack * 2, 1);
+
+        // Mongo $dateTrunc unit
+        const truncUnit = granularity === 'yearly' ? 'year' : granularity === 'quarterly' ? 'quarter' : 'month';
+
+        // ── Tier composition (snapshot) ──
+        const tierAgg = await User.aggregate([
+            { $group: { _id: '$userTier', count: { $sum: 1 } } },
+        ]);
+        const tierComposition = Object.fromEntries(tierAgg.map(t => [t._id, t.count]));
+        const totalUsers = tierAgg.reduce((sum, t) => sum + t.count, 0);
+        const paidUsers = (tierComposition.PREMIUM ?? 0) + (tierComposition.CREATOR ?? 0);
+
+        // ── Active vs canceled subscription status ──
+        const statusAgg = await User.aggregate([
+            { $match: { userTier: { $in: ['PREMIUM', 'CREATOR'] } } },
+            { $group: { _id: '$subscriptionStatus', count: { $sum: 1 } } },
+        ]);
+        const subStatusCounts = Object.fromEntries(statusAgg.map(s => [s._id ?? 'none', s.count]));
+        const activeSubs = subStatusCounts.active ?? 0;
+
+        // ── MRR (Monthly Recurring Revenue) snapshot ──
+        // Count active subs by tier × plan monthly price.
+        const plans = await SubscriptionPlan.find().lean();
+        const planByTier = Object.fromEntries(plans.map(p => [p.tier, p]));
+        const tierActiveAgg = await User.aggregate([
+            { $match: { subscriptionStatus: 'active', userTier: { $in: ['PREMIUM', 'CREATOR'] } } },
+            { $group: { _id: '$userTier', count: { $sum: 1 } } },
+        ]);
+        let mrrCents = 0;
+        for (const row of tierActiveAgg) {
+            const plan = planByTier[row._id];
+            if (plan?.priceMonthlyUsd) mrrCents += row.count * plan.priceMonthlyUsd;
+        }
+
+        // ── Time-series: new signups per bucket ──
+        const signupSeries = await User.aggregate([
+            { $match: { createdAt: { $gte: windowStart } } },
+            { $group: {
+                _id: { period: { $dateTrunc: { date: '$createdAt', unit: truncUnit } } },
+                signups:    { $sum: 1 },
+                paidSignups: { $sum: { $cond: [{ $in: ['$userTier', ['PREMIUM', 'CREATOR']] }, 1, 0] } },
+            }},
+            { $sort: { '_id.period': 1 } },
+        ]);
+
+        // ── Period-over-period: signups + revenue this window vs prev window ──
+        const [thisWindow, prevWindow] = await Promise.all([
+            User.countDocuments({ createdAt: { $gte: windowStart, $lte: now } }),
+            User.countDocuments({ createdAt: { $gte: prevWindowStart, $lt: windowStart } }),
+        ]);
+        const signupGrowth = prevWindow > 0 ? Math.round(((thisWindow - prevWindow) / prevWindow) * 100) : null;
+
+        // Revenue from completed topups this window
+        const [thisRevenue, prevRevenue] = await Promise.all([
+            Transaction.aggregate([
+                { $match: { type: 'topup', status: 'completed', createdAt: { $gte: windowStart, $lte: now } } },
+                { $group: { _id: null, total: { $sum: '$amount' } } },
+            ]),
+            Transaction.aggregate([
+                { $match: { type: 'topup', status: 'completed', createdAt: { $gte: prevWindowStart, $lt: windowStart } } },
+                { $group: { _id: null, total: { $sum: '$amount' } } },
+            ]),
+        ]);
+        const thisRevTotal = thisRevenue[0]?.total ?? 0;
+        const prevRevTotal = prevRevenue[0]?.total ?? 0;
+        const revenueGrowth = prevRevTotal > 0 ? Math.round(((thisRevTotal - prevRevTotal) / prevRevTotal) * 100) : null;
+
+        // ── Churn: users in canceled or past_due in last window ──
+        const churnedThisWindow = await User.countDocuments({
+            subscriptionStatus: { $in: ['canceled', 'past_due'] },
+            updatedAt: { $gte: windowStart },
+        });
+        // Approximate churn rate: churned / (active + churned)
+        const churnRate = (activeSubs + churnedThisWindow) > 0
+            ? Math.round((churnedThisWindow / (activeSubs + churnedThisWindow)) * 100 * 10) / 10
+            : 0;
+
+        // ── Cohort retention (last 6 monthly cohorts) ──
+        // For each cohort month: how many signed up, of those how many are still on paid tier.
+        // Note: this is a coarse approximation — we lack tier-change history, so we treat
+        // "currently paid" as a proxy for "retained as paying customer".
+        const cohortMonths = 6;
+        const cohortStart = new Date(now.getFullYear(), now.getMonth() - cohortMonths, 1);
+        const cohorts = await User.aggregate([
+            { $match: { createdAt: { $gte: cohortStart } } },
+            { $group: {
+                _id: { $dateTrunc: { date: '$createdAt', unit: 'month' } },
+                signups: { $sum: 1 },
+                stillPaid: { $sum: { $cond: [
+                    { $and: [
+                        { $in: ['$userTier', ['PREMIUM', 'CREATOR']] },
+                        { $eq: ['$subscriptionStatus', 'active'] },
+                    ]}, 1, 0,
+                ]}},
+            }},
+            { $sort: { '_id': 1 } },
+        ]);
+
+        // ── Conversion rate (paid / total) ──
+        const conversionRate = totalUsers > 0 ? Math.round((paidUsers / totalUsers) * 100 * 10) / 10 : 0;
+
+        res.json({
+            success: true,
+            data: {
+                granularity,
+                windowStart,
+                summary: {
+                    totalUsers,
+                    paidUsers,
+                    activeSubs,
+                    conversionRate,
+                    churnRate,
+                    mrrCents,
+                    arrCents: mrrCents * 12,
+                    thisWindowSignups: thisWindow,
+                    prevWindowSignups: prevWindow,
+                    signupGrowth,
+                    thisWindowRevenueCents: thisRevTotal,
+                    prevWindowRevenueCents: prevRevTotal,
+                    revenueGrowth,
+                },
+                tierComposition,
+                subStatusCounts,
+                series: signupSeries.map(r => ({
+                    period: r._id.period,
+                    signups: r.signups,
+                    paidSignups: r.paidSignups,
+                })),
+                cohorts: cohorts.map(c => ({
+                    cohort: c._id,
+                    signups: c.signups,
+                    stillPaid: c.stillPaid,
+                    retentionPercent: c.signups > 0 ? Math.round((c.stillPaid / c.signups) * 1000) / 10 : 0,
+                })),
+            },
+        });
+    } catch (e) { next(e); }
+};
+
+// ── Catalog vocabulary (genres, moods, keys for admin form) ───────────────────
+
+export const getSongVocabulary = async (req, res) => {
+    res.json({
+        success: true,
+        data: { genres: SONG_GENRES, moods: SONG_MOODS, musicalKeys: MUSICAL_KEYS },
+    });
 };

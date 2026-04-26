@@ -4,6 +4,8 @@ import { FriendsActivity } from "./components/FriendsActivity";
 import { PlaybackControls } from "./components/PlaybackControls";
 import AudioPlayer from "./components/AudioPlayer";
 import { SearchPalette } from "@/components/SearchPalette";
+import { ShortcutsOverlay } from "@/components/ShortcutsOverlay";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { RoomSessionProvider } from "@/providers/RoomSessionProvider";
 import { SocialSocketProvider } from "@/providers/SocialSocketProvider";
 import { useEffect, useRef, useState } from "react";
@@ -24,6 +26,7 @@ const MainLayout = () => {
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [mobileFriendsOpen, setMobFriends]= useState(false);
     const [searchOpen, setSearchOpen]       = useState(false);
+    const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
     useEffect(() => {
         const check = () => setIsMobile(window.innerWidth < 768);
@@ -32,17 +35,10 @@ const MainLayout = () => {
         return () => window.removeEventListener("resize", check);
     }, []);
 
-    // Global Cmd+K / Ctrl+K to open search palette
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-                e.preventDefault();
-                setSearchOpen(o => !o);
-            }
-        };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, []);
+    useKeyboardShortcuts({
+        onSearch: () => setSearchOpen(o => !o),
+        onHelp:   () => setShortcutsOpen(o => !o),
+    });
 
     return (
         <SocialSocketProvider>
@@ -50,6 +46,7 @@ const MainLayout = () => {
         <div className='h-screen flex flex-col overflow-hidden relative' style={{ background: 'var(--ink-0)', color: 'var(--fg-1)', fontFamily: "'Figtree', system-ui, sans-serif" }}>
             <AudioPlayer />
             <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+            <ShortcutsOverlay open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
 
             {/* Mobile top bar */}
             {isMobile && (

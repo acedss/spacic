@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import { ArrowUpRight, Heart, Trophy, Gamepad2, RotateCcw, Mic, ArrowDownToLine, Receipt } from 'lucide-react'
+import { ArrowUpRight, Heart, Trophy, Gamepad2, RotateCcw, Mic, ArrowDownToLine, Receipt, Gift, ShieldCheck } from 'lucide-react'
 import type { Transaction } from '@/types/types'
 
 const formatDate = (iso: string) =>
@@ -54,6 +54,17 @@ export const TX_META: Record<string, {
         sign: '−', currency: 'wp',
         label: () => 'Platform fee',
     },
+    admin_gift: {
+        bg: 'bg-rose-500/15', icon: Gift, iconColor: 'text-rose-400', amountColor: 'text-rose-300',
+        sign: '+', currency: 'coins',
+        label: (tx) => tx.reason ? `Admin gift — ${tx.reason}` : 'Admin gift',
+    },
+    admin_adjust: {
+        bg: 'bg-amber-500/15', icon: ShieldCheck, iconColor: 'text-amber-400', amountColor: 'text-amber-300',
+        // sign computed at render time from tx.amount, since adjust can be ±
+        sign: '', currency: 'coins',
+        label: (tx) => tx.reason ? `Balance adjusted — ${tx.reason}` : 'Balance adjusted',
+    },
 }
 
 const currencyLabel = (amount: number, currency: 'coins' | 'wp') =>
@@ -64,6 +75,9 @@ const currencyLabel = (amount: number, currency: 'coins' | 'wp') =>
 export const TransactionRow = ({ tx }: { tx: Transaction }) => {
     const meta = TX_META[tx.type] ?? TX_META.topup
     const Icon = meta.icon
+    // For admin_adjust the sign reflects amount polarity (can be negative).
+    const sign = meta.sign || (tx.amount < 0 ? '−' : '+')
+    const displayAmount = Math.abs(tx.amount)
     return (
         <div className="flex items-center gap-3 py-3.5 border-b border-white/5 last:border-0">
             <div className={cn('size-9 rounded-xl flex items-center justify-center flex-shrink-0', meta.bg)}>
@@ -74,7 +88,7 @@ export const TransactionRow = ({ tx }: { tx: Transaction }) => {
                 <p className="text-xs text-zinc-500">{formatDate(tx.createdAt)}</p>
             </div>
             <span className={cn('text-sm font-semibold tabular-nums flex-shrink-0', meta.amountColor)}>
-                {meta.sign}{currencyLabel(tx.amount, meta.currency)}
+                {sign}{currencyLabel(displayAmount, meta.currency)}
             </span>
         </div>
     )

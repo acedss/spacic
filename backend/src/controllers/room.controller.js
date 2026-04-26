@@ -218,6 +218,13 @@ export const updateFeatureFlags = async (req, res, next) => {
         );
         if (!room) return res.status(404).json({ message: 'Room not found' });
 
+        // Invalidate the in-process feature-flags cache so socket.js reads the new
+        // values on the very next event rather than waiting for the 30s TTL.
+        try {
+            const { invalidateFeatureFlagsCache } = await import('../lib/socket.js');
+            invalidateFeatureFlagsCache(room._id.toString());
+        } catch { /* socket module may not be loaded */ }
+
         // Notify live listeners immediately so they can update their UI
         if (room.status === 'live') {
             try {

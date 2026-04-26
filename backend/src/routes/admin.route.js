@@ -25,18 +25,41 @@ router.delete('/topup-packages/:packageId',            admin.deleteTopupPackage)
 router.get('/users',                                   admin.getUsers);
 router.patch('/users/:clerkId/tier',                   admin.updateUserTier);
 router.patch('/users/:clerkId/subscription',           admin.updateUserSubscription);
+router.post('/users/:clerkId/gift-coins',              admin.giftCoins);
+router.get('/users/:clerkId/transactions',             admin.getUserTransactions);
 
 // Songs
+router.get('/songs/vocabulary',         admin.getSongVocabulary);
 router.get('/songs',                    admin.getSongs);
-router.post('/songs/upload-url',        admin.getSongUploadUrl); // Legacy endpoint
-router.post('/songs/upload',            upload.single('audio'), admin.uploadSongFile); // New endpoint
+router.get('/songs/:id',                admin.getSongDetail);
+router.post('/songs/upload',            upload.single('audio'), admin.uploadSongFile);
+router.post('/songs/image-upload',      upload.single('image'), admin.uploadSongImage);
+router.post('/songs/bulk-delete',       admin.bulkDeleteSongs);
 router.post('/songs',                   admin.createSong);
+router.patch('/songs/:id',              admin.updateSong);
 router.delete('/songs/:id',             admin.deleteSong);
+
+// Catalog: Artists
+router.get('/artists',                   admin.getArtists);
+router.get('/artists/:id',               admin.getArtistDetail);
+router.post('/artists/image-upload',     upload.single('image'), admin.uploadArtistImage);
+router.post('/artists',                  admin.createArtist);
+router.patch('/artists/:id',             admin.updateArtist);
+router.delete('/artists/:id',            admin.deleteArtist);
+
+// Catalog: Albums
+router.get('/albums',                    admin.getAlbums);
+router.get('/albums/:id',                admin.getAlbumDetail);
+router.post('/albums/image-upload',      upload.single('image'), admin.uploadAlbumImage);
+router.post('/albums',                   admin.createAlbum);
+router.patch('/albums/:id',              admin.updateAlbum);
+router.delete('/albums/:id',             admin.deleteAlbum);
 
 // Stats & Analytics
 router.get('/stats',            admin.getStats);
 router.get('/analytics',        admin.getAnalytics);
 router.get('/analytics/songs',  admin.getSongAnalytics);
+router.get('/analytics/growth', admin.getGrowthAnalytics);
 
 // Platform config (fee %, withdrawal limits, exchange rate)
 router.get('/config',           admin.getPlatformConfig);

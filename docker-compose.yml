@@ -6,6 +6,11 @@ services:
         networks:
             - web_gateway
         restart: always
+        # Wait for the recsys service to pass its HEALTHCHECK before starting the backend.
+        # This avoids early-boot ECONNREFUSED errors on the first scheduled rec call.
+        depends_on:
+            spacic-recsys:
+                condition: service_healthy
 
     spacic-fe:
         build:
@@ -27,6 +32,13 @@ services:
         networks:
             - web_gateway
         restart: always
+        # Persist MLflow run history and trained model artefacts across redeploys.
+        # Without this volume, every `docker compose up` discards all training history.
+        volumes:
+            - recsys_mlflow:/app/mlruns
+
+volumes:
+    recsys_mlflow:
 
 networks:
     web_gateway:
