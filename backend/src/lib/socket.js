@@ -13,6 +13,7 @@ import { getPresignedUrl } from '../services/s3.services.js';
 import { socketRateLimit } from './socketRateLimit.js';
 import { once } from './idempotency.js';
 import { donateToRoom } from '../services/wallet.service.js';
+import { event as logEvent } from './log.js';
 import { goOfflineInternal, recordSongTransition } from '../services/room.service.js';
 import { findAndActivateScheduledGame, recordAnswer, completeGame, settleGamePrize } from '../services/minigame.service.js';
 import { Minigame } from '../models/minigame.model.js';
@@ -802,19 +803,29 @@ export const initializeSocket = (httpServer) => {
 
                     const playlist = await socketManager.getCachedPlaylist(roomId);
                     const song = await Song.findById(songId).lean();
+                    let updatedPlaylist = playlist;
                     if (playlist && song) {
                         const newEntry = {
                             _id: song._id.toString(), title: song.title, artist: song.artist,
                             duration: song.duration, imageUrl: song.imageUrl || '', s3Key: song.s3Key,
                             albumId: song.albumId?.toString() ?? null,
                         };
-                        await socketManager.cacheRoomPlaylist(roomId, [...playlist, newEntry]);
+                        updatedPlaylist = [...playlist, newEntry];
+                        await socketManager.cacheRoomPlaylist(roomId, updatedPlaylist);
                     }
                     await socketManager.removeNomination(roomId, songId);
                     const nominations = await socketManager.getQueueNominations(roomId);
                     io.to(roomId).emit('room:nominations_update', { roomId, nominations });
                     io.to(roomId).emit('room:queue_song_added', { roomId, songId, title: song?.title });
+                    // Authoritative state broadcast — without this, clients keep stale playlists
+                    // and the new song never appears in "Up Next" until a full room refresh.
+                    if (updatedPlaylist) {
+                        io.to(roomId).emit('room:playlist_updated', { playlist: updatedPlaylist });
+                    }
                     emitSystemMessage(io, roomId, `"${song?.title}" was voted into the queue!`);
+                    logEvent("queue.song_added", {
+                        roomId, songId, title: song?.title, votes: newScore,
+                    });
                 } else {
                     const nominations = await socketManager.getQueueNominations(roomId);
                     io.to(roomId).emit('room:nominations_update', { roomId, nominations });

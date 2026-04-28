@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronUp, Search, Music2, Plus, Send } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 import { axiosInstance } from '@/lib/axios';
 
 interface Props {
@@ -17,7 +18,13 @@ interface SongResult {
 }
 
 export const NominationsPanel = ({ onNominate, onVote, onRequestSong }: Props) => {
-    const { nominations, listenerCount, sessionInfo } = useRoomStore();
+    const { nominations, listenerCount, sessionInfo, room } = useRoomStore();
+    const currentSongIndex = usePlayerStore((s) => s.currentSongIndex);
+    // Upcoming songs already on the playlist — exclude the currently-playing one,
+    // cap at 5 so the panel stays scannable without scrolling.
+    const upcoming = room?.playlist
+        ? room.playlist.slice(currentSongIndex + 1, currentSongIndex + 6)
+        : [];
     const [search, setSearch]         = useState('');
     const [results, setResults]       = useState<SongResult[]>([]);
     const [searching, setSearching]   = useState(false);
@@ -49,6 +56,36 @@ export const NominationsPanel = ({ onNominate, onVote, onRequestSong }: Props) =
 
     return (
         <div className="flex flex-col gap-3 p-4">
+            {/* Coming up from the playlist (auto-plays next, no voting needed) */}
+            {upcoming.length > 0 && (
+                <div className="space-y-1.5">
+                    <p className="mono text-[9px] uppercase tracking-widest px-1" style={{ color: 'var(--fg-3)' }}>
+                        Coming up · Playlist
+                    </p>
+                    <div className="rounded-xl ring-1 ring-white/8 overflow-hidden divide-y divide-white/5"
+                         style={{ background: 'var(--ink-2)' }}>
+                        {upcoming.map((song, i) => (
+                            <div key={song._id} className="flex items-center gap-2.5 px-3 py-2">
+                                <span className="mono text-[10px] w-4 tabular-nums" style={{ color: 'var(--fg-3)' }}>
+                                    {i + 1}
+                                </span>
+                                {song.imageUrl ? (
+                                    <img src={song.imageUrl} className="w-7 h-7 rounded-md object-cover shrink-0" alt="" />
+                                ) : (
+                                    <div className="w-7 h-7 rounded-md grid place-items-center shrink-0 bg-white/8">
+                                        <Music2 className="size-3 text-white/40" />
+                                    </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-[12px] text-white truncate">{song.title}</p>
+                                    <p className="text-[10px] truncate" style={{ color: 'var(--fg-3)' }}>{song.artist}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Action buttons */}
             <div className="flex gap-2">
                 <button
@@ -131,7 +168,7 @@ export const NominationsPanel = ({ onNominate, onVote, onRequestSong }: Props) =
             <div className="space-y-1.5">
                 <div className="flex items-center justify-between px-1">
                     <p className="mono text-[9px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>
-                        Queue · {nominations.length} nominated
+                        Vote-to-Queue · {nominations.length} nominated
                     </p>
                     <p className="mono text-[9px]" style={{ color: 'var(--fg-3)' }}>
                         {needed} votes to add
