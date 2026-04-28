@@ -179,22 +179,38 @@ app.use('/api/users', userRoutes);
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((error, req, res, next) => {
+    let status;
+    let clientMessage;
+
     // Mongoose CastError: invalid ObjectId in a route param (:roomId, :songId, …)
     // is a client error — the caller sent a malformed ID, not a server fault.
     if (error.name === 'CastError') {
-        return res.status(400).json({ message: `Invalid value for field '${error.path}'` });
+        status = 400;
+        clientMessage = `Invalid value for field '${error.path}'`;
+    } else if (error.name === 'ValidationError') {
+        // Mongoose ValidationError: a schema constraint was violated on a DB write.
+        status = 422;
+        clientMessage = Object.values(error.errors).map(e => e.message).join(', ');
+    } else {
+        status = error.statusCode || 500;
+        clientMessage = status === 500 && process.env.NODE_ENV === 'production'
+            ? 'Internal server error'
+            : error.message;
     }
-    // Mongoose ValidationError: a schema constraint was violated on a DB write.
-    if (error.name === 'ValidationError') {
-        const messages = Object.values(error.errors).map(e => e.message);
-        return res.status(422).json({ message: messages.join(', ') });
-    }
-    const status = error.statusCode || 500;
-    const message = status === 500 && process.env.NODE_ENV === 'production'
-        ? 'Internal server error'
-        : error.message;
-    res.status(status).json({ message });
-    if (status === 500) console.error('[Error]', error);
+
+    res.status(status).json({ message: clientMessage });
+
+    // Structured single-line log — every API failure (4xx + 5xx) shows up in
+    // Grafana under `[Error] api.request_failed`. Stack only on 5xx to keep
+    // the high-volume 4xx lines small.
+    process.stderr.write(`[Error] api.request_failed ${JSON.stringify({
+        method: req.method,
+        path: req.originalUrl?.split('?')[0],
+        status,
+        errorName: error.name,
+        message: error.message,
+        ...(status >= 500 ? { stack: error.stack } : {}),
+    })}\n`);
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
@@ -221,6 +237,36 @@ const shutdown = async (signal) => {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT',  () => shutdown('SIGINT'));
+
+// Catch-all process error handlers. Without these, a stray async function that
+// rejects without `.catch()` would print only Node's default warning and the
+// failure would never surface in Grafana. We log structured then keep running
+// for unhandledRejection (recoverable) but exit on uncaughtException (state
+// is undefined after a sync throw).
+process.on('unhandledRejection', (reason) => {
+    process.stderr.write(`[Error] process.unhandled_rejection ${JSON.stringify({
+        message: reason?.message ?? String(reason),
+        stack: reason?.stack,
+    })}\n`);
+});
+process.on('uncaughtException', (err) => {
+    process.stderr.write(`[Error] process.uncaught_exception ${JSON.stringify({
+        message: err?.message,
+        stack: err?.stack,
+    })}\n`);
+    process.exit(1);
+});
+
+// Mongoose connection-level errors — these fire after initial connect, e.g.
+// when Atlas drops the pool. Different from connectDB() errors at startup.
+mongoose.connection.on('error', (err) => {
+    process.stderr.write(`[Error] mongo.connection_error ${JSON.stringify({
+        message: err?.message,
+    })}\n`);
+});
+mongoose.connection.on('disconnected', () => {
+    process.stderr.write(`[Error] mongo.disconnected {}\n`);
+});
 
 // ── Server startup ────────────────────────────────────────────────────────────
 // Connect to MongoDB before binding the port to avoid the race where the first

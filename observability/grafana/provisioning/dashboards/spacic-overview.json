@@ -148,6 +148,129 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "5xx errors (last 1h)",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 43 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background" },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"spacic-be\"} |= \"[Error] api.request_failed\" |~ \"\\\"status\\\":5\" [1h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "4xx errors (last 1h)",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 43 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"spacic-be\"} |= \"[Error] api.request_failed\" |~ \"\\\"status\\\":4\" [1h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Unhandled rejections (last 24h)",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 43 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background" },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"spacic-be\"} |~ \"process\\\\.(unhandled_rejection|uncaught_exception)\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Mongo disconnects (last 24h)",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 43 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"spacic-be\"} |~ \"mongo\\\\.(connection_error|disconnected)\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Error rate by status (per minute)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 49 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate({container_name=\"spacic-be\"} |= \"[Error] api.request_failed\" | json | __error__ = \"\" [1m]))",
+          "refId": "A",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "logs",
+      "title": "Recent errors (all sources)",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 57 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{container_name=~\"spacic-.*\"} |~ \"(?i)\\\\[error\\\\]|exception|unhandled\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "Top failing endpoints (last 24h)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 69 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (path, status) (count_over_time({container_name=\"spacic-be\"} |= \"[Error] api.request_failed\" | json [24h])))",
+          "refId": "A",
+          "instant": true
+        }
+      ]
     }
   ]
 }
