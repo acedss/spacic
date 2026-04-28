@@ -757,6 +757,12 @@ export const initializeSocket = (httpServer) => {
                 const song = await Song.findById(songId).select('title artist').lean();
                 if (!song) return socket.emit('room:error', { message: 'Song not found' });
 
+                // Reject if the song is already on the room's playlist — otherwise
+                // the eventual threshold breach is a no-op against $addToSet and the
+                // nomination becomes orphaned.
+                const alreadyQueued = await Room.exists({ _id: roomId, playlist: songId });
+                if (alreadyQueued) return socket.emit('room:error', { message: 'Song is already in the queue' });
+
                 const nominations = await socketManager.nominateSong(roomId, songId, userSession.userId, {
                     title: song.title, artist: song.artist, nominatorName: userSession.userName,
                 });
@@ -799,7 +805,16 @@ export const initializeSocket = (httpServer) => {
                         { _id: roomId, playlist: { $ne: songId } },
                         { $addToSet: { playlist: songId } }
                     );
-                    if (addRes.modifiedCount === 0) return; // already added by a peer vote
+                    if (addRes.modifiedCount === 0) {
+                        // Song is already on the playlist (peer vote raced us, or it
+                        // was nominated despite already being queued). Still clean up
+                        // the orphan nomination so the UI doesn't stick at "threshold
+                        // reached" forever.
+                        await socketManager.removeNomination(roomId, songId);
+                        const nominations = await socketManager.getQueueNominations(roomId);
+                        io.to(roomId).emit('room:nominations_update', { roomId, nominations });
+                        return;
+                    }
 
                     const playlist = await socketManager.getCachedPlaylist(roomId);
                     const song = await Song.findById(songId).lean();
