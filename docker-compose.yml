@@ -1,7 +1,10 @@
 x-loki-logging: &loki-logging
     driver: loki
     options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
+        # NOTE: Docker logging-driver plugins run as host processes, not containers,
+        # so they cannot resolve docker DNS names like `loki`. We push to the host's
+        # loopback address, where Loki's port 3100 is published below.
+        loki-url: "http://localhost:3100/loki/api/v1/push"
         loki-batch-size: "400"
         loki-retries: "3"
         mode: "non-blocking"
@@ -54,6 +57,10 @@ services:
         image: grafana/loki:3.0.0
         container_name: loki
         command: -config.file=/etc/loki/local-config.yaml
+        ports:
+            # Bind to 127.0.0.1 only — keeps Loki off the public network.
+            # Required so the host-level Loki logging driver can reach it.
+            - "127.0.0.1:3100:3100"
         volumes:
             - ./observability/loki-config.yaml:/etc/loki/local-config.yaml:ro
             - loki_data:/loki
