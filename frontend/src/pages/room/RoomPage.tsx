@@ -7,7 +7,6 @@ import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useRoomSession } from '@/providers/RoomSessionProvider';
 import * as roomService from '@/lib/roomService';
-import { cn } from '@/lib/utils';
 
 import { RoomPlayer } from './components/RoomPlayer';
 import { GuestAuthDialog } from './components/GuestAuthDialog';
