@@ -159,16 +159,19 @@ ENVEOF
                 }
                 echo 'Backend health check passed.'
 
-                // Loki readiness — confirms log ingest endpoint is up before app traffic
-                retry(5) {
-                    sleep 3
+                // Loki readiness — confirms log ingest endpoint is up before app traffic.
+                // Loki returns 503 from /ready until ring registration + WAL replay finish;
+                // first-boot can take 30–60s, so budget = 12 × 6s = 72s.
+                retry(12) {
+                    sleep 6
                     sh 'docker exec loki wget -qO- http://localhost:3100/ready | grep -q ready'
                 }
                 echo 'Loki ready.'
 
-                // Grafana liveness — confirms admin UI is serving
-                retry(5) {
-                    sleep 3
+                // Grafana liveness — confirms admin UI is serving.
+                // Provisioning datasource + dashboard adds ~10s on cold start; budget = 10 × 5s = 50s.
+                retry(10) {
+                    sleep 5
                     sh 'docker exec grafana wget -qO- http://localhost:3000/api/health | grep -q ok'
                 }
                 echo 'Grafana healthy.'
