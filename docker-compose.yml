@@ -1,3 +1,13 @@
+x-loki-logging: &loki-logging
+    driver: loki
+    options:
+        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-batch-size: "400"
+        loki-retries: "3"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
+        keep-file: "true"
+
 services:
     spacic-be:
         build: ./backend
@@ -11,6 +21,7 @@ services:
         depends_on:
             spacic-recsys:
                 condition: service_healthy
+        logging: *loki-logging
 
     spacic-fe:
         build:
@@ -23,6 +34,7 @@ services:
         networks:
             - web_gateway
         restart: always
+        logging: *loki-logging
 
     spacic-recsys:
         build: ./recsys
@@ -36,9 +48,53 @@ services:
         # Without this volume, every `docker compose up` discards all training history.
         volumes:
             - recsys_mlflow:/app/mlruns
+        logging: *loki-logging
+
+    loki:
+        image: grafana/loki:3.0.0
+        container_name: loki
+        command: -config.file=/etc/loki/local-config.yaml
+        volumes:
+            - ./observability/loki-config.yaml:/etc/loki/local-config.yaml:ro
+            - loki_data:/loki
+        networks:
+            - web_gateway
+        restart: always
+        # Local json-file driver for Loki itself — never log Loki to Loki (recursion).
+        logging:
+            driver: json-file
+            options:
+                max-size: "10m"
+                max-file: "3"
+
+    grafana:
+        image: grafana/grafana:11.0.0
+        container_name: grafana
+        environment:
+            - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+            - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme}
+            - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-https://grafana.aceds.space}
+            - GF_USERS_ALLOW_SIGN_UP=false
+            - GF_AUTH_ANONYMOUS_ENABLED=false
+            - GF_ANALYTICS_REPORTING_ENABLED=false
+        volumes:
+            - grafana_data:/var/lib/grafana
+            - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+        networks:
+            - web_gateway
+        restart: always
+        depends_on:
+            - loki
+        logging:
+            driver: json-file
+            options:
+                max-size: "10m"
+                max-file: "3"
 
 volumes:
     recsys_mlflow:
+    loki_data:
+    grafana_data:
 
 networks:
     web_gateway:

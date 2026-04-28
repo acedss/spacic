@@ -25,6 +25,9 @@ pipeline {
 
         // RecSys microservice internal auth key
         RECSYS_KEY     = credentials('RECSYS_INTERNAL_API_KEY')
+
+        // Observability — Grafana admin login
+        GRAFANA_PWD    = credentials('GRAFANA_ADMIN_PASSWORD')
     }
 
     stages {
@@ -127,6 +130,9 @@ ENVEOF
 VITE_API_URL=https://spapi.aceds.space/api
 VITE_SOCKET_URL=https://spapi.aceds.space
 VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PK}
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=${GRAFANA_PWD}
+GRAFANA_ROOT_URL=https://grafana.aceds.space
 ENVEOF
 
                 docker compose build --parallel
@@ -152,6 +158,20 @@ ENVEOF
                     sh 'docker exec spacic-be wget -qO- http://localhost:4000/health | grep -q ok'
                 }
                 echo 'Backend health check passed.'
+
+                // Loki readiness — confirms log ingest endpoint is up before app traffic
+                retry(5) {
+                    sleep 3
+                    sh 'docker exec loki wget -qO- http://localhost:3100/ready | grep -q ready'
+                }
+                echo 'Loki ready.'
+
+                // Grafana liveness — confirms admin UI is serving
+                retry(5) {
+                    sleep 3
+                    sh 'docker exec grafana wget -qO- http://localhost:3000/api/health | grep -q ok'
+                }
+                echo 'Grafana healthy.'
             }
         }
     }
