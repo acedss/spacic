@@ -761,7 +761,13 @@ export const initializeSocket = (httpServer) => {
                 // the eventual threshold breach is a no-op against $addToSet and the
                 // nomination becomes orphaned.
                 const alreadyQueued = await Room.exists({ _id: roomId, playlist: songId });
-                if (alreadyQueued) return socket.emit('room:error', { message: 'Song is already in the queue' });
+                if (alreadyQueued) {
+                    // Self-heal a stale client: push the authoritative playlist back
+                    // to just this socket so the user sees the song appear immediately.
+                    const cachedPlaylist = await socketManager.getCachedPlaylist(roomId);
+                    if (cachedPlaylist) socket.emit('room:playlist_updated', { playlist: cachedPlaylist });
+                    return socket.emit('room:error', { message: 'Song is already in the queue — your view has been refreshed' });
+                }
 
                 const nominations = await socketManager.nominateSong(roomId, songId, userSession.userId, {
                     title: song.title, artist: song.artist, nominatorName: userSession.userName,

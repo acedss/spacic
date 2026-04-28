@@ -442,11 +442,12 @@ export const useRoomSocket = (roomId: string) => {
         socket.on('room:playlist_updated', ({ playlist }: { playlist: Array<{ _id: string; title: string; artist: string; duration: number; imageUrl: string; s3Key: string; albumId: string | null }> }) => {
             const current = useRoomStore.getState().room;
             if (!current) return;
-            const currentIdx = usePlayerStore.getState().currentSongIndex;
-            const oldPlaylist = current.playlist;
-            const updated = playlist.map((s, i) => ({
+            // Preserve presigned audioUrls by song ID, not index — when the creator
+            // reorders or adds songs, indexes shift but song IDs are stable.
+            const audioById = new Map(current.playlist.map((s) => [s._id, s.audioUrl]));
+            const updated = playlist.map((s) => ({
                 ...s,
-                audioUrl: (i === currentIdx && i < oldPlaylist.length) ? oldPlaylist[i].audioUrl : '',
+                audioUrl: audioById.get(s._id) ?? '',
             }));
             roomStore.setRoom({ ...current, playlist: updated });
         });
