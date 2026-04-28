@@ -38,11 +38,11 @@ export const sendRequest = async (clerkId, targetUserId) => {
     const me = await getUserByClerkId(clerkId);
 
     if (me._id.toString() === targetUserId) {
-        throw new Error('Cannot send a friend request to yourself');
+        throw Object.assign(new Error('Cannot send a friend request to yourself'), { statusCode: 400 });
     }
 
     const target = await User.findById(targetUserId).select('_id fullName imageUrl clerkId');
-    if (!target) throw new Error('User not found');
+    if (!target) throw Object.assign(new Error('User not found'), { statusCode: 404 });
 
     // Check all existing relationships in one query
     const existing = await Friendship.findOne({
@@ -53,12 +53,12 @@ export const sendRequest = async (clerkId, targetUserId) => {
     });
 
     if (existing) {
-        if (existing.status === 'accepted') throw new Error('Already friends');
+        if (existing.status === 'accepted') throw Object.assign(new Error('Already friends'), { statusCode: 409 });
         if (existing.status === 'pending') {
             if (existing.requester.toString() === me._id.toString()) {
-                throw new Error('Friend request already sent');
+                throw Object.assign(new Error('Friend request already sent'), { statusCode: 409 });
             }
-            throw new Error('This user already sent you a request — accept it instead');
+            throw Object.assign(new Error('This user already sent you a request — accept it instead'), { statusCode: 409 });
         }
         // declined → allow re-request by updating the existing doc
         existing.status  = 'pending';
