@@ -241,7 +241,11 @@ export const NominationsPanel = ({ onNominate, onVote, onRequestSong }: Props) =
                             <div className="max-h-[240px] overflow-y-auto thin-scrollbar divide-y divide-white/5">
                             {results.map((song) => (
                                 <button key={song._id}
-                                    onClick={() => { onNominate(song._id); setResults([]); setSearch(''); setShowSearch(false); }}
+                                    onClick={() => {
+                                        onNominate(song._id);
+                                        setResults([]); setSearch(''); setShowSearch(false);
+                                        setTab('votes');
+                                    }}
                                     className="flex items-center gap-2.5 w-full px-3 py-2 hover:bg-white/5 text-left transition-colors">
                                     {song.imageUrl ? (
                                         <img src={song.imageUrl} className="w-8 h-8 rounded-md object-cover shrink-0" alt="" />

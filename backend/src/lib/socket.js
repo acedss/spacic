@@ -766,13 +766,52 @@ export const initializeSocket = (httpServer) => {
                     // to just this socket so the user sees the song appear immediately.
                     const cachedPlaylist = await socketManager.getCachedPlaylist(roomId);
                     if (cachedPlaylist) socket.emit('room:playlist_updated', { playlist: cachedPlaylist });
-                    return socket.emit('room:error', { message: 'Song is already in the queue — your view has been refreshed' });
+                    // Self-heal silently: the refreshed playlist already tells the user.
+                    return;
                 }
 
                 const nominations = await socketManager.nominateSong(roomId, songId, userSession.userId, {
                     title: song.title, artist: song.artist, nominatorName: userSession.userName,
                 });
                 if (!nominations) return socket.emit('room:error', { message: 'Song already nominated' });
+
+                // If the nominator's auto-vote already meets the threshold (typical for
+                // small rooms where needed=1), promote immediately — otherwise the
+                // nomination is stuck because the nominator can't vote for it again.
+                const roomSession = await socketManager.getRoomById(roomId);
+                const roomDoc = await Room.findById(roomId).select('voteThresholdPercent');
+                const threshold = roomDoc?.voteThresholdPercent ?? 50;
+                const listenerCount = roomSession?.listenerCount || 1;
+                const needed = Math.max(1, Math.ceil(listenerCount * threshold / 100));
+
+                if (1 >= needed) {
+                    const addRes = await Room.updateOne(
+                        { _id: roomId, playlist: { $ne: songId } },
+                        { $addToSet: { playlist: songId } },
+                    );
+                    await socketManager.removeNomination(roomId, songId);
+                    const cleared = await socketManager.getQueueNominations(roomId);
+                    io.to(roomId).emit('room:nominations_update', { roomId, nominations: cleared });
+
+                    if (addRes.modifiedCount > 0) {
+                        const playlist = await socketManager.getCachedPlaylist(roomId);
+                        const fullSong = await Song.findById(songId).lean();
+                        let updatedPlaylist = playlist;
+                        if (playlist && fullSong) {
+                            updatedPlaylist = [...playlist, {
+                                _id: fullSong._id.toString(), title: fullSong.title, artist: fullSong.artist,
+                                duration: fullSong.duration, imageUrl: fullSong.imageUrl || '',
+                                s3Key: fullSong.s3Key, albumId: fullSong.albumId?.toString() ?? null,
+                            }];
+                            await socketManager.cacheRoomPlaylist(roomId, updatedPlaylist);
+                        }
+                        if (updatedPlaylist) io.to(roomId).emit('room:playlist_updated', { playlist: updatedPlaylist });
+                        io.to(roomId).emit('room:queue_song_added', { roomId, songId, title: song.title });
+                        emitSystemMessage(io, roomId, `"${song.title}" was added to the queue`);
+                        logEvent('queue.song_added', { roomId, songId, title: song.title, votes: 1, viaNominate: true });
+                    }
+                    return;
+                }
 
                 io.to(roomId).emit('room:nominations_update', { roomId, nominations });
                 emitSystemMessage(io, roomId, `${userSession.userName} nominated "${song.title}"`);

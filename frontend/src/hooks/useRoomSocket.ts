@@ -587,7 +587,15 @@ export const useRoomSocket = (roomId: string) => {
         });
 
         socket.on('room:error', ({ message }: { message: string }) => {
+            // Soft errors: already-queued / duplicate-vote — backend self-heals,
+            // so just nudge the user with a toast instead of the page-level error UI.
+            const isSoft = /already in the queue|already voted/i.test(message);
+            if (isSoft) {
+                toast.info(message, { id: 'room-soft-error', duration: 3000 });
+                return;
+            }
             console.error('[Socket] << RECV room:error |', message);
+            toast.error(message, { duration: 4000 });
             roomStore.setError(message);
         });
 
