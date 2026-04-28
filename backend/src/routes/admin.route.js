@@ -3,13 +3,23 @@ import multer from 'multer';
 import { requireAdmin, protectRoute } from '../middlewares/auth.middleware.js';
 import * as admin from '../controllers/admin.controller.js';
 import * as recsys from '../controllers/recsys.controller.js';
+import * as alerts from '../controllers/adminAlert.controller.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 const router = Router();
 
 router.get('/check', protectRoute, admin.checkAdmin);
+
+// Grafana webhook — uses shared-secret token, NOT Clerk auth, so it must
+// be registered before the requireAdmin middleware kicks in below.
+router.post('/alerts/grafana-webhook', alerts.verifyGrafanaToken, alerts.ingestGrafanaWebhook);
+
 router.use(protectRoute, requireAdmin);
+
+// Admin alerts list/ack (Clerk-protected)
+router.get('/alerts',           alerts.listAlerts);
+router.patch('/alerts/:id/ack', alerts.acknowledgeAlert);
 
 // Plans
 router.get('/plans',            admin.getPlans);

@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
     LayoutDashboard, CreditCard, Users, Music2, Package,
-    Loader, TrendingUp, BrainCircuit, RefreshCw, Zap,
+    Loader, TrendingUp, BrainCircuit, RefreshCw, Zap, Bell,
 } from 'lucide-react';
 import { AnalyticsCtx, type AnalyticsGranularity, type AnalyticsData } from './components/AnalyticsContext';
 import { toDate, toDateTimeInputValue } from './components/admin-shared';
@@ -18,9 +18,11 @@ import { CatalogSection } from './components/sections/CatalogSection';
 import { GrowthSection } from './components/sections/GrowthSection';
 import { RecSysSection } from './components/sections/RecSysSection';
 import { PlatformConfigSection } from './components/sections/PlatformConfigSection';
+import { AlertsSection } from './components/sections/AlertsSection';
 
 const NAV = [
     { id: 'overview', label: 'Overview',        icon: LayoutDashboard },
+    { id: 'alerts',   label: 'Alerts',          icon: Bell },
     { id: 'plans',    label: 'Plans',           icon: CreditCard },
     { id: 'topup',    label: 'Top-up Packages', icon: Package },
     { id: 'users',    label: 'Users',           icon: Users },
@@ -178,6 +180,7 @@ export const AdminPage = () => {
 
                 <div className="px-4 sm:px-6 lg:px-10 py-6 sm:py-8 lg:py-10">
                     <div className="max-w-[1400px] mx-auto space-y-6 sm:space-y-8">
+                        {section === 'alerts'   && <AlertsSection />}
                         {section === 'overview' && <OverviewSection />}
                         {section === 'plans'    && <PlansSection />}
                         {section === 'topup'    && <TopupSection />}

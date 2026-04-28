@@ -28,6 +28,9 @@ pipeline {
 
         // Observability — Grafana admin login
         GRAFANA_PWD    = credentials('GRAFANA_ADMIN_PASSWORD')
+        // Shared secret used by Grafana's webhook contact point to POST alerts
+        // to /api/admin/alerts/grafana-webhook.
+        GRAFANA_WH     = credentials('GRAFANA_WEBHOOK_TOKEN')
     }
 
     stages {
@@ -96,6 +99,7 @@ ALLOWED_ORIGINS=https://spacic.aceds.space
 FRONTEND_URL=https://spacic.aceds.space
 RECSYS_URL=http://spacic-recsys:8000
 RECSYS_INTERNAL_API_KEY=${RECSYS_KEY}
+GRAFANA_WEBHOOK_TOKEN=${GRAFANA_WH}
 ENVEOF
                 """
 
