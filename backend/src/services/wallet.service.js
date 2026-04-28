@@ -9,6 +9,7 @@ import { Transaction } from "../models/transaction.model.js";
 import { TopupPackage } from "../models/topupPackage.model.js";
 import { redis } from "../lib/redis.js";
 import { getConfig } from "../models/platformConfig.model.js";
+import { event as logEvent } from "../lib/log.js";
 
 // ── Top-up packages (DB-driven, Redis-cached) ─────────────────────────────────
 // DB fields:  packageId, name, priceUsd (cents), credits, bonusPercent
@@ -373,6 +374,11 @@ export const donateToRoom = async (clerkId, roomId, amount, idempotencyKey) => {
             }], { session });
 
             console.log(`[Donation] Goal reached — paid out ${payoutAmount} credits to creator ${creator?._id}`);
+            logEvent("donation.goal_reached", {
+                roomId,
+                creatorId: creator?._id?.toString(),
+                payoutAmount,
+            });
             goalReached = true;
         }
 
@@ -386,6 +392,14 @@ export const donateToRoom = async (clerkId, roomId, amount, idempotencyKey) => {
     });
 
     session.endSession();
+
+    logEvent("tip.sent", {
+        roomId,
+        clerkId,
+        amount,
+        goalReached: result.goalReached,
+    });
+
     return result;
 };
 

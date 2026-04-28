@@ -17,6 +17,7 @@ import { socketManager } from "../lib/socket-manager.js";
 import { getIo } from "../lib/io.js";
 import { createNotification } from "../controllers/notification.controller.js";
 import { getPresignedUrl } from "./s3.services.js";
+import { event as logEvent } from "../lib/log.js";
 
 // ── Cover image: key → presigned URL ─────────────────────────────────────────
 // S3 bucket is private; coverImageUrl stores the key, not a public URL.
@@ -440,6 +441,13 @@ export const goLive = async (roomId, clerkId) => {
         }
     }
 
+    logEvent("room.live", {
+        roomId: room._id.toString(),
+        creatorId: user._id.toString(),
+        title: room.title,
+        playlistLen: room.playlist.length,
+    });
+
     return {
         ...room.toObject(),
         status: "live",
@@ -637,6 +645,12 @@ export const joinRoom = async (roomId, clerkId) => {
 
     const session = await socketManager.getRoomById(roomId);
     const playback = await socketManager.getRoomPlaybackState(roomId);
+
+    logEvent("room.joined", {
+        roomId,
+        userId: user._id.toString(),
+        listenerCount: session?.listenerCount ?? 1,
+    });
 
     return {
         room: room.toObject(),
