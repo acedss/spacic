@@ -2,7 +2,7 @@ import { useEffect, useCallback, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { axiosInstance } from '@/lib/axios';
-import { Loader, Music2, Radio, WifiOff } from 'lucide-react';
+import { Loader, Radio, WifiOff } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useRoomSession } from '@/providers/RoomSessionProvider';
@@ -165,12 +165,6 @@ export const RoomPage = () => {
                         )}
 
                         <div className="rounded-2xl ring-1 ring-white/10 glass overflow-hidden flex-1 min-h-[320px] flex flex-col">
-                            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b hair shrink-0">
-                                <div className="flex items-center gap-2">
-                                    <Music2 className="size-3.5" style={{ color: 'var(--fg-2)' }} />
-                                    <span className="mono text-[9px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>Up next · Queue</span>
-                                </div>
-                            </div>
                             <div className="flex-1 min-h-0">
                                 <NominationsPanel
                                     onNominate={nominateSong}
