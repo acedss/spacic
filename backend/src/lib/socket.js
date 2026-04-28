@@ -773,6 +773,7 @@ export const initializeSocket = (httpServer) => {
                 const nominations = await socketManager.nominateSong(roomId, songId, userSession.userId, {
                     title: song.title, artist: song.artist, nominatorName: userSession.userName,
                 });
+                console.log('[room:nominate_song]', { roomId, songId, userId: userSession.userId, nominationsCount: nominations?.length, nominations });
                 if (!nominations) return socket.emit('room:error', { message: 'Song already nominated' });
 
                 // If the nominator's auto-vote already meets the threshold (typical for
@@ -813,10 +814,11 @@ export const initializeSocket = (httpServer) => {
                     return;
                 }
 
+                console.log('[room:nominate_song] emit room:nominations_update', { roomId, count: nominations.length, needed, listenerCount });
                 io.to(roomId).emit('room:nominations_update', { roomId, nominations });
                 emitSystemMessage(io, roomId, `${userSession.userName} nominated "${song.title}"`);
             } catch (error) {
-                console.error('[room:nominate_song]', error.message);
+                console.error('[room:nominate_song] ERROR', error.message, error.stack);
                 socket.emit('room:error', { message: 'Nomination failed' });
             }
         });

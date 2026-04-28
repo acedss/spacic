@@ -525,6 +525,7 @@ export const useRoomSocket = (roomId: string) => {
         });
 
         socket.on('room:nominations_update', ({ nominations }: { nominations: Nomination[] }) => {
+            console.log('[Socket] << RECV room:nominations_update | count =', nominations?.length, nominations);
             roomStore.setNominations(nominations);
         });
 
