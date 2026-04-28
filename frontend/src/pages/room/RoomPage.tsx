@@ -44,7 +44,7 @@ export const RoomPage = () => {
         const type = searchParams.get('type') ?? 'link';
         if (!ref || !roomId) return;
         axiosInstance.post(`/rooms/${roomId}/referral`, { ref, type }).catch(() => { });
-         
+
     }, [roomId]);
 
     useEffect(() => {
@@ -70,7 +70,7 @@ export const RoomPage = () => {
             })
             .catch((err) => roomStore.setError(err.message))
             .finally(() => roomStore.setLoading(false));
-         
+
     }, [roomId, isSignedIn]);
 
     useEffect(() => {
