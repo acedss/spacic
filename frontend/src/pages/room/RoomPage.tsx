@@ -2,7 +2,7 @@ import { useEffect, useCallback, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import { axiosInstance } from '@/lib/axios';
-import { ChevronDown, Loader, Music2, Radio, WifiOff } from 'lucide-react';
+import { Loader, Music2, Radio, WifiOff } from 'lucide-react';
 import { useRoomStore } from '@/stores/useRoomStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useRoomSession } from '@/providers/RoomSessionProvider';
@@ -30,7 +30,6 @@ export const RoomPage = () => {
 
     const [guestDialogOpen, setGuestDialogOpen] = useState(false);
     const [rightTab, setRightTab] = useState<RightTab>('chat');
-    const [queueOpen, setQueueOpen] = useState(() => window.innerWidth >= 768);
     const [copied, setCopied] = useState(false);
     const [listenerHistory, setListenerHistory] = useState<number[]>([]);
     const listenerHistoryRef = useRef<number[]>([]);
@@ -165,25 +164,20 @@ export const RoomPage = () => {
                             />
                         )}
 
-                        <div className={cn('rounded-2xl ring-1 ring-white/10 glass overflow-hidden', queueOpen ? 'flex-1 min-h-[280px]' : 'flex-shrink-0')}>
-                            <button
-                                onClick={() => setQueueOpen(o => !o)}
-                                className="flex items-center justify-between w-full px-5 pt-4 pb-3 border-b hair hover:bg-white/4 transition-colors text-left">
+                        <div className="rounded-2xl ring-1 ring-white/10 glass overflow-hidden flex-1 min-h-[320px] flex flex-col">
+                            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b hair shrink-0">
                                 <div className="flex items-center gap-2">
                                     <Music2 className="size-3.5" style={{ color: 'var(--fg-2)' }} />
                                     <span className="mono text-[9px] uppercase tracking-widest" style={{ color: 'var(--fg-3)' }}>Up next · Queue</span>
                                 </div>
-                                <ChevronDown className={cn('size-3.5 transition-transform', queueOpen ? 'rotate-180' : '')} style={{ color: 'var(--fg-3)' }} />
-                            </button>
-                            {queueOpen && (
-                                <div className="overflow-auto">
-                                    <NominationsPanel
-                                        onNominate={nominateSong}
-                                        onVote={voteForSong}
-                                        onRequestSong={(req) => sendChat(`🎵 Song request: ${req}`)}
-                                    />
-                                </div>
-                            )}
+                            </div>
+                            <div className="flex-1 min-h-0">
+                                <NominationsPanel
+                                    onNominate={nominateSong}
+                                    onVote={voteForSong}
+                                    onRequestSong={(req) => sendChat(`🎵 Song request: ${req}`)}
+                                />
+                            </div>
                         </div>
                     </div>
 
