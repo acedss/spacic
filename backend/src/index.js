@@ -150,7 +150,6 @@ app.use('/api/friends/search', rateLimit({
     validate: { keyGeneratorIpFallback: false },
     message: { message: 'Too many searches — slow down' },
 }));
-app.use('api/')
 
 app.use(express.json());
 app.use(clerkMiddleware());
