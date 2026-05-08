@@ -57,8 +57,15 @@ const songSchema = new mongoose.Schema({
     skipCount:   { type: Number, default: 0 },
 }, { timestamps: true });
 
-// Indexes for admin search/filter
-songSchema.index({ title: 'text', artist: 'text', tags: 'text' });
+// Indexes for admin search/filter.
+// `language_override` is set to a non-existent field so MongoDB does NOT
+// treat the user-facing `language` metadata field (ISO 639-1 like 'en')
+// as a per-document stemmer override — empty/unsupported values would
+// otherwise crash inserts with "language override unsupported".
+songSchema.index(
+    { title: 'text', artist: 'text', tags: 'text' },
+    { default_language: 'english', language_override: 'textLanguage' }
+);
 songSchema.index({ artistId: 1 });
 songSchema.index({ albumId: 1 });
 songSchema.index({ genre: 1 });

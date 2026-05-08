@@ -22,7 +22,7 @@ export const SocialSocketProvider = ({ children }: { children: ReactNode }) => {
         if (!userId) return
 
         const s = io(SOCKET_URL, {
-            auth:       { clerkId: userId },
+            auth: { clerkId: userId },
             transports: ['websocket', 'polling'],
         })
         setSocket(s)
@@ -41,6 +41,10 @@ export const SocialSocketProvider = ({ children }: { children: ReactNode }) => {
                 duration: 8000,
             })
         })
+        s.on('test_feat', () => {
+            toast('Received test_feat event!')
+        })
+
 
         return () => {
             s.disconnect()

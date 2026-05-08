@@ -39,9 +39,9 @@ const SortHeader = ({ label, active, dir, onClick }: {
 );
 
 export const SongsSection = () => {
-    const [songs, setSongs]       = useState<Song[]>([]);
+    const [songs, setSongs] = useState<Song[]>([]);
     const [detailSongId, setDetailSongId] = useState<string | null>(null);
-    const [loading, setLoading]   = useState(true);
+    const [loading, setLoading] = useState(true);
     const [songTotal, setSongTotal] = useState(0);
     const [songPage, setSongPage] = useState(1);
     const [songPages, setSongPages] = useState(1);
@@ -59,8 +59,8 @@ export const SongsSection = () => {
     const [artistOpts, setArtistOpts] = useState<{ _id: string; name: string }[]>([]);
     const [albumOpts, setAlbumOpts] = useState<{ _id: string; title: string }[]>([]);
     useEffect(() => {
-        axiosInstance.get('/admin/artists').then(r => setArtistOpts(r.data.data ?? [])).catch(() => {});
-        axiosInstance.get('/admin/albums').then(r => setAlbumOpts(r.data.data ?? [])).catch(() => {});
+        axiosInstance.get('/admin/artists').then(r => setArtistOpts(r.data.data ?? [])).catch(() => { });
+        axiosInstance.get('/admin/albums').then(r => setAlbumOpts(r.data.data ?? [])).catch(() => { });
     }, []);
 
     const fetchSongs = useCallback(async () => {
@@ -123,6 +123,7 @@ export const SongsSection = () => {
             toast.error(getAxiosErrorMessage(error, 'Delete failed'));
         }
     };
+    // const editSong = ()
 
     const bulkDelete = async () => {
         const ids = Array.from(selectedIds);
@@ -179,15 +180,16 @@ export const SongsSection = () => {
                 description="Upload tracks, manage metadata, and monitor playback performance."
                 actions={<AddSongDialog onUploaded={refreshAfterUpload} artists={artistOpts} albums={albumOpts} />}
             />
+            <div>Eff</div>
 
             {!anLoading && an && (
                 <div className="space-y-4">
                     <StatGrid className="lg:grid-cols-5">
-                        <StatTile label="Plays"          value={summary.plays.toLocaleString()} accent="zinc" />
-                        <StatTile label="Streams"        value={summary.streams.toLocaleString()} accent="violet" />
-                        <StatTile label="Avg /play"      value={avgStreamsPerPlay} accent="emerald" />
-                        <StatTile label="Skip rate"      value={`${overallSkipRate}%`} accent="amber" />
-                        <StatTile label="Active songs"   value={summary.activeSongs.toLocaleString()} accent="sky" />
+                        <StatTile label="Plays" value={summary.plays.toLocaleString()} accent="zinc" />
+                        <StatTile label="Streams" value={summary.streams.toLocaleString()} accent="violet" />
+                        <StatTile label="Avg /play" value={avgStreamsPerPlay} accent="emerald" />
+                        <StatTile label="Skip rate" value={`${overallSkipRate}%`} accent="amber" />
+                        <StatTile label="Active songs" value={summary.activeSongs.toLocaleString()} accent="sky" />
                     </StatGrid>
                     <p className="text-xs" style={{ color: 'var(--fg-3)' }}>
                         Song analytics range: {songAnalytics ? `${fmtDateTimeInput(songAnalytics.from)} → ${fmtDateTimeInput(songAnalytics.to)} (${songAnalytics.granularity})` : `${fmtDateTimeInput(an.from)} → ${fmtDateTimeInput(an.to)} (${an.granularity})`}

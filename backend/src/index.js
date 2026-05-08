@@ -6,6 +6,10 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import mongoose from 'mongoose';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 import { connectDB } from "./lib/db.js";
 import { redis } from "./lib/redis.js";
@@ -56,7 +60,13 @@ const httpServer = createServer(app);
 // Initialize Socket.io
 initializeSocket(httpServer);
 
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
+// Serve static cover art at /covers/* — populated by scripts/uploadSongsToS3.js
+app.use('/covers', express.static(path.join(__dirname, '..', 'public', 'covers'), {
+    maxAge: '7d',
+    immutable: true,
+}));
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:5174').split(',').map(s => s.trim());
 
@@ -140,6 +150,7 @@ app.use('/api/friends/search', rateLimit({
     validate: { keyGeneratorIpFallback: false },
     message: { message: 'Too many searches — slow down' },
 }));
+app.use('api/')
 
 app.use(express.json());
 app.use(clerkMiddleware());

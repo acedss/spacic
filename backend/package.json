@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "seed": "node src/seed.js",
+    "seed:demo": "node src/seedDemo.js",
     "sync-prices": "node src/scripts/syncStripePrices.js",
     "setup-stripe": "node src/scripts/setupStripe.js",
     "fix:user-indexes": "node src/scripts/fixUserIndexes.js",
@@ -43,6 +44,8 @@
     "fast-xml-parser": "5.3.4"
   },
   "devDependencies": {
+    "music-metadata": "^11.12.3",
+    "sharp": "^0.34.5",
     "vitest": "^3.2.4"
   }
 }

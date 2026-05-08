@@ -11,6 +11,21 @@ const internalHeaders = {
     'x-internal-key': INTERNAL_KEY,
 };
 
+const ROOM_SELECT = 'title description status coverImageUrl tags favoriteCount stats.totalListeners creatorId';
+
+// When RecSys is offline or has no training data, surface popular live rooms so
+// /discover never looks empty. Sorted by listenerCount then favoriteCount —
+// matches what a "trending" feed would compute organically.
+const popularRoomsFallback = async (limit) => {
+    const docs = await Room.find({ status: 'live' })
+        .sort({ 'stats.totalListeners': -1, favoriteCount: -1, createdAt: -1 })
+        .limit(limit)
+        .select(ROOM_SELECT)
+        .populate('creatorId', 'fullName imageUrl')
+        .lean();
+    return docs;
+};
+
 // Fetch raw roomIds from RecSys and enrich with Room documents.
 // Re-sorts to preserve the RecSys ranking order.
 const fetchAndEnrich = async (mongoUserId, limit) => {
@@ -23,10 +38,13 @@ const fetchAndEnrich = async (mongoUserId, limit) => {
     const data = await response.json();
     const { roomIds = [], source, generatedAt } = data;
 
-    if (!roomIds.length) return { rooms: [], source: source ?? 'fallback', generatedAt };
+    if (!roomIds.length) {
+        const rooms = await popularRoomsFallback(limit);
+        return { rooms, source: 'fallback', generatedAt };
+    }
 
     const docs = await Room.find({ _id: { $in: roomIds } })
-        .select('title description status coverImageUrl tags favoriteCount stats.totalListeners creatorId')
+        .select(ROOM_SELECT)
         .populate('creatorId', 'fullName imageUrl')
         .lean();
 
@@ -87,7 +105,8 @@ export const getMyRecs = async (req, res, next) => {
         res.json({ success: true, data: result });
     } catch (err) {
         if (err.name === 'TimeoutError' || err.code === 'ECONNREFUSED') {
-            return res.json({ success: true, data: { rooms: [], source: 'offline', generatedAt: null } });
+            const rooms = await popularRoomsFallback(Math.min(parseInt(req.query.limit) || 20, 50));
+            return res.json({ success: true, data: { rooms, source: 'offline', generatedAt: null } });
         }
         next(err);
     }
@@ -102,7 +121,8 @@ export const getUserRecs = async (req, res, next) => {
         res.json({ success: true, data: result });
     } catch (err) {
         if (err.name === 'TimeoutError' || err.code === 'ECONNREFUSED') {
-            return res.json({ success: true, data: { rooms: [], source: 'offline', generatedAt: null } });
+            const rooms = await popularRoomsFallback(Math.min(parseInt(req.query.limit) || 20, 50));
+            return res.json({ success: true, data: { rooms, source: 'offline', generatedAt: null } });
         }
         next(err);
     }

@@ -1,0 +1,219 @@
+[
+  {
+    "title": "A Kiss To Build A Dream On",
+    "artist": "Louis Armstrong",
+    "duration": 183,
+    "s3Key": "songs/A_Kiss_To_Build_A_Dream_On.mp3",
+    "imageUrl": "http://localhost:4000/covers/A_Kiss_To_Build_A_Dream_On.jpg"
+  },
+  {
+    "title": "All That I Know",
+    "artist": "ZUHAIR, Kobe White",
+    "duration": 229,
+    "s3Key": "songs/All_That_I_Know.mp3",
+    "imageUrl": "http://localhost:4000/covers/All_That_I_Know.jpg"
+  },
+  {
+    "title": "Bobby McFerrin - Don't Worry Be Happy (Official Music Video)",
+    "artist": "The Real Bobby McFerrin",
+    "duration": 232,
+    "s3Key": "songs/Bobby_McFerrin_-_Don_t_Worry_Be_Happy_Official_Music_Video.mp3",
+    "imageUrl": "http://localhost:4000/covers/Bobby_McFerrin_-_Don_t_Worry_Be_Happy_Official_Music_Video.jpg"
+  },
+  {
+    "title": "Bruno Mars - When I Was Your Man (Official Music Video)",
+    "artist": "Bruno Mars",
+    "duration": 234,
+    "s3Key": "songs/Bruno_Mars_-_When_I_Was_Your_Man_Official_Music_Video.mp3",
+    "imageUrl": "http://localhost:4000/covers/Bruno_Mars_-_When_I_Was_Your_Man_Official_Music_Video.jpg"
+  },
+  {
+    "title": "Bruno Mars, Anderson .Paak, Silk Sonic - Leave the Door Open [Official Video]",
+    "artist": "Bruno Mars",
+    "duration": 248,
+    "s3Key": "songs/Bruno_Mars_Anderson_.Paak_Silk_Sonic_-_Leave_the_Door_Open_Official_Video.mp3",
+    "imageUrl": "http://localhost:4000/covers/Bruno_Mars_Anderson_.Paak_Silk_Sonic_-_Leave_the_Door_Open_Official_Video.jpg"
+  },
+  {
+    "title": "Bruno Mars, Anderson .Paak, Silk Sonic - Skate [Official Music Video]",
+    "artist": "Bruno Mars",
+    "duration": 203,
+    "s3Key": "songs/Bruno_Mars_Anderson_.Paak_Silk_Sonic_-_Skate_Official_Music_Video.mp3",
+    "imageUrl": "http://localhost:4000/covers/Bruno_Mars_Anderson_.Paak_Silk_Sonic_-_Skate_Official_Music_Video.jpg"
+  },
+  {
+    "title": "Durand Jones & The Indications - Flower Moon (Official Video)",
+    "artist": "Durand Jones & The Indications",
+    "duration": 297,
+    "s3Key": "songs/Durand_Jones_The_Indications_-_Flower_Moon_Official_Video.mp3",
+    "imageUrl": "http://localhost:4000/covers/Durand_Jones_The_Indications_-_Flower_Moon_Official_Video.jpg"
+  },
+  {
+    "title": "Ed Sheeran - Thinking Out Loud (Official Music Video)",
+    "artist": "Ed Sheeran",
+    "duration": 289,
+    "s3Key": "songs/Ed_Sheeran_-_Thinking_Out_Loud_Official_Music_Video.mp3",
+    "imageUrl": "http://localhost:4000/covers/Ed_Sheeran_-_Thinking_Out_Loud_Official_Music_Video.jpg"
+  },
+  {
+    "title": "Edward Sharpe & The Magnetic Zeros - Home (Official Video)",
+    "artist": "Rough Trade Records",
+    "duration": 307,
+    "s3Key": "songs/Edward_Sharpe_The_Magnetic_Zeros_-_Home_Official_Video.mp3",
+    "imageUrl": "http://localhost:4000/covers/Edward_Sharpe_The_Magnetic_Zeros_-_Home_Official_Video.jpg"
+  },
+  {
+    "title": "Frank Sinatra - Fly Me To The Moon (Audio) ft. Count Basie And His Orchestra",
+    "artist": "Frank Sinatra",
+    "duration": 147,
+    "s3Key": "songs/Frank_Sinatra_-_Fly_Me_To_The_Moon_Audio_ft._Count_Basie_And_His_Orchestra.mp3",
+    "imageUrl": "http://localhost:4000/covers/Frank_Sinatra_-_Fly_Me_To_The_Moon_Audio_ft._Count_Basie_And_His_Orchestra.jpg"
+  },
+  {
+    "title": "Frankie Valli - Can't Take My Eyes Off You (Official Audio)",
+    "artist": "RHINO",
+    "duration": 202,
+    "s3Key": "songs/Frankie_Valli_-_Can_t_Take_My_Eyes_Off_You_Official_Audio.mp3",
+    "imageUrl": "http://localhost:4000/covers/Frankie_Valli_-_Can_t_Take_My_Eyes_Off_You_Official_Audio.jpg"
+  },
+  {
+    "title": "GIVĒON - Like I Want You (Official Music Video)",
+    "artist": "GIVĒON",
+    "duration": 305,
+    "s3Key": "songs/GIV_ON_-_Like_I_Want_You_Official_Music_Video.mp3",
+    "imageUrl": "http://localhost:4000/covers/GIV_ON_-_Like_I_Want_You_Official_Music_Video.jpg"
+  },
+  {
+    "title": "Grover Washington Jr. - Just the Two of Us (feat. Bill Withers) (Official Audio)",
+    "artist": "RHINO",
+    "duration": 446,
+    "s3Key": "songs/Grover_Washington_Jr._-_Just_the_Two_of_Us_feat._Bill_Withers_Official_Audio.mp3",
+    "imageUrl": "http://localhost:4000/covers/Grover_Washington_Jr._-_Just_the_Two_of_Us_feat._Bill_Withers_Official_Audio.jpg"
+  },
+  {
+    "title": "H.E.R. - Best Part (Lyrics) Ft. Daniel Caesar",
+    "artist": "Unique Sound",
+    "duration": 209,
+    "s3Key": "songs/H.E.R._-_Best_Part_Lyrics_Ft._Daniel_Caesar.mp3",
+    "imageUrl": "http://localhost:4000/covers/H.E.R._-_Best_Part_Lyrics_Ft._Daniel_Caesar.jpg"
+  },
+  {
+    "title": "JP Cooper - everything i wanted",
+    "artist": "JP Cooper",
+    "duration": 275,
+    "s3Key": "songs/JP_Cooper_-_everything_i_wanted.mp3",
+    "imageUrl": "http://localhost:4000/covers/JP_Cooper_-_everything_i_wanted.jpg"
+  },
+  {
+    "title": "Kendrick Lamar & SZA - luther",
+    "artist": "Kendrick Lamar",
+    "duration": 311,
+    "s3Key": "songs/Kendrick_Lamar_SZA_-_luther.mp3",
+    "imageUrl": "http://localhost:4000/covers/Kendrick_Lamar_SZA_-_luther.jpg"
+  },
+  {
+    "title": "L-O-V-E",
+    "artist": "Nat King Cole",
+    "duration": 155,
+    "s3Key": "songs/L-O-V-E.mp3",
+    "imageUrl": "http://localhost:4000/covers/L-O-V-E.jpg"
+  },
+  {
+    "title": "Lady Gaga, Bruno Mars - Die With A Smile (Official Music Video)",
+    "artist": "XANIYA",
+    "duration": 303,
+    "s3Key": "songs/Lady_Gaga_Bruno_Mars_-_Die_With_A_Smile_Official_Music_Video.mp3",
+    "imageUrl": "http://localhost:4000/covers/Lady_Gaga_Bruno_Mars_-_Die_With_A_Smile_Official_Music_Video.jpg"
+  },
+  {
+    "title": "Louis Armstrong - La vie en rose",
+    "artist": "Louis Armstrong",
+    "duration": 204,
+    "s3Key": "songs/Louis_Armstrong_-_La_vie_en_rose.mp3",
+    "imageUrl": "http://localhost:4000/covers/Louis_Armstrong_-_La_vie_en_rose.jpg"
+  },
+  {
+    "title": "Louis Armstrong - On The Sunny Side Of The Street (Audio)",
+    "artist": "Louis Armstrong",
+    "duration": 348,
+    "s3Key": "songs/Louis_Armstrong_-_On_The_Sunny_Side_Of_The_Street_Audio.mp3",
+    "imageUrl": "http://localhost:4000/covers/Louis_Armstrong_-_On_The_Sunny_Side_Of_The_Street_Audio.jpg"
+  },
+  {
+    "title": "Louis Armstrong - What A Wonderful World (At The BBC)",
+    "artist": "Louis Armstrong",
+    "duration": 145,
+    "s3Key": "songs/Louis_Armstrong_-_What_A_Wonderful_World_At_The_BBC.mp3",
+    "imageUrl": "http://localhost:4000/covers/Louis_Armstrong_-_What_A_Wonderful_World_At_The_BBC.jpg"
+  },
+  {
+    "title": "Mr. Sandman - The Chordettes",
+    "artist": "RiulDoamnei",
+    "duration": 143,
+    "s3Key": "songs/Mr._Sandman_-_The_Chordettes.mp3",
+    "imageUrl": "http://localhost:4000/covers/Mr._Sandman_-_The_Chordettes.jpg"
+  },
+  {
+    "title": "Raindrops Keep Falling on my Head",
+    "artist": "B.J. Thomas",
+    "duration": 176,
+    "s3Key": "songs/Raindrops_Keep_Falling_on_my_Head.mp3",
+    "imageUrl": "http://localhost:4000/covers/Raindrops_Keep_Falling_on_my_Head.jpg"
+  },
+  {
+    "title": "SZA - Snooze (Official Video)",
+    "artist": "SZA",
+    "duration": 281,
+    "s3Key": "songs/SZA_-_Snooze_Official_Video.mp3",
+    "imageUrl": "http://localhost:4000/covers/SZA_-_Snooze_Official_Video.jpg"
+  },
+  {
+    "title": "Sam Smith - I’m Not The Only One (Live) (Honda Stage at the iHeartRadio Theater)",
+    "artist": "SAM SMITH",
+    "duration": 243,
+    "s3Key": "songs/Sam_Smith_-_I-m_Not_The_Only_One_Live_Honda_Stage_at_the_iHeartRadio_Theater.mp3",
+    "imageUrl": "http://localhost:4000/covers/Sam_Smith_-_I-m_Not_The_Only_One_Live_Honda_Stage_at_the_iHeartRadio_Theater.jpg"
+  },
+  {
+    "title": "Song - Paul Anka - Put Your Head On My Shoulder 2021",
+    "artist": "People sites & more",
+    "duration": 156,
+    "s3Key": "songs/Song_-_Paul_Anka_-_Put_Your_Head_On_My_Shoulder_2021.mp3",
+    "imageUrl": "http://localhost:4000/covers/Song_-_Paul_Anka_-_Put_Your_Head_On_My_Shoulder_2021.jpg"
+  },
+  {
+    "title": "The Platters - Only You - Lyrics",
+    "artist": "The Platters",
+    "duration": 158,
+    "s3Key": "songs/The_Platters_-_Only_You_-_Lyrics.mp3",
+    "imageUrl": "http://localhost:4000/covers/The_Platters_-_Only_You_-_Lyrics.jpg"
+  },
+  {
+    "title": "The Ronettes - Be My Baby (Official Audio)",
+    "artist": "The Ronettes",
+    "duration": 162,
+    "s3Key": "songs/The_Ronettes_-_Be_My_Baby_Official_Audio.mp3",
+    "imageUrl": "http://localhost:4000/covers/The_Ronettes_-_Be_My_Baby_Official_Audio.jpg"
+  },
+  {
+    "title": "What You Won't Do for Love",
+    "artist": "Bobby Caldwell, Alfons Fernando Kettner",
+    "duration": 287,
+    "s3Key": "songs/What_You_Won_t_Do_for_Love.mp3",
+    "imageUrl": "http://localhost:4000/covers/What_You_Won_t_Do_for_Love.jpg"
+  },
+  {
+    "title": "giveon - if i ain't got you. (legendado)",
+    "artist": "Mtthwz",
+    "duration": 217,
+    "s3Key": "songs/giveon_-_if_i_ain_t_got_you._legendado.mp3",
+    "imageUrl": "http://localhost:4000/covers/giveon_-_if_i_ain_t_got_you._legendado.jpg"
+  },
+  {
+    "title": "teo glacier – close with desires (official video)",
+    "artist": "Teo Glacier",
+    "duration": 202,
+    "s3Key": "songs/teo_glacier_-_close_with_desires_official_video.mp3",
+    "imageUrl": "http://localhost:4000/covers/teo_glacier_-_close_with_desires_official_video.jpg"
+  }
+]

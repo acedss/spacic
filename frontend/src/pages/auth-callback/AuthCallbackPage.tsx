@@ -38,7 +38,7 @@ const AuthCallbackPage = () => {
 
     return (
         <div className="flex items-center justify-center w-full h-screen flex-col gap-5"
-             style={{ background: 'var(--ink-0)', fontFamily: "'Figtree', system-ui, sans-serif" }}>
+            style={{ background: 'var(--ink-0)', fontFamily: "'Figtree', system-ui, sans-serif" }}>
             <div className="aurora aurora-breathe" style={{ position: 'fixed', inset: -60 }} />
             <div className="grain" style={{ position: 'fixed', inset: 0 }} />
             <div className="relative z-10 flex flex-col items-center gap-5">

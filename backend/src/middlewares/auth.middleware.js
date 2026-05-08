@@ -20,9 +20,18 @@ export const protectRoute = async (req, res, next) => {
 
 export const requireAdmin = async (req, res, next) => {
     try {
-        const currentUser = await clerkClient.users.getUser(req.auth().userId);
+        // Honor the dev-token bypass set by protectRoute. Without this, every
+        // admin endpoint 500s under x-dev-token because req.auth().userId is
+        // empty when no Clerk JWT was presented.
+        const clerkId = req.devBypass
+            ? req.devClerkId
+            : req.auth().userId;
 
-        const userResponse = await User.findOne({ clerkId: currentUser.id });
+        if (!clerkId) {
+            return res.status(401).json({ message: "Unauthorized - you must be logged in" });
+        }
+
+        const userResponse = await User.findOne({ clerkId });
         if (!userResponse) {
             return res.status(404).json({ message: "User not found" });
         }

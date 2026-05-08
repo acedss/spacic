@@ -24,9 +24,9 @@ import geoip from 'geoip-lite';
 // syncIntervals: lightweight heartbeat, one per room per process.
 // disconnectTimers: 15s countdown, must fire on the process that started it.
 // notifyTimers: delayed "creator disconnected" notification — silent reconnect window.
-const syncIntervals    = new Map();
+const syncIntervals = new Map();
 const disconnectTimers = new Map();
-const notifyTimers     = new Map();
+const notifyTimers = new Map();
 // Debounce: multiple clients fire song_ended simultaneously; only first within 3s wins.
 const songEndedDebounce = new Map();
 
@@ -61,13 +61,13 @@ const startSyncCheckpoint = (io, roomId) => {
     if (syncIntervals.has(roomId)) return;
     const interval = setInterval(async () => {
         const state = await socketManager.getRoomPlaybackState(roomId);
-        const room  = await socketManager.getRoomById(roomId);
+        const room = await socketManager.getRoomById(roomId);
         if (!state || !room) return;
         io.to(roomId).emit('room:sync_checkpoint', {
             roomId,
             startTimeUnix: state.startTimeUnix,
-            pausedAtMs:    state.pausedAtMs,
-            isPlaying:     state.isPlaying,
+            pausedAtMs: state.pausedAtMs,
+            isPlaying: state.isPlaying,
             serverTimestamp: Date.now(),
             listenerCount: room.listenerCount,
         });
@@ -160,10 +160,10 @@ const resolveUser = async (clerkId) => {
     if (!dbUser) return null;
 
     const user = {
-        userId:   dbUser._id.toString(),
+        userId: dbUser._id.toString(),
         fullName: dbUser.fullName,
         imageUrl: dbUser.imageUrl,
-        role:     dbUser.role,
+        role: dbUser.role,
         userTier: dbUser.userTier,
     };
     await socketManager.cacheUser(clerkId, user);
@@ -182,18 +182,18 @@ const recoverSessionFromDB = async (roomId) => {
         albumId: s.albumId?.toString() ?? null,
     })));
 
-    const idx         = room.playback?.currentSongIndex ?? 0;
+    const idx = room.playback?.currentSongIndex ?? 0;
     const currentSong = room.playlist[idx];
 
     return socketManager.addRoomSession(roomId, {
-        creatorId:        room.creatorId.toString(),
-        title:            room.title,
-        capacity:         room.capacity,
-        currentSongId:    currentSong?._id.toString()  ?? null,
-        currentSongS3Key: currentSong?.s3Key           ?? null,
-        startTimeUnix:    room.playback?.startTimeUnix ?? null,
-        pausedAtMs:       room.playback?.pausedAtMs    ?? 0,
-        isPlaying:        true,
+        creatorId: room.creatorId.toString(),
+        title: room.title,
+        capacity: room.capacity,
+        currentSongId: currentSong?._id.toString() ?? null,
+        currentSongS3Key: currentSong?.s3Key ?? null,
+        startTimeUnix: room.playback?.startTimeUnix ?? null,
+        pausedAtMs: room.playback?.pausedAtMs ?? 0,
+        isPlaying: true,
     });
 };
 
@@ -235,14 +235,14 @@ const getNextSong = async (roomId, currentIndex) => {
         nextSong = newSongData;
     }
 
-    const presignedUrl  = await getPresignedUrl(nextSong.s3Key);
+    const presignedUrl = await getPresignedUrl(nextSong.s3Key);
     const startTimeUnix = Date.now();
 
     await Room.findByIdAndUpdate(roomId, {
         'playback.currentSongIndex': nextIndex,
-        'playback.startTimeUnix':    startTimeUnix,
-        'playback.pausedAtMs':       0,
-        'playback.lastSyncAt':       new Date(),
+        'playback.startTimeUnix': startTimeUnix,
+        'playback.pausedAtMs': 0,
+        'playback.lastSyncAt': new Date(),
     });
 
     await socketManager.updateRoomPlaybackState(roomId, {
@@ -347,6 +347,7 @@ export const initializeSocket = (httpServer) => {
                 const user = await resolveUser(userClerkId);
                 if (!user) return socket.emit('room:error', { message: 'User not found' });
 
+
                 let roomSession = await socketManager.getRoomById(roomId);
                 if (!roomSession) {
                     roomSession = await recoverSessionFromDB(roomId);
@@ -365,7 +366,7 @@ export const initializeSocket = (httpServer) => {
                 // Resolve geo from IP (synchronous lookup, sub-millisecond, no external call)
                 const rawIp = (socket.handshake.headers['x-forwarded-for'] ?? '')
                     .split(',')[0].trim() || socket.handshake.address;
-                const ip  = rawIp.replace(/^::ffff:/, ''); // strip IPv4-mapped IPv6
+                const ip = rawIp.replace(/^::ffff:/, ''); // strip IPv4-mapped IPv6
                 const geo = geoip.lookup(ip);
 
                 // Persist to DB so activity feed (getFriendsActivity) can find active listeners
@@ -374,8 +375,8 @@ export const initializeSocket = (httpServer) => {
                     {
                         isActive: true, joinedAt: new Date(), $unset: { leftAt: '' },
                         country: geo?.country ?? null,
-                        region:  geo?.region  ?? null,
-                        city:    geo?.city    ?? null,
+                        region: geo?.region ?? null,
+                        city: geo?.city ?? null,
                     },
                     { upsert: true }
                 );
@@ -390,8 +391,8 @@ export const initializeSocket = (httpServer) => {
                 // playbackState only has s3Key/id; index and metadata need DB + cache.
                 const roomPlaybackDoc = await Room.findById(roomId).select('playback.currentSongIndex').lean();
                 const currentSongIndex = roomPlaybackDoc?.playback?.currentSongIndex ?? 0;
-                const cachedPlaylist   = await socketManager.getCachedPlaylist(roomId);
-                const currentSongData  = cachedPlaylist?.[currentSongIndex] ?? null;
+                const cachedPlaylist = await socketManager.getCachedPlaylist(roomId);
+                const currentSongData = cachedPlaylist?.[currentSongIndex] ?? null;
 
                 const isCreator = roomSession.creatorId === user.userId;
 
@@ -437,8 +438,8 @@ export const initializeSocket = (httpServer) => {
 
                 // Current reaction counts for the playing song
                 const reactionCounts = await socketManager.getSongReactionCounts(roomId);
-                const skipVoteCount  = await socketManager.getSkipVoteCount(roomId);
-                const skipNeeded     = Math.max(1, Math.ceil(
+                const skipVoteCount = await socketManager.getSkipVoteCount(roomId);
+                const skipNeeded = Math.max(1, Math.ceil(
                     (roomSession.listenerCount || 1) * (roomForLiveAt?.voteThresholdPercent ?? 50) / 100
                 ));
 
@@ -451,7 +452,7 @@ export const initializeSocket = (httpServer) => {
                         currentSong: currentSongData,
                     } : null,
                     serverTimestamp: Date.now(),
-                    listenerCount:   roomSession.listenerCount,
+                    listenerCount: roomSession.listenerCount,
                     isCreator,
                     sessionInfo: {
                         maxSessionMinutes: Number.isFinite(maxSessionMinutes) ? maxSessionMinutes : null,
@@ -461,14 +462,14 @@ export const initializeSocket = (httpServer) => {
                     reactions: reactionCounts,
                     skipVotes: { count: skipVoteCount, needed: skipNeeded },
                     activeGame: activeGame ? {
-                        minigameId:      activeGame._id.toString(),
-                        type:            activeGame.type,
-                        title:           activeGame.title,
+                        minigameId: activeGame._id.toString(),
+                        type: activeGame.type,
+                        title: activeGame.title,
                         durationSeconds: activeGame.durationSeconds,
-                        coinReward:      activeGame.coinReward,
-                        config:          activeGame.config,
-                        startedAt:       activeGame.startedAt?.toISOString() ?? null,
-                        endsAt:          activeGame.startedAt
+                        coinReward: activeGame.coinReward,
+                        config: activeGame.config,
+                        startedAt: activeGame.startedAt?.toISOString() ?? null,
+                        endsAt: activeGame.startedAt
                             ? new Date(activeGame.startedAt.getTime() + activeGame.durationSeconds * 1000).toISOString()
                             : null,
                     } : null,
@@ -600,11 +601,11 @@ export const initializeSocket = (httpServer) => {
                     return socket.emit('room:error', { message: 'Only the creator or admin can skip songs' });
                 }
 
-                const roomDoc      = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
+                const roomDoc = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
                 const currentIndex = roomDoc?.playback?.currentSongIndex ?? 0;
-                const prevStart    = roomDoc?.playback?.startTimeUnix ?? null;
+                const prevStart = roomDoc?.playback?.startTimeUnix ?? null;
 
-                const playlist    = await socketManager.getCachedPlaylist(roomId);
+                const playlist = await socketManager.getCachedPlaylist(roomId);
                 const currentSong = playlist?.[currentIndex] ?? null;
 
                 await clearPerSongState(roomId);
@@ -644,12 +645,12 @@ export const initializeSocket = (httpServer) => {
                 if (alreadyVoted) return socket.emit('room:error', { message: 'Already voted to skip' });
 
                 await socketManager.addSkipVote(roomId, userSession.userId);
-                const voteCount     = await socketManager.getSkipVoteCount(roomId);
+                const voteCount = await socketManager.getSkipVoteCount(roomId);
                 const listenerCount = roomSession.listenerCount || 1;
 
-                const roomDoc  = await Room.findById(roomId).select('voteThresholdPercent');
+                const roomDoc = await Room.findById(roomId).select('voteThresholdPercent');
                 const threshold = roomDoc?.voteThresholdPercent ?? 50;
-                const needed    = Math.max(1, Math.ceil(listenerCount * threshold / 100));
+                const needed = Math.max(1, Math.ceil(listenerCount * threshold / 100));
 
                 io.to(roomId).emit('room:skip_vote_update', {
                     roomId, voteCount, needed, votedBy: userSession.userName,
@@ -657,11 +658,11 @@ export const initializeSocket = (httpServer) => {
 
                 if (voteCount >= needed) {
                     await clearPerSongState(roomId);
-                    const roomDoc2     = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
+                    const roomDoc2 = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
                     const currentIndex = roomDoc2?.playback?.currentSongIndex ?? 0;
-                    const prevStart    = roomDoc2?.playback?.startTimeUnix ?? null;
-                    const playlist     = await socketManager.getCachedPlaylist(roomId);
-                    const currentSong  = playlist?.[currentIndex] ?? null;
+                    const prevStart = roomDoc2?.playback?.startTimeUnix ?? null;
+                    const playlist = await socketManager.getCachedPlaylist(roomId);
+                    const currentSong = playlist?.[currentIndex] ?? null;
 
                     const { nextSong, nextIndex, presignedUrl, startTimeUnix: nextStart } = await getNextSong(roomId, currentIndex);
                     io.to(roomId).emit('room:song_changed', {
@@ -716,7 +717,7 @@ export const initializeSocket = (httpServer) => {
                 // Broadcast to the whole room including sender so the holder
                 // also sees their own avatar appearing on screen
                 io.to(roomId).emit('room:tip_rain', {
-                    userId:   userSession.userId,
+                    userId: userSession.userId,
                     userName: userSession.userName,
                     imageUrl: userSession.userImage ?? '',
                     amount,
@@ -838,8 +839,8 @@ export const initializeSocket = (httpServer) => {
                 if (newScore === null) return socket.emit('room:error', { message: 'Already voted for this song' });
 
                 const roomSession = await socketManager.getRoomById(roomId);
-                const roomDoc     = await Room.findById(roomId).select('voteThresholdPercent');
-                const threshold   = roomDoc?.voteThresholdPercent ?? 50;
+                const roomDoc = await Room.findById(roomId).select('voteThresholdPercent');
+                const threshold = roomDoc?.voteThresholdPercent ?? 50;
                 const listenerCount = roomSession?.listenerCount || 1;
                 const needed = Math.max(1, Math.ceil(listenerCount * threshold / 100));
 
@@ -942,18 +943,18 @@ export const initializeSocket = (httpServer) => {
                 // the "3 random songs in rapid succession" bug.
                 songEndedDebounce.set(roomId, Date.now());
 
-                const roomDoc   = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
+                const roomDoc = await Room.findById(roomId).select('playback.currentSongIndex playback.startTimeUnix');
                 if (!roomDoc) { songEndedDebounce.delete(roomId); return; }
                 const serverIndex = roomDoc.playback?.currentSongIndex ?? 0;
                 if (currentSongIndex !== serverIndex) { songEndedDebounce.delete(roomId); return; }
                 await clearPerSongState(roomId);
 
-                const playlist    = await socketManager.getCachedPlaylist(roomId);
+                const playlist = await socketManager.getCachedPlaylist(roomId);
                 const currentSong = playlist?.[currentSongIndex] ?? null;
-                const prevStart   = roomDoc.playback?.startTimeUnix ?? null;
+                const prevStart = roomDoc.playback?.startTimeUnix ?? null;
 
                 // Check for a game scheduled at this transition point
-                const afterGame  = await findAndActivateScheduledGame(roomId, 'after_song', currentSongIndex);
+                const afterGame = await findAndActivateScheduledGame(roomId, 'after_song', currentSongIndex);
                 const beforeGame = !afterGame
                     ? await findAndActivateScheduledGame(roomId, 'before_song', currentSongIndex + 1)
                     : null;
@@ -965,14 +966,14 @@ export const initializeSocket = (httpServer) => {
 
                     io.to(roomId).emit('room:game_start', {
                         roomId,
-                        minigameId:      activeGame._id.toString(),
-                        type:            activeGame.type,
-                        title:           activeGame.title,
+                        minigameId: activeGame._id.toString(),
+                        type: activeGame.type,
+                        title: activeGame.title,
                         durationSeconds: activeGame.durationSeconds,
-                        coinReward:      activeGame.coinReward,
-                        config:          activeGame.config,
-                        startedAt:       new Date().toISOString(),
-                        endsAt:          new Date(Date.now() + activeGame.durationSeconds * 1000).toISOString(),
+                        coinReward: activeGame.coinReward,
+                        config: activeGame.config,
+                        startedAt: new Date().toISOString(),
+                        endsAt: new Date(Date.now() + activeGame.durationSeconds * 1000).toISOString(),
                     });
 
                     const timer = setTimeout(async () => {
@@ -981,8 +982,8 @@ export const initializeSocket = (httpServer) => {
                         await settleGamePrize(completed).catch(err => console.error('[settleGamePrize]', err.message));
                         io.to(roomId).emit('room:game_result', {
                             roomId,
-                            minigameId:       activeGame._id.toString(),
-                            winner:           completed?.winner?.userId ? completed.winner : null,
+                            minigameId: activeGame._id.toString(),
+                            winner: completed?.winner?.userId ? completed.winner : null,
                             participantCount: completed?.participantCount ?? 0,
                         });
                         // Brief pause before the next song starts
@@ -1044,14 +1045,14 @@ export const initializeSocket = (httpServer) => {
 
                 io.to(roomId).emit('room:game_start', {
                     roomId,
-                    minigameId:      game._id.toString(),
-                    type:            game.type,
-                    title:           game.title,
+                    minigameId: game._id.toString(),
+                    type: game.type,
+                    title: game.title,
                     durationSeconds: game.durationSeconds,
-                    coinReward:      game.coinReward,
-                    config:          game.config,
-                    startedAt:       new Date().toISOString(),
-                    endsAt:          new Date(Date.now() + game.durationSeconds * 1000).toISOString(),
+                    coinReward: game.coinReward,
+                    config: game.config,
+                    startedAt: new Date().toISOString(),
+                    endsAt: new Date(Date.now() + game.durationSeconds * 1000).toISOString(),
                 });
 
                 const timer = setTimeout(async () => {
@@ -1064,8 +1065,8 @@ export const initializeSocket = (httpServer) => {
                     await settleGamePrize(completed).catch(err => console.error('[settleGamePrize]', err.message));
                     io.to(roomId).emit('room:game_result', {
                         roomId,
-                        minigameId:       game._id.toString(),
-                        winner:           completed?.winner?.userId ? completed.winner : null,
+                        minigameId: game._id.toString(),
+                        winner: completed?.winner?.userId ? completed.winner : null,
                         participantCount: completed?.participantCount ?? 0,
                     });
                 }, game.durationSeconds * 1000);
@@ -1106,7 +1107,7 @@ export const initializeSocket = (httpServer) => {
                     const winnerData = result.game.winner;
                     io.to(roomId).emit('room:game_result', {
                         roomId, minigameId,
-                        winner:           winnerData?.userId ? winnerData : null,
+                        winner: winnerData?.userId ? winnerData : null,
                         participantCount: completed?.participantCount ?? 0,
                     });
 
@@ -1197,7 +1198,7 @@ export const initializeSocket = (httpServer) => {
 
                 // Import lazily to avoid circular dep at module init time
                 const { BroadcastAsset } = await import('../models/broadcastAsset.model.js');
-                const { getPlaybackUrl }  = await import('../controllers/broadcastAsset.controller.js');
+                const { getPlaybackUrl } = await import('../controllers/broadcastAsset.controller.js');
 
                 const asset = await BroadcastAsset.findOne({ _id: assetId, status: 'ready' }).lean();
                 if (!asset) return;
@@ -1205,8 +1206,8 @@ export const initializeSocket = (httpServer) => {
                 const url = await getPlaybackUrl(asset.s3Key);
 
                 io.to(roomId).emit('room:asset_broadcast', {
-                    assetId:         asset._id.toString(),
-                    label:           asset.label,
+                    assetId: asset._id.toString(),
+                    label: asset.label,
                     url,
                     durationSeconds: asset.durationSeconds ?? null,
                 });
@@ -1236,7 +1237,7 @@ export const initializeSocket = (httpServer) => {
             const userSession = await socketManager.getUserBySocketId(socket.id);
 
             if (userSession?.currentRoomId) {
-                const roomId      = userSession.currentRoomId;
+                const roomId = userSession.currentRoomId;
                 const roomSession = await socketManager.getRoomById(roomId);
 
                 if (roomSession && roomSession.creatorId === userSession.userId) {

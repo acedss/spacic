@@ -1,0 +1,23 @@
+{
+  "name": "spacic-demo-playwright",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright orchestration + ghost socket clients for the Spacic 10-min demo recording.",
+  "scripts": {
+    "reseed": "cd ../backend && npm run seed:demo",
+    "ghosts": "tsx src/ghost-listeners.ts",
+    "demo": "playwright test",
+    "demo:headed": "playwright test --headed",
+    "demo:scene": "playwright test --grep",
+    "all": "npm run reseed && npm run demo"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^22.10.0",
+    "dotenv": "^16.4.7",
+    "socket.io-client": "^4.8.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}
