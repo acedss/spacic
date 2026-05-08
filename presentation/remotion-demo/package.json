@@ -1,0 +1,31 @@
+{
+  "name": "spacic-remotion-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Spacic FYP product walk-through video — built with Remotion",
+  "scripts": {
+    "start": "remotion studio src/index.ts",
+    "build": "remotion render src/index.ts SpacicDemo out/spacic-demo.mp4 --concurrency=4",
+    "build:hd": "remotion render src/index.ts SpacicDemo out/spacic-demo.mp4 --concurrency=4 --crf=18",
+    "upgrade": "remotion upgrade"
+  },
+  "dependencies": {
+    "@puppeteer/browsers": "^2.13.1",
+    "@remotion/bundler": "4.0.243",
+    "@remotion/cli": "4.0.243",
+    "@remotion/google-fonts": "4.0.243",
+    "@remotion/renderer": "4.0.243",
+    "@remotion/shapes": "4.0.243",
+    "@sparticuz/chromium": "^148.0.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.243",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@types/web": "0.0.176",
+    "typescript": "5.6.3"
+  }
+}

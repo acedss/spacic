@@ -1,11 +1,12 @@
-import { useUser } from '@clerk/clerk-react'
-import { Gem, Search, Zap } from 'lucide-react'
+import { SignedIn, SignedOut, SignInButton, useClerk, useUser } from '@clerk/clerk-react'
+import { Gem, LogIn, LogOut, Search, Zap } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useWalletStore } from '@/stores/useWalletStore'
 
 export const HomeHeader = ({ onSearchOpen }: { onSearchOpen: () => void }) => {
     const navigate = useNavigate()
     const { user } = useUser()
+    const { signOut } = useClerk()
     const { balance } = useWalletStore()
 
     return (
@@ -27,9 +28,30 @@ export const HomeHeader = ({ onSearchOpen }: { onSearchOpen: () => void }) => {
                 </button>
                 <span className="mono text-[11px] text-white">{balance > 0 ? balance.toLocaleString() : '0'}</span>
                 <div className="h-5 w-px bg-white/10 mx-1" />
-                {user && (
-                    <img src={user.imageUrl} alt="" className="w-8 h-8 rounded-full ring-1 ring-white/15 object-cover" />
-                )}
+                <SignedIn>
+                    <button
+                        onClick={() => signOut()}
+                        title="Sign out"
+                        className="relative group">
+                        <img
+                            src={user?.imageUrl}
+                            alt=""
+                            className="w-8 h-8 rounded-full ring-1 ring-white/15 object-cover transition-opacity group-hover:opacity-70"
+                        />
+                        <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white grid place-items-center ring-2 ring-[var(--ink-0)]">
+                            <LogOut className="size-2.5 text-black" />
+                        </span>
+                    </button>
+                </SignedIn>
+                <SignedOut>
+                    <SignInButton mode="modal">
+                        <button
+                            title="Sign in"
+                            className="h-8 w-8 rounded-full ring-1 ring-white/15 grid place-items-center bg-white/5 hover:bg-white/10 transition-colors">
+                            <LogIn className="size-4 text-white" />
+                        </button>
+                    </SignInButton>
+                </SignedOut>
             </div>
         </div>
     )
