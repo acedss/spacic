@@ -3,12 +3,12 @@
 // For each .mp3 in <repo>/songs/:
 //   1. Parse ID3 tags (title, artist, duration, embedded cover) via music-metadata.
 //   2. Sanitise filename → s3Key like songs/<safe>.mp3.
-//   3. Upload audio to s3://<bucket>/songs/<safe>.mp3 (private; served via presigned URL).
+//   3. Upload audio to s3://<bucket>/songs/<safe>.mp3 (private; played via presigned GET URL).
 //   4. Resize embedded cover (400x400 cover-fit, JPEG q80) and:
-//        a. write to public/covers/<safe>.jpg (dev fallback for the /covers/* static route)
-//        b. upload to s3://<bucket>/covers/<safe>.jpg (public-read; served directly to <img src>).
+//        a. write to public/covers/<safe>.jpg (kept as a local artifact; not served).
+//        b. upload to s3://<bucket>/covers/<safe>.jpg (private; rendered via presigned GET URL).
 //   5. Append { title, artist, duration, s3Key, imageUrl } to backend/src/scripts/songs.manifest.json
-//      where imageUrl is the permanent S3 https URL — host-independent, HTTPS-safe.
+//      where imageUrl is a 7-day presigned GET URL — same scheme as the admin upload flow.
 //
 // Usage: node src/scripts/uploadSongsToS3.js
 
@@ -16,7 +16,8 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { parseFile } from 'music-metadata';
 import sharp from 'sharp';
 
@@ -24,10 +25,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SONGS_DIR    = path.resolve(__dirname, '..', '..', '..', 'songs');
 const COVERS_DIR   = path.resolve(__dirname, '..', '..', 'public', 'covers');
 const MANIFEST     = path.resolve(__dirname, 'songs.manifest.json');
-// Public S3 cover URL builder. Virtual-hosted style is the modern default;
-// the regional domain is needed because some buckets are not in us-east-1.
-const coverPublicUrl = (key) =>
-    `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+
+// 7-day presigned GET URL — matches admin.controller.js SONG_IMAGE_PRESIGN_TTL.
+// 7 days is the SigV4 maximum; covers will need to be re-presigned after that.
+const COVER_PRESIGN_TTL_SECONDS = 7 * 24 * 3600;
 
 const s3 = new S3Client({
     region: process.env.AWS_REGION,
@@ -37,6 +38,11 @@ const s3 = new S3Client({
     },
 });
 const BUCKET = process.env.S3_BUCKET_NAME;
+
+// Match the admin pattern: store a long-lived presigned GET URL as imageUrl
+// rather than relying on bucket policy / public ACL.
+const presignedCoverUrl = (key) =>
+    getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn: COVER_PRESIGN_TTL_SECONDS });
 
 // Sanitise YouTube-derived filenames into S3-safe slugs.
 const slugify = (s) => s
@@ -87,9 +93,10 @@ const writeCover = async (pictureBuffer, mime, safeName) => {
     const outPath = path.join(COVERS_DIR, `${safeName}.jpg`);
     await fs.promises.writeFile(outPath, jpegBuf);
 
-    // S3 upload — same client + PutObjectCommand pattern as uploadAudio(),
-    // but public-read so anonymous <img src> requests succeed without
-    // presigned URLs. Cache headers match the Express static route (7d, immutable).
+    // S3 upload — same client + PutObjectCommand pattern as uploadAudio().
+    // Public read access is granted by the bucket *policy* (not per-object ACL)
+    // because the bucket has Object Ownership = "Bucket owner enforced", which
+    // disables ACLs entirely. Cache headers match the Express static route.
     const coverKey = `covers/${safeName}.jpg`;
     await s3.send(new PutObjectCommand({
         Bucket:       BUCKET,
@@ -97,10 +104,9 @@ const writeCover = async (pictureBuffer, mime, safeName) => {
         Body:         jpegBuf,
         ContentType:  'image/jpeg',
         CacheControl: 'public, max-age=604800, immutable',
-        ACL:          'public-read',
     }));
 
-    return coverPublicUrl(coverKey);
+    return await presignedCoverUrl(coverKey);
 };
 
 const main = async () => {

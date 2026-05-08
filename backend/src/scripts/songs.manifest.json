@@ -4,216 +4,216 @@
     "artist": "Louis Armstrong",
     "duration": 183,
     "s3Key": "songs/A_Kiss_To_Build_A_Dream_On.mp3",
-    "imageUrl": "http://localhost:4000/covers/A_Kiss_To_Build_A_Dream_On.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/A_Kiss_To_Build_A_Dream_On.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070743Z&X-Amz-Expires=604800&X-Amz-Signature=266dda4629cd7a811cf88f2bdda51a5551525509e8f5431c44799252471f9112&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "All That I Know",
     "artist": "ZUHAIR, Kobe White",
     "duration": 229,
     "s3Key": "songs/All_That_I_Know.mp3",
-    "imageUrl": "http://localhost:4000/covers/All_That_I_Know.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/All_That_I_Know.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070746Z&X-Amz-Expires=604800&X-Amz-Signature=1e27c80c4c135503eeb150cbf72c37172bec135df4924f81e9ea9cfff44ed49b&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Bobby McFerrin - Don't Worry Be Happy (Official Music Video)",
     "artist": "The Real Bobby McFerrin",
     "duration": 232,
     "s3Key": "songs/Bobby_McFerrin_-_Don_t_Worry_Be_Happy_Official_Music_Video.mp3",
-    "imageUrl": "http://localhost:4000/covers/Bobby_McFerrin_-_Don_t_Worry_Be_Happy_Official_Music_Video.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Bobby_McFerrin_-_Don_t_Worry_Be_Happy_Official_Music_Video.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070749Z&X-Amz-Expires=604800&X-Amz-Signature=a3a509cd3c2399978dbb36960b88a082f6eca03cf7262f337a4af0995a9c0bae&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Bruno Mars - When I Was Your Man (Official Music Video)",
     "artist": "Bruno Mars",
     "duration": 234,
     "s3Key": "songs/Bruno_Mars_-_When_I_Was_Your_Man_Official_Music_Video.mp3",
-    "imageUrl": "http://localhost:4000/covers/Bruno_Mars_-_When_I_Was_Your_Man_Official_Music_Video.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Bruno_Mars_-_When_I_Was_Your_Man_Official_Music_Video.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070751Z&X-Amz-Expires=604800&X-Amz-Signature=e58d7fe5dfa3a42e561eb8d99092938842d9f239a29f26905581d7864febd63a&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Bruno Mars, Anderson .Paak, Silk Sonic - Leave the Door Open [Official Video]",
     "artist": "Bruno Mars",
     "duration": 248,
     "s3Key": "songs/Bruno_Mars_Anderson_.Paak_Silk_Sonic_-_Leave_the_Door_Open_Official_Video.mp3",
-    "imageUrl": "http://localhost:4000/covers/Bruno_Mars_Anderson_.Paak_Silk_Sonic_-_Leave_the_Door_Open_Official_Video.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Bruno_Mars_Anderson_.Paak_Silk_Sonic_-_Leave_the_Door_Open_Official_Video.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070755Z&X-Amz-Expires=604800&X-Amz-Signature=5257e5e367466d57f9d49ab722613e5984b9dd803fb7d770f456af70afcfa91b&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Bruno Mars, Anderson .Paak, Silk Sonic - Skate [Official Music Video]",
     "artist": "Bruno Mars",
     "duration": 203,
     "s3Key": "songs/Bruno_Mars_Anderson_.Paak_Silk_Sonic_-_Skate_Official_Music_Video.mp3",
-    "imageUrl": "http://localhost:4000/covers/Bruno_Mars_Anderson_.Paak_Silk_Sonic_-_Skate_Official_Music_Video.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Bruno_Mars_Anderson_.Paak_Silk_Sonic_-_Skate_Official_Music_Video.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070758Z&X-Amz-Expires=604800&X-Amz-Signature=ab17224a47706439e9fe4b1fd278f1c114a82cc1350948236012377508e8603d&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Durand Jones & The Indications - Flower Moon (Official Video)",
     "artist": "Durand Jones & The Indications",
     "duration": 297,
     "s3Key": "songs/Durand_Jones_The_Indications_-_Flower_Moon_Official_Video.mp3",
-    "imageUrl": "http://localhost:4000/covers/Durand_Jones_The_Indications_-_Flower_Moon_Official_Video.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Durand_Jones_The_Indications_-_Flower_Moon_Official_Video.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070802Z&X-Amz-Expires=604800&X-Amz-Signature=07626de3a89f7f05a4c5b1eb28f3a7c9e4fec2926a0c268ff50edbd122d7cef5&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Ed Sheeran - Thinking Out Loud (Official Music Video)",
     "artist": "Ed Sheeran",
     "duration": 289,
     "s3Key": "songs/Ed_Sheeran_-_Thinking_Out_Loud_Official_Music_Video.mp3",
-    "imageUrl": "http://localhost:4000/covers/Ed_Sheeran_-_Thinking_Out_Loud_Official_Music_Video.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Ed_Sheeran_-_Thinking_Out_Loud_Official_Music_Video.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070806Z&X-Amz-Expires=604800&X-Amz-Signature=79dc570505481c1a837ccefe5c713e3ec6b047ddb5ebc713b4263fdde81467b7&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Edward Sharpe & The Magnetic Zeros - Home (Official Video)",
     "artist": "Rough Trade Records",
     "duration": 307,
     "s3Key": "songs/Edward_Sharpe_The_Magnetic_Zeros_-_Home_Official_Video.mp3",
-    "imageUrl": "http://localhost:4000/covers/Edward_Sharpe_The_Magnetic_Zeros_-_Home_Official_Video.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Edward_Sharpe_The_Magnetic_Zeros_-_Home_Official_Video.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070816Z&X-Amz-Expires=604800&X-Amz-Signature=835041e7b9da6c12bd19b9bb4733be984f391b6b23fbaac0dd686315e8f98e31&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Frank Sinatra - Fly Me To The Moon (Audio) ft. Count Basie And His Orchestra",
     "artist": "Frank Sinatra",
     "duration": 147,
     "s3Key": "songs/Frank_Sinatra_-_Fly_Me_To_The_Moon_Audio_ft._Count_Basie_And_His_Orchestra.mp3",
-    "imageUrl": "http://localhost:4000/covers/Frank_Sinatra_-_Fly_Me_To_The_Moon_Audio_ft._Count_Basie_And_His_Orchestra.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Frank_Sinatra_-_Fly_Me_To_The_Moon_Audio_ft._Count_Basie_And_His_Orchestra.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070825Z&X-Amz-Expires=604800&X-Amz-Signature=6083d9322130f0f8a366010ffdff440e91bdcbb510ff219537c3faa05223e529&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Frankie Valli - Can't Take My Eyes Off You (Official Audio)",
     "artist": "RHINO",
     "duration": 202,
     "s3Key": "songs/Frankie_Valli_-_Can_t_Take_My_Eyes_Off_You_Official_Audio.mp3",
-    "imageUrl": "http://localhost:4000/covers/Frankie_Valli_-_Can_t_Take_My_Eyes_Off_You_Official_Audio.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Frankie_Valli_-_Can_t_Take_My_Eyes_Off_You_Official_Audio.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070827Z&X-Amz-Expires=604800&X-Amz-Signature=07de6cadd9ec87dc2a48e295d2a1824441d3fac273130412ec1ebbc852afc5f1&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "GIVĒON - Like I Want You (Official Music Video)",
     "artist": "GIVĒON",
     "duration": 305,
     "s3Key": "songs/GIV_ON_-_Like_I_Want_You_Official_Music_Video.mp3",
-    "imageUrl": "http://localhost:4000/covers/GIV_ON_-_Like_I_Want_You_Official_Music_Video.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/GIV_ON_-_Like_I_Want_You_Official_Music_Video.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070832Z&X-Amz-Expires=604800&X-Amz-Signature=f892478ed329ccc67dee2f06b6e9ad790599197e2437f4c36f32f6fd7629e24f&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Grover Washington Jr. - Just the Two of Us (feat. Bill Withers) (Official Audio)",
     "artist": "RHINO",
     "duration": 446,
     "s3Key": "songs/Grover_Washington_Jr._-_Just_the_Two_of_Us_feat._Bill_Withers_Official_Audio.mp3",
-    "imageUrl": "http://localhost:4000/covers/Grover_Washington_Jr._-_Just_the_Two_of_Us_feat._Bill_Withers_Official_Audio.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Grover_Washington_Jr._-_Just_the_Two_of_Us_feat._Bill_Withers_Official_Audio.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070836Z&X-Amz-Expires=604800&X-Amz-Signature=4aff65f2ec081924636eaf588ffc3427a4642c92e3c1af0825f1cfd95c043276&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "H.E.R. - Best Part (Lyrics) Ft. Daniel Caesar",
     "artist": "Unique Sound",
     "duration": 209,
     "s3Key": "songs/H.E.R._-_Best_Part_Lyrics_Ft._Daniel_Caesar.mp3",
-    "imageUrl": "http://localhost:4000/covers/H.E.R._-_Best_Part_Lyrics_Ft._Daniel_Caesar.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/H.E.R._-_Best_Part_Lyrics_Ft._Daniel_Caesar.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070840Z&X-Amz-Expires=604800&X-Amz-Signature=7d4702e8ef11ffb178d05a7e1b9a0c312cc4a267e388a0bf4a3c5f7a5b796a8a&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "JP Cooper - everything i wanted",
     "artist": "JP Cooper",
     "duration": 275,
     "s3Key": "songs/JP_Cooper_-_everything_i_wanted.mp3",
-    "imageUrl": "http://localhost:4000/covers/JP_Cooper_-_everything_i_wanted.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/JP_Cooper_-_everything_i_wanted.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070843Z&X-Amz-Expires=604800&X-Amz-Signature=0340a2d5fc2ddd66e9a895e0866561274ab51fccb78091781ae2f58faa110a24&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Kendrick Lamar & SZA - luther",
     "artist": "Kendrick Lamar",
     "duration": 311,
     "s3Key": "songs/Kendrick_Lamar_SZA_-_luther.mp3",
-    "imageUrl": "http://localhost:4000/covers/Kendrick_Lamar_SZA_-_luther.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Kendrick_Lamar_SZA_-_luther.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070847Z&X-Amz-Expires=604800&X-Amz-Signature=a1a5b6d7dda8f03a3b00557e12e6a5ca34792bea1809a28a00e313733016e085&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "L-O-V-E",
     "artist": "Nat King Cole",
     "duration": 155,
     "s3Key": "songs/L-O-V-E.mp3",
-    "imageUrl": "http://localhost:4000/covers/L-O-V-E.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/L-O-V-E.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070849Z&X-Amz-Expires=604800&X-Amz-Signature=26e9ca91b76c55ba967f42ff328adc1780c61f90f08d5351fab6a9788b78a70a&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Lady Gaga, Bruno Mars - Die With A Smile (Official Music Video)",
     "artist": "XANIYA",
     "duration": 303,
     "s3Key": "songs/Lady_Gaga_Bruno_Mars_-_Die_With_A_Smile_Official_Music_Video.mp3",
-    "imageUrl": "http://localhost:4000/covers/Lady_Gaga_Bruno_Mars_-_Die_With_A_Smile_Official_Music_Video.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Lady_Gaga_Bruno_Mars_-_Die_With_A_Smile_Official_Music_Video.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070856Z&X-Amz-Expires=604800&X-Amz-Signature=f415473fee86153ebf28b6121d2d767a221426e6efd0a0efad53f36181e6332f&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Louis Armstrong - La vie en rose",
     "artist": "Louis Armstrong",
     "duration": 204,
     "s3Key": "songs/Louis_Armstrong_-_La_vie_en_rose.mp3",
-    "imageUrl": "http://localhost:4000/covers/Louis_Armstrong_-_La_vie_en_rose.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Louis_Armstrong_-_La_vie_en_rose.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070859Z&X-Amz-Expires=604800&X-Amz-Signature=7cebc35c23dc6f2f3c061a2a8b9506c43e19d2309e41c0d9d6805bc4e7ffd452&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Louis Armstrong - On The Sunny Side Of The Street (Audio)",
     "artist": "Louis Armstrong",
     "duration": 348,
     "s3Key": "songs/Louis_Armstrong_-_On_The_Sunny_Side_Of_The_Street_Audio.mp3",
-    "imageUrl": "http://localhost:4000/covers/Louis_Armstrong_-_On_The_Sunny_Side_Of_The_Street_Audio.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Louis_Armstrong_-_On_The_Sunny_Side_Of_The_Street_Audio.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070902Z&X-Amz-Expires=604800&X-Amz-Signature=9107bcf5ebf3edcfd5448d13af1da1ac4f4c68bb6a0c379a0299e47e6b6a585a&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Louis Armstrong - What A Wonderful World (At The BBC)",
     "artist": "Louis Armstrong",
     "duration": 145,
     "s3Key": "songs/Louis_Armstrong_-_What_A_Wonderful_World_At_The_BBC.mp3",
-    "imageUrl": "http://localhost:4000/covers/Louis_Armstrong_-_What_A_Wonderful_World_At_The_BBC.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Louis_Armstrong_-_What_A_Wonderful_World_At_The_BBC.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070911Z&X-Amz-Expires=604800&X-Amz-Signature=27cd8f6950e4cb13da9b699368f7423319dcb5f7787cf22a2a1c4cb02cc4e3a4&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Mr. Sandman - The Chordettes",
     "artist": "RiulDoamnei",
     "duration": 143,
     "s3Key": "songs/Mr._Sandman_-_The_Chordettes.mp3",
-    "imageUrl": "http://localhost:4000/covers/Mr._Sandman_-_The_Chordettes.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Mr._Sandman_-_The_Chordettes.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070915Z&X-Amz-Expires=604800&X-Amz-Signature=0f352b22e774391c7dcbb83c81bc2750abc8bd46e8bb080956c793f7fd4ccdca&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Raindrops Keep Falling on my Head",
     "artist": "B.J. Thomas",
     "duration": 176,
     "s3Key": "songs/Raindrops_Keep_Falling_on_my_Head.mp3",
-    "imageUrl": "http://localhost:4000/covers/Raindrops_Keep_Falling_on_my_Head.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Raindrops_Keep_Falling_on_my_Head.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070917Z&X-Amz-Expires=604800&X-Amz-Signature=abce9d4f05bf5381ea4f961c3c0bcd92a9f8bf3a0030df7dacd5947f9605bd80&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "SZA - Snooze (Official Video)",
     "artist": "SZA",
     "duration": 281,
     "s3Key": "songs/SZA_-_Snooze_Official_Video.mp3",
-    "imageUrl": "http://localhost:4000/covers/SZA_-_Snooze_Official_Video.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/SZA_-_Snooze_Official_Video.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070920Z&X-Amz-Expires=604800&X-Amz-Signature=2ba18b0ae4ead2a5413c56ed878e7a8bd840b072abdb157167277d439467c364&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Sam Smith - I’m Not The Only One (Live) (Honda Stage at the iHeartRadio Theater)",
     "artist": "SAM SMITH",
     "duration": 243,
     "s3Key": "songs/Sam_Smith_-_I-m_Not_The_Only_One_Live_Honda_Stage_at_the_iHeartRadio_Theater.mp3",
-    "imageUrl": "http://localhost:4000/covers/Sam_Smith_-_I-m_Not_The_Only_One_Live_Honda_Stage_at_the_iHeartRadio_Theater.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Sam_Smith_-_I-m_Not_The_Only_One_Live_Honda_Stage_at_the_iHeartRadio_Theater.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070922Z&X-Amz-Expires=604800&X-Amz-Signature=88024395aa544765c26fb5455ea5c39f176ffdb61a6ca288fb517c7d56ebfcd7&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "Song - Paul Anka - Put Your Head On My Shoulder 2021",
     "artist": "People sites & more",
     "duration": 156,
     "s3Key": "songs/Song_-_Paul_Anka_-_Put_Your_Head_On_My_Shoulder_2021.mp3",
-    "imageUrl": "http://localhost:4000/covers/Song_-_Paul_Anka_-_Put_Your_Head_On_My_Shoulder_2021.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/Song_-_Paul_Anka_-_Put_Your_Head_On_My_Shoulder_2021.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070923Z&X-Amz-Expires=604800&X-Amz-Signature=2ab811b784af6b1a38f2852b793adf9838ccd9eb9754a6bcf8dbe5f39eef3478&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "The Platters - Only You - Lyrics",
     "artist": "The Platters",
     "duration": 158,
     "s3Key": "songs/The_Platters_-_Only_You_-_Lyrics.mp3",
-    "imageUrl": "http://localhost:4000/covers/The_Platters_-_Only_You_-_Lyrics.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/The_Platters_-_Only_You_-_Lyrics.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070925Z&X-Amz-Expires=604800&X-Amz-Signature=b8fdfa96058dd4920ca71851f23fe7c500aeb33a7d97651b15d4586e149d917e&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "The Ronettes - Be My Baby (Official Audio)",
     "artist": "The Ronettes",
     "duration": 162,
     "s3Key": "songs/The_Ronettes_-_Be_My_Baby_Official_Audio.mp3",
-    "imageUrl": "http://localhost:4000/covers/The_Ronettes_-_Be_My_Baby_Official_Audio.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/The_Ronettes_-_Be_My_Baby_Official_Audio.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070927Z&X-Amz-Expires=604800&X-Amz-Signature=7c4324b9117fa3dd55ccc21f3b386a86ba24373e0cd2296afab5d76563a67fe3&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "What You Won't Do for Love",
     "artist": "Bobby Caldwell, Alfons Fernando Kettner",
     "duration": 287,
     "s3Key": "songs/What_You_Won_t_Do_for_Love.mp3",
-    "imageUrl": "http://localhost:4000/covers/What_You_Won_t_Do_for_Love.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/What_You_Won_t_Do_for_Love.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070930Z&X-Amz-Expires=604800&X-Amz-Signature=08a4a6f1ec0bb0d4251269252ae6217cdcc1e57f5a34b775ac069202020d8cba&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "giveon - if i ain't got you. (legendado)",
     "artist": "Mtthwz",
     "duration": 217,
     "s3Key": "songs/giveon_-_if_i_ain_t_got_you._legendado.mp3",
-    "imageUrl": "http://localhost:4000/covers/giveon_-_if_i_ain_t_got_you._legendado.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/giveon_-_if_i_ain_t_got_you._legendado.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070933Z&X-Amz-Expires=604800&X-Amz-Signature=f6312a09396fa36c4d76cdf3ca10cd18b31acb000041c633ef799263a7b4da54&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   },
   {
     "title": "teo glacier – close with desires (official video)",
     "artist": "Teo Glacier",
     "duration": 202,
     "s3Key": "songs/teo_glacier_-_close_with_desires_official_video.mp3",
-    "imageUrl": "http://localhost:4000/covers/teo_glacier_-_close_with_desires_official_video.jpg"
+    "imageUrl": "https://spacic-storage-bucket.s3.ap-southeast-1.amazonaws.com/covers/teo_glacier_-_close_with_desires_official_video.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAWIJ7BM6CMEZF6SMY%2F20260508%2Fap-southeast-1%2Fs3%2Faws4_request&X-Amz-Date=20260508T070935Z&X-Amz-Expires=604800&X-Amz-Signature=143a5a7f70f866f7a9e14de80894c2915e8a6cb9d1359a10679b6c6573c8e533&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
   }
 ]
