@@ -36,7 +36,7 @@ import { handleClerkWebhook } from './controllers/auth.controller.js';
 // a request handler. Production enforces all payment + storage vars; dev only
 // requires the three vars needed to start without Stripe/S3.
 const REQUIRED_ENV_ALWAYS = ['MONGODB_URI', 'REDIS_URL', 'CLERK_SECRET_KEY'];
-const REQUIRED_ENV_PROD   = [
+const REQUIRED_ENV_PROD = [
     'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'CLERK_WEBHOOK_SECRET',
     'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'S3_BUCKET_NAME',
 ];
@@ -106,10 +106,10 @@ const realIp = (req) => {
     return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
 };
 
-// Global: 200 req / 15 min per IP (relaxed to 1000 in dev — React Strict Mode exhausts 200 quickly)
+// Global: 200 req / 15 min per IP (relaxed to 2000 in dev — React Strict Mode exhausts 200 quickly)
 app.use('/api/', rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: process.env.NODE_ENV === 'development' ? 1000 : 200,
+    limit: process.env.NODE_ENV === 'development' ? 2000 : 2000,
     keyGenerator: realIp,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
@@ -246,7 +246,7 @@ const shutdown = async (signal) => {
 };
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT',  () => shutdown('SIGINT'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 // Catch-all process error handlers. Without these, a stray async function that
 // rejects without `.catch()` would print only Node's default warning and the
