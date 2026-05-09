@@ -5,10 +5,10 @@ const subscriptionPlanSchema = new mongoose.Schema({
     name: { type: String, required: true },
     tier: { type: String, enum: ['PREMIUM', 'CREATOR'], required: true },
     priceMonthlyUsd: { type: Number, required: true }, // cents: 999 = $9.99/mo
-    priceYearlyUsd: { type: Number, default: true },  // cents, null = no yearly option
-    stripePriceIdMonthly: { type: String, default: true },  // set after Stripe sync (admin)
-    stripePriceIdYearly: { type: String, default: true },
-    stripeProductId: { type: String, default: true },
+    priceYearlyUsd: { type: Number, default: null },  // cents, null = no yearly option
+    stripePriceIdMonthly: { type: String, default: '' },  // set after Stripe sync (admin)
+    stripePriceIdYearly: { type: String, default: '' },
+    stripeProductId: { type: String, default: '' },
     features: { type: [String], default: [] },
     roomCapacity: { type: Number, required: true },
     isActive: { type: Boolean, default: true },
